@@ -66,6 +66,11 @@ INCY_URL = os.getenv("INCY_URL", "")
 # a limited set of characters there and rejects spaces and angle brackets.
 REMARK_INCLUDE_NAME = os.getenv("REMARK_INCLUDE_NAME", "true").strip().lower() in ("1", "true", "yes", "on")
 
+# --- The welcome letter ---
+# The QR code of the subscription link. On by default: the reader who opened
+# their mail on a computer is exactly who the letter is for.
+WELCOME_QR_ENABLED = True
+
 # --- Language ---
 # The interface language and the language letters go out in are separate:
 # the panel can be English while the letters stay Russian. Both live in the

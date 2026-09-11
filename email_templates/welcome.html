@@ -26,6 +26,29 @@
 </table>
 {% endif %}
 
+{% if qr_cid %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 26px;">
+    <tr>
+        <td align="center">
+            {% set qr_caption = t("welcome.qr_intro") %}
+            {% if qr_caption %}
+            <p style="margin: 0 0 12px 0; color: #a0a0a8; font-size: 15px;">{{ qr_caption | emph }}</p>
+            {% endif %}
+            {# White padding around the code: the quiet zone is part of it, and a
+               scanner wants that zone light whatever the letter behind it is. #}
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                <tr>
+                    <td bgcolor="#ffffff" style="background-color: #ffffff; border-radius: 8px; padding: 10px; line-height: 0;">
+                        <img src="cid:{{ qr_cid }}" width="160" height="160" alt=""
+                             style="display: block; width: 160px; height: 160px; border: 0;">
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+{% endif %}
+
 <p style="margin: 26px 0 8px 0;">{{ t("welcome.manual_intro") | emph }}</p>
 {{ ui.code(sub_url) }}
 

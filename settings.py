@@ -33,7 +33,7 @@ MANAGED_KEYS = (
     "POLL_INTERVAL_SECONDS",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
-    "CODEWORD", "REMARK_INCLUDE_NAME",
+    "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
@@ -167,7 +167,8 @@ def _coerce(key, value):
     if key == "UPDATE_DISMISSED_VERSION":
         # A version string or nothing; it is only ever compared, never shown.
         return str(value or "").strip().lstrip("v")
-    if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED"):
+    if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
+               "WELCOME_QR_ENABLED"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

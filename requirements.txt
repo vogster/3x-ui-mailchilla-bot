@@ -1,5 +1,8 @@
 requests==2.31.0
 python-dotenv==1.0.1
+# QR codes for the welcome letter. Pure Python and writes the PNG itself,
+# so no Pillow and nothing to compile on the server.
+segno==1.6.6
 
 # Веб-админка
 fastapi==0.115.6

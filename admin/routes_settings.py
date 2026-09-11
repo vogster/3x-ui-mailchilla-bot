@@ -54,12 +54,17 @@ def _text_groups():
     for g in email_texts.GROUPS:
         fields = []
         for key, label, kind, hint in g["fields"]:
-            fields.append({
-                "key": key, "label": i18n.t(label), "kind": kind,
-                "hint": i18n.t(hint) if hint else "",
-                "value": email_texts.get(key),
-                "changed": email_texts.is_changed(key),
-            })
+            field = {"key": key, "label": i18n.t(label), "kind": kind,
+                     "hint": i18n.t(hint) if hint else ""}
+            if kind == email_texts.SWITCH:
+                # A settings key, not a text: its value comes from config and
+                # there is nothing per-language to have been "changed".
+                field["value"] = bool(getattr(config, key, False))
+                field["changed"] = False
+            else:
+                field["value"] = email_texts.get(key)
+                field["changed"] = email_texts.is_changed(key)
+            fields.append(field)
         groups.append({
             "id": g["id"], "title": i18n.t(g["title"]), "hint": i18n.t(g["hint"]),
             "fields": fields,
@@ -406,13 +411,24 @@ async def settings_texts_save(request: Request):
     form = await request.form()
     values = {key[len("text:"):]: value
               for key, value in form.items() if key.startswith("text:")}
+    # The switches standing among the texts are settings, and go to the other
+    # store. A hidden "off" is posted before each one, so an unticked box —
+    # which a browser does not send at all — still arrives as a value; the
+    # later entry wins, which is the ticked one when there is one.
+    switches = {key[len("switch:"):]: value == "on"
+                for key, value in form.items() if key.startswith("switch:")}
     try:
         email_texts.save(values)
+        if switches:
+            settings.save(switches)
     except OSError as e:
         logger.error(f"Could not write the letter texts: {e}")
         return RedirectResponse(url="/settings?error=" + quote(i18n.t("Could not save the texts")),
                                 status_code=303)
-    logger.info(f"Panel: letter texts saved ({len(values)} fields).")
+    except (ValueError, TypeError) as e:
+        logger.error(f"A switch on the Letters tab is invalid: {e}")
+        return RedirectResponse(url="/settings?error=" + quote(str(e)), status_code=303)
+    logger.info(f"Panel: letter texts saved ({len(values)} fields, {len(switches)} switches).")
     return RedirectResponse(url="/settings?saved=texts", status_code=303)
 
 

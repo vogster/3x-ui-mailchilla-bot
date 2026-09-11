@@ -20,6 +20,8 @@ python email_bot.py           # the bot alone, no panel
 
 There is no test suite, no linter config and no build step. Verification is by running the process and watching the log (`logs/bot.log`, or the `/logs` page).
 
+**Anything that exercises saving writes the installation's own files.** `settings.save()` and `email_texts.save()` write `settings.json` and `email_texts.json` in the project directory itself — there is no test mode and no fixture path. A throwaway request against `/settings` or `/settings/texts` therefore overwrites a real configuration, and `email_texts.reset()` discards real edits. Run such checks against a copy of the directory, never against a checkout someone is running the panel from.
+
 On an installed server the same work goes through `mailchilla` (`status`, `restart`, `log`, `update`, `passwd`, `check`). The shell scripts have no tests either; `bash -n install.sh mailchilla.sh` is what CI runs, and the release workflow will not publish a tag that fails it.
 
 ## Architecture
@@ -104,5 +106,10 @@ Notes that matter when reading responses: everything comes back as `{"success": 
 - Comments in this codebase explain *why*, often at length, and frequently record a bug that motivated the current shape. Match that when touching the same code; don't strip such comments when refactoring.
 - Secrets (`IMAP_PASSWORD`, `SMTP_PASSWORD`, `GOTIFY_TOKEN`) never reach page markup: forms post back `settings.UNCHANGED` when untouched, and the real value is fetched separately by `/settings/secret`.
 - User-visible strings in panel templates and Python go through `i18n.t()`; letter strings go through the editable-texts layer instead of being hardcoded.
+- **The Russian catalogue is kept complete.** The captions and hints in `email_texts.GROUPS` are interface strings and need an entry in `lang/ru.py` — adding a field without one leaves English text sitting in a Russian panel. One pass over `GROUPS` finds every gap:
+
+```bash
+python -c "import email_texts;from lang.ru import TEXTS;print([s for g in email_texts.GROUPS for f in g['fields'] for s in (f[1],f[3]) if s and s not in TEXTS])"
+```
 - `README.md` and `README.ru.md` are parallel — a user-facing change belongs in both, and their section structure is kept identical.
 - A user-visible change also belongs in `CHANGELOG.md` under `## [Unreleased]`, since that text is what `mailchilla update` shows people.

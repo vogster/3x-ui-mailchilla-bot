@@ -400,6 +400,17 @@
                 </div>
                 <div style="padding: 22px 20px;">
                     {% for f in g.fields %}
+                    {% if f.kind == "switch" %}
+                    {# A setting rather than a text, saved by the same button. The
+                       hidden "off" goes first: a browser sends nothing at all for
+                       an unticked box, and the later value wins when it is ticked. #}
+                    <div class="mail-field checkbox-row">
+                        <input type="hidden" name="switch:{{ f.key }}" value="off">
+                        <input type="checkbox" class="switch" id="f-{{ loop.index }}-{{ g.id }}"
+                               name="switch:{{ f.key }}" value="on" {% if f.value %}checked{% endif %}>
+                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
+                    </div>
+                    {% else %}
                     <div class="mail-field{% if f.changed %} changed{% endif %}">
                         <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
                         {% if f.kind == "text" %}
@@ -410,6 +421,7 @@
                                name="text:{{ f.key }}" value="{{ f.value }}">
                         {% endif %}
                     </div>
+                    {% endif %}
                     {% endfor %}
                 </div>
             </div>
@@ -540,7 +552,9 @@
             function signature() {
                 var parts = [];
                 new FormData(form).forEach(function (value, key) {
-                    if (key.indexOf("text:") === 0) parts.push(key + "=" + value);
+                    if (key.indexOf("text:") === 0 || key.indexOf("switch:") === 0) {
+                        parts.push(key + "=" + value);
+                    }
                 });
                 return parts.join("&");
             }

@@ -10,11 +10,14 @@ Every letter is built in two forms, HTML and plain text. A letter without a text
 part is a well-known signal to spam filters, and in a client with HTML turned
 off the reader would not even see the subscription link.
 """
+import io
 import logging
 import os
 import re
 from collections import namedtuple
 from datetime import datetime
+
+import segno
 
 from markupsafe import Markup, escape
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -37,7 +40,10 @@ _env = Environment(
 
 GB = 1024 * 1024 * 1024
 
-Email = namedtuple("Email", ["html", "text"])
+# `images` carries the pictures the HTML refers to by Content-ID: {cid: bytes}.
+# They travel inside the letter rather than being fetched from anywhere, which
+# is what makes the QR code possible at all — see qr_png.
+Email = namedtuple("Email", ["html", "text", "images"], defaults=(None,))
 
 # The stripe colour beside the broadcast text. Empty means no stripe.
 BROADCAST_KINDS = {
@@ -97,6 +103,38 @@ _env.filters["emph"] = _emph
 _env.filters["plain"] = _plain
 
 
+# How the subscription QR is referred to from the HTML: <img src="cid:QR_CID">.
+QR_CID = "subqr"
+
+
+def qr_png(url: str) -> bytes:
+    """
+    The subscription link as a QR code, or b"" if it could not be drawn.
+
+    Generated here and sent inside the letter on purpose. The obvious shortcut —
+    an <img> pointing at some QR service — would hand that service every
+    subscriber's subscription link, and the link is the subscription: whoever
+    holds it is connected. A data: URI is no good either, since Gmail and
+    Outlook both refuse to render one.
+
+    Dark on white rather than the letter's own colours: a scanner needs the
+    contrast far more than the letter needs the QR to match its palette.
+    """
+    try:
+        buffer = io.BytesIO()
+        # Correction level M reads through a smudged phone screen and still
+        # keeps the code small. The border is the quiet zone: the standard asks
+        # for four modules, and without it many scanners do not see the code at
+        # all. It is baked into the image rather than left to the white card
+        # around it, because a mail client is free to drop the padding.
+        segno.make(str(url), error="m").save(
+            buffer, kind="png", scale=8, border=4, dark="#0c0c0d", light="#ffffff")
+        return buffer.getvalue()
+    except Exception as e:
+        logger.error(f"Could not draw the QR code: {e}", exc_info=True)
+        return b""
+
+
 def _render(name: str, **context) -> Email:
     """Builds the HTML and text pair from the templates of the same name."""
     context.setdefault("service_name", config.SERVICE_NAME)
@@ -110,7 +148,7 @@ def _render(name: str, **context) -> Email:
     except Exception as e:
         logger.error(f"Failed to build the text letter {name}: {e}", exc_info=True)
         text = context.get("title", "")
-    return Email(html=html, text=text)
+    return Email(html=html, text=text, images=context.get("images") or None)
 
 
 def _app_links(sub_url):
@@ -133,11 +171,18 @@ def welcome_subject(renewed=False) -> str:
 
 def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
     """The letter carrying the subscription link, on registration or resent."""
+    # Somebody reading their mail on a computer has the link on the wrong
+    # machine, and carrying it across to the phone by hand is exactly the sort
+    # of thing this letter exists to avoid. Switched off in the panel for whoever
+    # would rather not have it.
+    qr = qr_png(sub_url) if getattr(config, "WELCOME_QR_ENABLED", True) else b""
     return _render(
         "welcome",
         title=welcome_subject(renewed),
         renewed=renewed,
         sub_url=sub_url,
+        qr_cid=QR_CID if qr else "",
+        images={QR_CID: qr} if qr else None,
         apps=[{"label": a["label"],
                "url": a["url"],
                "button": text("welcome.button_app", app=a["label"])}

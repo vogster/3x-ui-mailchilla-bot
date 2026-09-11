@@ -33,8 +33,15 @@ _lock = threading.RLock()
 _overrides = {}
 
 # A field: (key, caption in the interface, kind, hint)
-# kind: "line" for a single-line field, "text" for a multi-line one
+# kind: "line" for a single-line field, "text" for a multi-line one,
+# "switch" for a setting rather than a text — see SWITCH below.
 LINE, TEXT = "line", "text"
+# A switch standing among the texts. Its key is a settings.py key, not a text
+# key: whether a block is sent at all is one setting for the whole
+# installation, not a string that differs per language. It is described here
+# rather than on the settings page so that it sits beside the texts it governs,
+# which is where somebody editing the letter will look for it.
+SWITCH = "switch"
 
 # The captions and hints below are interface strings and go through the panel's
 # own catalogue; the letter texts themselves live in DEFAULTS_BY_LANG.
@@ -69,6 +76,13 @@ GROUPS = [
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
+            ("WELCOME_QR_ENABLED", "Send the QR code", SWITCH,
+             "The subscription link as a code, for the reader who opened the letter on a "
+             "computer and would otherwise be carrying the link across to their phone by "
+             "hand. It is drawn on the server and travels inside the letter, so nothing "
+             "is fetched from anywhere."),
+            ("welcome.qr_intro", "The line above the QR code", LINE,
+             "The code carries the same subscription link as the button above it."),
             ("welcome.manual_intro", "The line above the link", LINE, ""),
             ("welcome.commands_title", "The commands block heading", LINE, ""),
             ("welcome.commands_text", "The commands block text", TEXT, ""),
@@ -176,6 +190,7 @@ DEFAULTS_BY_LANG = {
         "welcome.button_main": "Get the settings",
         "welcome.apps_intro": "Or add the subscription straight to an app:",
         "welcome.button_app": "Add to {app}",
+        "welcome.qr_intro": "Or scan the code in the app:",
         "welcome.manual_intro": "If the button did not work, copy the subscription link by hand:",
         "welcome.commands_title": "Bot commands",
         "welcome.commands_text":
@@ -275,6 +290,7 @@ DEFAULTS_BY_LANG = {
         "welcome.button_main": "Получить настройки",
         "welcome.apps_intro": "Или добавьте подписку прямо в приложение:",
         "welcome.button_app": "Добавить в {app}",
+        "welcome.qr_intro": "Или отсканируйте код в приложении:",
         "welcome.manual_intro": "Если кнопка не сработала, скопируйте ссылку подписки вручную:",
         "welcome.commands_title": "Команды бота",
         "welcome.commands_text":
@@ -353,7 +369,8 @@ DEFAULTS_BY_LANG = {
 }
 
 # Flat lookups over the structure itself, language aside.
-FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in g["fields"]}
+FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in g["fields"]
+              if kind != SWITCH}
 GROUP_BY_ID = {g["id"]: g for g in GROUPS}
 ALL_KEYS = frozenset(FIELD_KIND)
 

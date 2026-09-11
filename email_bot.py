@@ -9,6 +9,7 @@ import requests
 from email.charset import QP, Charset
 from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from email.header import decode_header
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -97,11 +98,19 @@ def build_message(to_email: str, subject: str, message,
     clients — a letter without one fares worse with spam filters.
     """
     if isinstance(message, str):
-        html_content, text_content = message, ""
+        html_content, text_content, images = message, "", None
     else:
         html_content, text_content = message.html, message.text
+        images = getattr(message, "images", None)
 
-    msg = MIMEMultipart('alternative')
+    # A letter with pictures needs one more layer: multipart/related holds the
+    # HTML together with what it refers to by Content-ID, and multipart/-
+    # alternative goes inside it. The headers belong on whichever part is
+    # outermost, so the two are built first and addressed afterwards.
+    body = MIMEMultipart('alternative')
+    msg = MIMEMultipart('related') if images else body
+    if images:
+        msg.attach(body)
     msg['Subject'] = subject
     msg['From'] = _sender_from(smtp_user, service_name)
     msg['To'] = to_email
@@ -116,8 +125,20 @@ def build_message(to_email: str, subject: str, message,
     # quoted-printable instead of base64 for both parts: MIME_BASE64_TEXT fires
     # on HTML too, and the letter stays readable in its source.
     if text_content:
-        msg.attach(MIMEText(text_content, 'plain', _QP_UTF8))
-    msg.attach(MIMEText(html_content, 'html', _QP_UTF8))
+        body.attach(MIMEText(text_content, 'plain', _QP_UTF8))
+    body.attach(MIMEText(html_content, 'html', _QP_UTF8))
+
+    for cid, data in (images or {}).items():
+        if not data:
+            continue
+        part = MIMEImage(data)
+        # The angle brackets are what the standard asks for in the header; the
+        # src in the HTML is written without them.
+        part.add_header('Content-ID', f'<{cid}>')
+        # "inline" rather than "attachment", so the client draws it in the
+        # letter instead of hanging a paperclip on it.
+        part.add_header('Content-Disposition', 'inline', filename=f'{cid}.png')
+        msg.attach(part)
     return msg
 
 

@@ -855,6 +855,28 @@
         }
         input[type="checkbox"]:disabled { opacity: .45; cursor: default; }
 
+        /* A switch: the same input, drawn as a sliding pill. For a setting that
+           turns a whole thing on or off, where a tick reads as "one of several"
+           and a switch as "on, or off". The knob is a background image and moves
+           by background-position, for the reason the tick above is one too. */
+        input[type="checkbox"].switch {
+            width: 34px; height: 20px; flex: 0 0 34px;
+            border-radius: 999px; vertical-align: -5px;
+            background-color: var(--surface-3);
+            background-size: 14px 14px;
+            background-position: 3px center;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%236b6b73'/%3E%3C/svg%3E");
+            transition: background-color .14s, border-color .14s, background-position .14s;
+        }
+        input[type="checkbox"].switch:checked {
+            /* The fill is repeated here on purpose: the rule above has the same
+               specificity as the generic :checked and comes after it, so it
+               takes the accent back off again. */
+            background-color: var(--ok);
+            background-position: calc(100% - 3px) center;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%230c0c0d'/%3E%3C/svg%3E");
+        }
+
         .checkbox-row { display: flex; align-items: center; gap: 9px; }
         .checkbox-row label { margin: 0; color: var(--fg); font-size: 13px; }
         .form-actions { display: flex; gap: 9px; margin-top: 6px; }

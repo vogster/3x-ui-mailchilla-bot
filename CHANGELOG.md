@@ -23,6 +23,16 @@ read as something a person wants to know before updating.
 - "Later" puts the banner away for that version alone — a newer one brings it
   back.
 
+- The welcome letter carries a QR code of the subscription link, for the
+  reader who opened their mail on a computer and would otherwise be copying the
+  link across to their phone by hand. It is drawn on the server and travels
+  inside the letter as an attachment: a QR service would be handed every
+  subscriber's subscription link, and that link is the subscription. It is a
+  switch on the Letters tab, standing among the texts of the letter it governs
+  and saved by the same button, on by default.
+- A switch control in the panel, for a setting that turns a whole thing on or
+  off — where a tick reads as "one of several" and a switch as "on, or off".
+
 ### Changed
 
 - The app buttons in the welcome letter ("Add to Happ", "Add to Incy") are

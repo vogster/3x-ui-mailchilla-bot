@@ -6,6 +6,11 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # The QR code in the welcome letter
+    "Send the QR code": "Отправлять QR-код",
+    "The subscription link as a code, for the reader who opened the letter on a computer and would otherwise be carrying the link across to their phone by hand. It is drawn on the server and travels inside the letter, so nothing is fetched from anywhere.": "Ссылка подписки кодом — для тех, кто открыл письмо на компьютере и иначе переносил бы ссылку на телефон руками. Код рисуется на сервере и едет внутри письма, ничего никуда не запрашивается.",
+    "The line above the QR code": "Строка над QR-кодом",
+    "The code carries the same subscription link as the button above it.": "В коде та же ссылка подписки, что и в кнопке выше.",
     # The new-version banner
     "A new version has been released": "Вышла новая версия",
     "Update from the server's command line:": "Обновиться из консоли сервера:",
