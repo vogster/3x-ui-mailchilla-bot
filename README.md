@@ -105,7 +105,7 @@ The process log in the browser: filter by level, search, exception tracebacks. U
 One command on a clean server with a reachable 3x-ui panel:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/install.sh)
 ```
 
 The installer asks for the language first, then for access to 3x-ui and the sign-in for its own panel, and does the rest itself: packages, a system user, the latest released version into `/opt/mailchilla`, a virtual environment, `.env`, the systemd service and the `mailchilla` command. At the end it prints the address, the password and the tunnel command.
@@ -115,7 +115,7 @@ Debian 11+, Ubuntu 22.04+, CentOS/AlmaLinux/Rocky/Fedora. Python 3.9 or newer is
 Running a script straight off the internet as root deserves a look first. If you would rather:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh && less install.sh && sudo bash install.sh
+curl -LO https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/install.sh && less install.sh && sudo bash install.sh
 ```
 
 <details>
@@ -124,7 +124,7 @@ curl -LO https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh &&
 Python 3.9+, and a reachable 3x-ui panel.
 
 ```bash
-git clone https://github.com/vogster/Mailchilla.git mailchilla
+git clone https://github.com/vogster/3x-ui-mailchilla-bot.git mailchilla
 cd mailchilla
 python3 -m venv venv
 source venv/bin/activate

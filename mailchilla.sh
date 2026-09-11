@@ -32,7 +32,7 @@ INSTALL_DIR="/opt/mailchilla"
 INSTALL_LANG="en"
 SERVICE="mailchilla"
 SERVICE_USER="mailchilla"
-REPO_URL="https://github.com/vogster/Mailchilla.git"
+REPO_URL="https://github.com/vogster/3x-ui-mailchilla-bot.git"
 BACKUP_DIR="/opt/mailchilla-backups"
 
 # shellcheck disable=SC1090

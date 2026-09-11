@@ -105,7 +105,7 @@
 Одна команда на чистом сервере с доступной панелью 3x-ui:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/install.sh)
 ```
 
 Установщик сначала спросит язык, затем доступ к 3x-ui и вход в собственную панель, а остальное сделает сам: пакеты, системный пользователь, последняя выпущенная версия в `/opt/mailchilla`, виртуальное окружение, `.env`, служба systemd и команда `mailchilla`. В конце напечатает адрес, пароль и команду туннеля.
@@ -115,7 +115,7 @@ Debian 11+, Ubuntu 22.04+, CentOS/AlmaLinux/Rocky/Fedora. Нужен Python 3.9 
 Запускать скрипт из интернета от root стоит, посмотрев на него. Если так спокойнее:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh && less install.sh && sudo bash install.sh
+curl -LO https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/install.sh && less install.sh && sudo bash install.sh
 ```
 
 <details>
@@ -124,7 +124,7 @@ curl -LO https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh &&
 Python 3.9+, доступ к панели 3x-ui.
 
 ```bash
-git clone https://github.com/vogster/Mailchilla.git mailchilla
+git clone https://github.com/vogster/3x-ui-mailchilla-bot.git mailchilla
 cd mailchilla
 python3 -m venv venv
 source venv/bin/activate

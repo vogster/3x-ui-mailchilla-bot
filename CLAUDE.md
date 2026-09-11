@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
+**The project is called Mailchilla; the GitHub repository is `vogster/3x-ui-mailchilla-bot`.** The names differ on purpose — the repository was renamed so that it turns up in searches for 3x-ui, while the product keeps its own name in `APP_NAME`, the panel, the letters and both READMEs. Do not "correct" either one to match the other. Every URL pointing at GitHub must use the repository name: `PROJECT_URL` in `config.py`, `REPO_URL` in `install.sh` and `mailchilla.sh`, and the install commands in both READMEs. GitHub still redirects the old `vogster/Mailchilla`, but only until somebody else claims that name — which would turn the README's `curl … | bash` line into somebody else's script.
+
 Mailchilla: an email bot plus FastAPI web panel that hands out [3x-ui](https://github.com/MHSanaei/3x-ui) VPN subscriptions. A user emails a code word, the bot creates the client in 3x-ui and mails back the subscription link. Commands accepted by mail: the code word (or `/start`), `/status`, `/help`, `/broadcast` (admin address only).
 
 ## Commands

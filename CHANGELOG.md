@@ -8,6 +8,16 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.1] - 2026-09-11
+
+### Fixed
+
+- Every link to GitHub now points at `vogster/3x-ui-mailchilla-bot`, the
+  repository's real name. They pointed at the previous name, which GitHub
+  redirects only until somebody else claims it — and the installer is fetched
+  over one of those links and run as root. The project itself is still called
+  Mailchilla; only the repository was renamed.
+
 ## [0.1.0] - 2026-09-11
 
 ### Added

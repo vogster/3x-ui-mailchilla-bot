@@ -6,9 +6,9 @@ load_dotenv()
 # The project's own name and version — not to be confused with SERVICE_NAME,
 # which names one particular installation and goes into the letters.
 APP_NAME = "Mailchilla"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 # Where the sidebar's GitHub link points.
-PROJECT_URL = "https://github.com/vogster/Mailchilla"
+PROJECT_URL = "https://github.com/vogster/3x-ui-mailchilla-bot"
 
 XUI_URL = os.getenv("XUI_URL", "http://localhost:2053").rstrip("/")
 XUI_USERNAME = os.getenv("XUI_USERNAME", "admin")

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Mailchilla installer — https://github.com/vogster/Mailchilla
+# Mailchilla installer — https://github.com/vogster/3x-ui-mailchilla-bot
 #
-#   bash <(curl -Ls https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh)
+#   bash <(curl -Ls https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/install.sh)
 #
 # Installs the latest tagged release into /opt/mailchilla, generates .env,
 # registers a systemd service and the `mailchilla` command.
@@ -33,7 +33,7 @@ esac
 
 set -euo pipefail
 
-REPO_URL="https://github.com/vogster/Mailchilla.git"
+REPO_URL="https://github.com/vogster/3x-ui-mailchilla-bot.git"
 INSTALL_DIR="/opt/mailchilla"
 CONF_DIR="/etc/mailchilla"
 CONF_FILE="$CONF_DIR/install.conf"
@@ -442,7 +442,7 @@ write_unit() {
     cat > "$UNIT_PATH" <<UNITEOF
 [Unit]
 Description=Mailchilla — email bot and web panel for 3x-ui
-Documentation=https://github.com/vogster/Mailchilla
+Documentation=https://github.com/vogster/3x-ui-mailchilla-bot
 After=network-online.target
 Wants=network-online.target
 
