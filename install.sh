@@ -126,8 +126,10 @@ declare -A MSG=(
 [ru.q_auth_1]="Логин и пароль"
 [en.pick]="Your choice"
 [ru.pick]="Ваш выбор"
-[en.q_auth_2]="API token (Settings -> Security -> API Token)"
-[ru.q_auth_2]="API-токен (Настройки -> Безопасность -> API Token)"
+[en.xui_note]="Only reachability is checked here. The credentials themselves are verified after installation: mailchilla check"
+[ru.xui_note]="Здесь проверяется только доступность адреса. Сами доступы проверяются после установки: mailchilla check"
+[en.q_auth_2]="API token (Panel Settings -> Account -> API Tokens)"
+[ru.q_auth_2]="API-токен (Настройки панели -> Учетная запись -> API Токены)"
 [en.q_xui_user]="3x-ui username"
 [ru.q_xui_user]="Логин 3x-ui"
 [en.q_xui_pass]="3x-ui password"
@@ -136,10 +138,10 @@ declare -A MSG=(
 [ru.q_xui_token]="API-токен"
 [en.xui_checking]="Checking the connection..."
 [ru.xui_checking]="Проверяем связь..."
-[en.xui_ok]="The panel answers."
-[ru.xui_ok]="Панель отвечает."
-[en.xui_bad]="The panel did not answer. Installation continues — the address can be corrected later in .env."
-[ru.xui_bad]="Панель не ответила. Установка продолжится — адрес можно поправить позже в .env."
+[en.xui_ok]="The address answers (HTTP {0})."
+[ru.xui_ok]="Адрес отвечает (HTTP {0})."
+[en.xui_bad]="No answer from that address. Installation continues — it can be corrected later in .env."
+[ru.xui_bad]="Адрес не ответил. Установка продолжится — его можно поправить позже в .env."
 
 [en.q_panel_user]="Username for the Mailchilla panel"
 [ru.q_panel_user]="Логин для панели Mailchilla"
@@ -159,6 +161,18 @@ declare -A MSG=(
 [ru.q_port]="Порт для панели"
 [en.port_bad]="A port is a number between 1 and 65535."
 [ru.port_bad]="Порт — это число от 1 до 65535."
+[en.q_expose]="Make the panel reachable from outside?"
+[ru.q_expose]="Сделать панель доступной снаружи?"
+[en.expose_hint]="By default it listens on 127.0.0.1 and is opened through an SSH tunnel."
+[ru.expose_hint]="По умолчанию она слушает 127.0.0.1 и открывается через SSH-туннель."
+[en.expose_warn]="Without a reverse proxy this is plain HTTP: the password travels the network in the clear, and the panel is open to anyone who finds the port."
+[ru.expose_warn]="Без обратного прокси это обычный HTTP: пароль уйдёт по сети открытым, а панель будет доступна любому, кто найдёт порт."
+[en.q_expose_sure]="Open it anyway (0.0.0.0)?"
+[ru.q_expose_sure]="Всё равно открыть (0.0.0.0)?"
+[en.d_open]="The panel is open to the network:"
+[ru.d_open]="Панель открыта в сеть:"
+[en.d_open_warn]="This is HTTP without a certificate. Put a reverse proxy with HTTPS in front of it, or close it back: mailchilla port"
+[ru.d_open_warn]="Это HTTP без сертификата. Поставьте перед ней обратный прокси с HTTPS или закройте обратно: mailchilla port"
 [en.port_busy]="Port {0} is occupied. Choose another one."
 [ru.port_busy]="Порт {0} занят. Выберите другой."
 
@@ -408,7 +422,7 @@ write_env() {
         printf "ADMIN_PANEL_USER='%s'\n" "$PANEL_USER"
         printf "ADMIN_PANEL_PASSWORD='%s'\n" "$PANEL_PASS"
         printf "ADMIN_PANEL_SECRET='%s'\n" "$secret"
-        printf '%s\n' "ADMIN_PANEL_HOST=127.0.0.1"
+        printf 'ADMIN_PANEL_HOST=%s\n' "$PANEL_HOST"
         printf 'ADMIN_PANEL_PORT=%s\n\n' "$PANEL_PORT"
         printf '%s\n' "# Seeds the language on a first run; both are changed in the panel"
         printf '%s\n' "# afterwards and kept in settings.json. The interface and the letters"
@@ -508,11 +522,17 @@ ask_xui() {
 
     printf '\n'
     info "$(t xui_checking)"
-    if curl -fsSk -o /dev/null --max-time 6 "$XUI_URL/" 2>/dev/null; then
-        printf '      %s✓%s %s\n' "$GRN" "$N" "$(t xui_ok)"
+    # Any status code means something is listening. Not -f: 3x-ui serves its
+    # panel under a base path, so / answers 404 on a perfectly good install and
+    # curl -f would report that as "unreachable".
+    local code
+    code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 6 "$XUI_URL/" 2>/dev/null || true)"
+    if [ -n "$code" ] && [ "$code" != "000" ]; then
+        printf '      %s✓%s %s\n' "$GRN" "$N" "$(t xui_ok "$code")"
     else
         warn "$(t xui_bad)"
     fi
+    info "$(t xui_note)"
 }
 
 ask_panel() {
@@ -552,6 +572,19 @@ ask_panel() {
         fi
         break
     done
+
+    # 127.0.0.1 stays the default and the recommendation, but refusing to offer
+    # the alternative only means people set ADMIN_PANEL_HOST by hand, without
+    # having read any of this.
+    PANEL_HOST="127.0.0.1"
+    printf '\n'
+    info "$(t expose_hint)"
+    if confirm "$(t q_expose)"; then
+        printf '\n'
+        warn "$(t expose_warn)"
+        printf '\n'
+        confirm "$(t q_expose_sure)" && PANEL_HOST="0.0.0.0"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -577,9 +610,15 @@ summary() {
 
     printf '\n'
     rule
-    printf '\n  %s\n\n' "$(t d_reach)"
-    printf '     %s%sssh -L %s:127.0.0.1:%s root@%s%s\n\n' "$B" "$CYA" "$PANEL_PORT" "$PANEL_PORT" "$host" "$N"
-    printf '  %s %shttp://localhost:%s%s\n' "$(t d_then)" "$B$CYA" "$PANEL_PORT" "$N"
+    if [ "$PANEL_HOST" = "0.0.0.0" ]; then
+        printf '\n  %s\n\n' "$(t d_open)"
+        printf '     %s%shttp://%s:%s%s\n\n' "$B" "$CYA" "$host" "$PANEL_PORT" "$N"
+        printf '  %s!%s %s%s%s\n' "$YEL" "$N" "$D" "$(t d_open_warn)" "$N"
+    else
+        printf '\n  %s\n\n' "$(t d_reach)"
+        printf '     %s%sssh -L %s:127.0.0.1:%s root@%s%s\n\n' "$B" "$CYA" "$PANEL_PORT" "$PANEL_PORT" "$host" "$N"
+        printf '  %s %shttp://localhost:%s%s\n' "$(t d_then)" "$B$CYA" "$PANEL_PORT" "$N"
+    fi
 
     printf '\n'
     rule
@@ -652,6 +691,11 @@ main() {
     ok
 
     step "$(t s_service)"
+    # The repository belongs to the service user while `mailchilla` runs as
+    # root, and git refuses to work in a directory owned by somebody else
+    # ("detected dubious ownership"). Without this every git call in
+    # mailchilla.sh fails — the version reads as "?" and update cannot run.
+    git config --system --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
     write_unit
     install -m 755 "$INSTALL_DIR/mailchilla.sh" "$BIN_PATH"
     systemctl enable "$SERVICE" >/dev/null 2>&1

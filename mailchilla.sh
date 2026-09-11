@@ -66,8 +66,8 @@ declare -A MSG=(
 [ru.m_update]="Обновить"
 [en.m_passwd]="Change the panel username or password"
 [ru.m_passwd]="Сменить логин или пароль панели"
-[en.m_port]="Change the port"
-[ru.m_port]="Сменить порт"
+[en.m_port]="Change the address and port"
+[ru.m_port]="Сменить адрес и порт"
 [en.m_tunnel]="SSH tunnel to the panel"
 [ru.m_tunnel]="SSH-туннель до панели"
 [en.m_check]="Check the connection to 3x-ui"
@@ -167,8 +167,20 @@ declare -A MSG=(
 [en.p_saved]="Saved. The panel has been restarted."
 [ru.p_saved]="Сохранено. Панель перезапущена."
 
-[en.port_now]="Current port"
-[ru.port_now]="Текущий порт"
+[en.host_now]="Now listening on"
+[ru.host_now]="Сейчас слушает"
+[en.q_expose]="Make the panel reachable from outside?"
+[ru.q_expose]="Сделать панель доступной снаружи?"
+[en.expose_warn]="Without a reverse proxy this is plain HTTP: the password travels the network in the clear, and the panel is open to anyone who finds the port."
+[ru.expose_warn]="Без обратного прокси это обычный HTTP: пароль уйдёт по сети открытым, а панель будет доступна любому, кто найдёт порт."
+[en.q_expose_sure]="Open it anyway (0.0.0.0)?"
+[ru.q_expose_sure]="Всё равно открыть (0.0.0.0)?"
+[en.q_close]="Close it back to 127.0.0.1?"
+[ru.q_close]="Закрыть обратно на 127.0.0.1?"
+[en.open_now]="The panel is open to the network:"
+[ru.open_now]="Панель открыта в сеть:"
+[en.open_warn]="This is HTTP without a certificate. A reverse proxy with HTTPS belongs in front of it."
+[ru.open_warn]="Это HTTP без сертификата. Перед ней стоит поставить обратный прокси с HTTPS."
 [en.port_new]="New port"
 [ru.port_new]="Новый порт"
 [en.port_bad]="A port is a number between 1 and 65535."
@@ -183,10 +195,14 @@ declare -A MSG=(
 
 [en.c_checking]="Signing in to 3x-ui..."
 [ru.c_checking]="Входим в 3x-ui..."
-[en.c_ok]="Connection to 3x-ui: OK."
-[ru.c_ok]="Связь с 3x-ui: ОК."
-[en.c_fail]="Could not sign in to 3x-ui. Check XUI_URL and the credentials in {0}."
-[ru.c_fail]="Не удалось войти в 3x-ui. Проверьте XUI_URL и доступы в {0}."
+[en.c_ok]="3x-ui answers, the credentials are accepted. Inbounds: {0}."
+[ru.c_ok]="3x-ui отвечает, доступы приняты. Inbound'ов: {0}."
+[en.c_auth]="3x-ui refused the credentials (HTTP {0}). Check XUI_API_TOKEN, or the username and password, in {1}."
+[en.c_net]="No answer from {0}. Check XUI_URL in {1}."
+[en.c_odd]="3x-ui answered, but not as expected. Look at the log: mailchilla log"
+[ru.c_auth]="3x-ui отклонил доступы (HTTP {0}). Проверьте XUI_API_TOKEN или логин с паролем в {1}."
+[ru.c_net]="Адрес {0} не отвечает. Проверьте XUI_URL в {1}."
+[ru.c_odd]="3x-ui ответил, но не так, как ожидалось. Посмотрите лог: mailchilla log"
 
 [en.b_done]="Backup written to {0}"
 [ru.b_done]="Бэкап записан в {0}"
@@ -265,10 +281,17 @@ env_set() {
 }
 
 panel_port() { env_get ADMIN_PANEL_PORT || printf '8080'; }
+panel_host() { env_get ADMIN_PANEL_HOST || printf '127.0.0.1'; }
+
+# The repository belongs to the service user and this script runs as root, so
+# a bare git call dies with "detected dubious ownership". install.sh adds the
+# exception system-wide; passing it here too keeps the command working on a
+# copy installed before that, and when the directory has been moved.
+git_repo() { git -c safe.directory="$INSTALL_DIR" -C "$INSTALL_DIR" "$@"; }
 
 current_version() {
-    git -C "$INSTALL_DIR" describe --tags --exact-match 2>/dev/null \
-        || git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null \
+    git_repo describe --tags --exact-match 2>/dev/null \
+        || git_repo rev-parse --abbrev-ref HEAD 2>/dev/null \
         || printf '?'
 }
 
@@ -356,11 +379,19 @@ cmd_backup() {
 }
 
 cmd_tunnel() {
-    local port host
+    local port host addr
     port="$(panel_port)"
     host="$(hostname -I 2>/dev/null | awk '{print $1}')"
     [ -n "$host" ] || host="your-server"
+    addr="$(panel_host)"
     printf '\n'
+    if [ "$addr" = "0.0.0.0" ]; then
+        say "$(t open_now)"
+        printf '\n     %s%shttp://%s:%s%s\n\n' "$B" "$CYA" "$host" "$port" "$N"
+        warn "$(t open_warn)"
+        printf '\n'
+        return
+    fi
     say "$(t tun_text)"
     printf '\n     %s%sssh -L %s:127.0.0.1:%s root@%s%s\n\n' "$B" "$CYA" "$port" "$port" "$host" "$N"
     printf '  %s %s%shttp://localhost:%s%s\n\n' "$(t tun_then)" "$B" "$CYA" "$port" "$N"
@@ -370,7 +401,12 @@ cmd_check() {
     need_install
     printf '\n'
     dim "$(t c_checking)"
-    if (cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/python" -B -c '
+
+    # Not login(): with an API token set it returns True without asking the
+    # panel anything, so it reports success on a wrong token or a dead host.
+    # A real request is the only thing that proves the credentials work.
+    local out status
+    out="$(cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/python" -B -c '
 import sys
 sys.path.insert(0, ".")
 import logging
@@ -378,12 +414,30 @@ logging.disable(logging.CRITICAL)
 import settings
 settings.load()
 from xui_client import get_shared_client
-sys.exit(0 if get_shared_client().login() else 1)
-') >/dev/null 2>&1; then
-        good "$(t c_ok)"
-    else
-        bad "$(t c_fail "$ENV_FILE")"
-    fi
+try:
+    r = get_shared_client()._request("GET", "/panel/api/inbounds/list/slim")
+except Exception:
+    print("NET"); sys.exit(0)
+if r.status_code in (401, 403) or (r.status_code == 200 and "login" in r.url):
+    print("AUTH", r.status_code); sys.exit(0)
+if r.status_code != 200:
+    print("AUTH", r.status_code); sys.exit(0)
+try:
+    body = r.json()
+except Exception:
+    print("ODD"); sys.exit(0)
+if not body.get("success"):
+    print("ODD"); sys.exit(0)
+print("OK", len(body.get("obj") or []))
+' 2>/dev/null)" || out="NET"
+
+    status="${out%% *}"
+    case "$status" in
+        OK)   good "$(t c_ok "${out#OK }")" ;;
+        AUTH) bad "$(t c_auth "${out#AUTH }" "$ENV_FILE")" ;;
+        ODD)  bad "$(t c_odd)" ;;
+        *)    bad "$(t c_net "$(env_get XUI_URL)" "$ENV_FILE")" ;;
+    esac
     printf '\n'
 }
 
@@ -422,24 +476,44 @@ cmd_passwd() {
 
 cmd_port() {
     need_root port; need_install
-    local port
+    local port host current
+    current="$(panel_host)"
     printf '\n'
-    dim "$(t port_now): $(panel_port)"
+    dim "$(t host_now): $current:$(panel_port)"
+    printf '\n'
+
+    host="$current"
+    if [ "$current" = "0.0.0.0" ]; then
+        confirm "$(t q_close)" && host="127.0.0.1"
+    else
+        if confirm "$(t q_expose)"; then
+            printf '\n'
+            warn "$(t expose_warn)"
+            printf '\n'
+            confirm "$(t q_expose_sure)" && host="0.0.0.0"
+        fi
+    fi
+
+    printf '\n'
     while :; do
-        printf '  %s?%s %s: ' "$CYA" "$N" "$(t port_new)"
+        printf '  %s?%s %s [%s]: ' "$CYA" "$N" "$(t port_new)" "$(panel_port)"
         read -r port </dev/tty
-        [ -n "$port" ] || { printf '\n'; return; }
+        [ -n "$port" ] || { port="$(panel_port)"; break; }
         if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
             warn "$(t port_bad)"; continue
         fi
-        if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE "[:.]$port[[:space:]]"; then
+        if [ "$port" != "$(panel_port)" ] && command -v ss >/dev/null 2>&1 \
+           && ss -ltn 2>/dev/null | grep -qE "[:.]$port[[:space:]]"; then
             warn "$(t port_busy "$port")"; continue
         fi
         break
     done
+
+    env_set ADMIN_PANEL_HOST "$host"
     env_set ADMIN_PANEL_PORT "$port"
     systemctl restart "$SERVICE"
     wait_for_panel || true
+    printf '\n'
     good "$(t done)"
     cmd_tunnel
 }
@@ -502,7 +576,7 @@ cmd_update() {
         printf '\n'; good "$(t u_uptodate)"; printf '\n'; return 0
     fi
 
-    git -C "$INSTALL_DIR" fetch --tags --quiet --force
+    git_repo fetch --tags --quiet --force
 
     local notes
     notes="$(changelog_for "$latest" || true)"
@@ -513,7 +587,7 @@ cmd_update() {
 
     # Local edits are the usual reason an update fails, so say so plainly and
     # put them aside rather than dying on a git error.
-    dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
+    dirty="$(git_repo status --porcelain --untracked-files=no)"
     if [ -n "$dirty" ]; then
         printf '\n'
         warn "$(t u_local)"
@@ -530,12 +604,12 @@ cmd_update() {
     backup="$BACKUP_PATH"
 
     if [ -n "$dirty" ]; then
-        git -C "$INSTALL_DIR" stash push --quiet -m "mailchilla update $(date -Iseconds)" || true
+        git_repo stash push --quiet -m "mailchilla update $(date -Iseconds)" || true
         stash_made=1
     fi
 
     dim "$(t u_pull "$latest")"
-    git -C "$INSTALL_DIR" checkout --quiet --force "$latest"
+    git_repo checkout --quiet --force "$latest"
 
     dim "$(t u_deps)"
     "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null
@@ -554,7 +628,7 @@ cmd_update() {
     else
         printf '\n'
         warn "$(t u_rollback "$current")"
-        git -C "$INSTALL_DIR" checkout --quiet --force "$current"
+        git_repo checkout --quiet --force "$current"
         "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null 2>&1 || true
         local file
         for file in "${STATE_FILES[@]}"; do

@@ -8,6 +8,31 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.2] - 2026-09-11
+
+### Added
+
+- The installer offers to make the panel reachable from outside. `127.0.0.1`
+  stays the default and the recommendation, and choosing `0.0.0.0` takes two
+  confirmations and a warning about plain HTTP; the closing summary then shows
+  the direct address instead of the SSH tunnel. `mailchilla port` switches
+  between the two afterwards.
+
+### Fixed
+
+- `mailchilla check` reported success without checking anything when an API
+  token was configured: `XuiClient.login()` returns `True` immediately in that
+  mode, without a single request. It now makes a real API call and tells a
+  refused token apart from an unreachable address.
+- Every git call in `mailchilla` failed on an installed copy, because the
+  repository belongs to the service user while the command runs as root and
+  git then refuses with "detected dubious ownership". The version showed as `?`
+  and `mailchilla update` could not have worked at all.
+- The installer reported a live 3x-ui panel as unreachable: it used `curl -f`
+  against `/`, which answers 404 whenever the panel sits under a base path.
+- The hint for finding an API token pointed at the old place in 3x-ui. It is
+  now Panel Settings -> Account -> API Tokens.
+
 ## [0.1.1] - 2026-09-11
 
 ### Fixed
