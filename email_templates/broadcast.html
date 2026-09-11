@@ -1,0 +1,16 @@
+{% extends "_layout.html" %}
+{% block content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td bgcolor="#1a1a1d" class="body-text"
+            style="background-color: #1a1a1d;
+                   {% if accent %}border-left: 3px solid {{ accent }}; border-radius: 0 8px 8px 0;
+                   {% else %}border: 1px solid #26262a; border-radius: 8px;{% endif %}
+                   padding: 20px 22px; color: #c8c8cf;
+                   font-size: 16px; line-height: 1.7; white-space: pre-line;">{{ body }}</td>
+    </tr>
+</table>
+{% if t("broadcast.signature") %}
+<p style="margin: 26px 0 0 0; color: #8a8a93; font-size: 15px;">{{ t("broadcast.signature") | emph }}</p>
+{% endif %}
+{% endblock %}

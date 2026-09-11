@@ -1,0 +1,413 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Clients") }}{% endblock %}
+{% block nav_clients %}active{% endblock %}
+{% block content %}
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Clients") }} <span class="muted" style="font-weight:400;" id="client-count">({{ total }})</span></h2>
+        <form method="get" action="/clients" class="search" id="search-form">
+            <input type="text" name="q" id="client-search" value="{{ q }}"
+                   placeholder="{{ t('Search by name or email…') }}" autocomplete="off">
+            <button type="button" class="search-clear" id="search-clear" title="{{ t('Clear') }}" hidden>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                     stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+            </button>
+        </form>
+        {% if q %}
+        <a href="/clients" class="btn small">{{ t("Reset") }}</a>
+        {% endif %}
+        <button type="button" class="btn small primary"
+                onclick="document.getElementById('new-client-dialog').showModal()">{{ t("Create") }}</button>
+    </div>
+
+    <div class="filters">
+        <div class="filter-group">
+            <span class="lbl">{{ t("Status") }}</span>
+            <div class="segmented" data-filter="status">
+                <button type="button" class="on" data-value="">{{ t("All") }}</button>
+                <button type="button" data-value="1">{{ t("Active [filter]") }}</button>
+                <button type="button" data-value="0">{{ t("Disabled [filter]") }}</button>
+            </div>
+        </div>
+        <div class="filter-group">
+            <span class="lbl">{{ t("Mail") }}</span>
+            <div class="segmented" data-filter="mail">
+                <button type="button" class="on" data-value="">{{ t("All") }}</button>
+                <button type="button" data-value="1">{{ t("Has one") }}</button>
+                <button type="button" data-value="0">{{ t("None") }}</button>
+            </div>
+        </div>
+        <button type="button" class="btn small" id="filters-toggle" style="margin-left:auto;">
+            {{ t("More filters") }}
+        </button>
+        <button type="button" class="btn small" id="filters-reset" hidden>{{ t("Reset") }}</button>
+    </div>
+
+    <div class="filters-more" id="filters-more" hidden>
+        <div class="filter-group">
+            <span class="lbl">{{ t("Registered") }}</span>
+            <input type="date" id="f-from" title="{{ t('from') }}">
+            <span class="sep">—</span>
+            <input type="date" id="f-to" title="{{ t('to') }}">
+        </div>
+        <div class="filter-group">
+            <span class="lbl">{{ t("Traffic, GB") }}</span>
+            <input type="number" id="f-gb-min" min="0" step="1" placeholder="{{ t('from') }}">
+            <span class="sep">—</span>
+            <input type="number" id="f-gb-max" min="0" step="1" placeholder="{{ t('to') }}">
+        </div>
+    </div>
+
+    {% if clients %}
+    <div class="tscroll">
+        <table>
+            <thead>
+                <tr>
+                    <th class="sortable" data-sort="name">{{ t("Email / name") }}</th>
+                    <th>{{ t("Status") }}</th>
+                    <th class="sortable" data-sort="traffic" data-numeric="1">{{ t("Traffic") }}</th>
+                    <th class="sortable" data-sort="created" data-numeric="1">{{ t("Registered") }}</th>
+                    <th>{{ t("Expiry") }}</th>
+                    <th style="text-align:right;">{{ t("Actions") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for c in clients %}
+                <tr data-search="{{ (c.remark ~ ' ' ~ c.bare_email ~ ' ' ~ c.comment)|lower }}"
+                    data-name="{{ (c.remark or c.bare_email)|lower }}"
+                    data-traffic="{{ c.used_bytes }}"
+                    data-created="{{ c.created_ms }}"
+                    data-enabled="{{ 1 if c.enable else 0 }}"
+                    data-hasmail="{{ 1 if c.bare_email else 0 }}">
+                    <td>
+                        <a href="/clients/{{ c.uuid }}" class="row-link">
+                            <div class="mono">{{ c.remark or c.bare_email }}</div>
+                            {% if c.comment and c.comment != c.remark %}
+                            <div class="muted">{{ c.comment }}</div>
+                            {% endif %}
+                        </a>
+                    </td>
+                    <td>
+                        {% if c.enable %}
+                        <span class="badge on">{{ t("Active [badge]") }}</span>
+                        {% else %}
+                        <span class="badge off">{{ t("Disabled [badge]") }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.unlimited %}
+                        <div class="mono">{{ c.used_gb }} {{ t("GB") }} <span class="muted">· {{ t("no limit") }}</span></div>
+                        {% else %}
+                        <div class="mono">{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}</div>
+                        <div class="bar" style="margin-top:5px;"><div style="width: {{ c.percent }}%;"></div></div>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ c.created }}</td>
+                    <td class="mono">{{ c.expiry }}</td>
+                    <td style="text-align:right; white-space:nowrap;">
+                        <details class="rowmenu">
+                            <summary title="{{ t('Actions') }}">&#8942;</summary>
+                            <div class="rowmenu-body">
+                                <a href="/clients/{{ c.uuid }}">{{ t("Open the card") }}</a>
+                                <a href="/clients/{{ c.uuid }}/edit">{{ t("Edit") }}</a>
+                                <hr>
+                                <form method="post" action="/clients/{{ c.uuid }}/toggle">
+                                    {% if c.enable %}
+                                    <button type="submit" class="danger">{{ t("Disable") }}</button>
+                                    {% else %}
+                                    <button type="submit" class="ok">{{ t("Enable") }}</button>
+                                    {% endif %}
+                                </form>
+                            </div>
+                        </details>
+                    </td>
+                </tr>
+            {% endfor %}
+                <tr id="no-match" hidden>
+                    <td colspan="6"><div class="empty">{{ t("Nothing found") }}</div></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">{{ t("No clients found") }}</div>
+    {% endif %}
+</div>
+<script>
+    // The list filters. Everything is worked out from the rows already drawn,
+    // as with search and sorting. They are deliberately not remembered between
+    // visits: sorting only changes the order, while a filter hides clients, and
+    // coming back to wonder where half the list went is unpleasant.
+    var clientFilters = (function () {
+        var state = { status: "", mail: "", from: null, to: null, gbMin: null, gbMax: null };
+        var listeners = [];
+
+        function active() {
+            return state.status !== "" || state.mail !== "" ||
+                   state.from !== null || state.to !== null ||
+                   state.gbMin !== null || state.gbMax !== null;
+        }
+
+        function matches(row) {
+            if (state.status !== "" && row.dataset.enabled !== state.status) return false;
+            if (state.mail !== "" && row.dataset.hasmail !== state.mail) return false;
+            var created = Number(row.dataset.created);
+            if (state.from !== null && created < state.from) return false;
+            if (state.to !== null && created > state.to) return false;
+            var gb = Number(row.dataset.traffic) / (1024 * 1024 * 1024);
+            if (state.gbMin !== null && gb < state.gbMin) return false;
+            if (state.gbMax !== null && gb > state.gbMax) return false;
+            return true;
+        }
+
+        function notify() { listeners.forEach(function (fn) { fn(); }); }
+
+        return {
+            state: state, active: active, matches: matches,
+            onChange: function (fn) { listeners.push(fn); },
+            changed: notify
+        };
+    })();
+
+    // Live search over the rows already drawn: there are dozens of clients, and
+    // no reason to go to the server for this. The form still works — Enter gives
+    // server-side filtering and a link worth keeping.
+    (function () {
+        var input = document.getElementById("client-search");
+        var clear = document.getElementById("search-clear");
+        var count = document.getElementById("client-count");
+        var form = document.getElementById("search-form");
+        if (!input) return;
+
+        var rows = Array.prototype.slice.call(
+            document.querySelectorAll("tbody tr[data-search]"));
+        var empty = document.getElementById("no-match");
+        var total = rows.length;
+        // Arrived by a link carrying ?q= — the server has already filtered, and
+        // "show everything" cannot happen without a reload: the other rows are
+        // simply not on the page.
+        var serverFiltered = input.value.trim() !== "";
+
+        function apply() {
+            var needle = input.value.trim().toLowerCase();
+            if (clear) clear.hidden = needle === "";
+
+            var shown = 0;
+            for (var i = 0; i < rows.length; i++) {
+                var hit = (!needle || rows[i].dataset.search.indexOf(needle) !== -1)
+                          && clientFilters.matches(rows[i]);
+                rows[i].hidden = !hit;
+                if (hit) shown++;
+            }
+            if (empty) empty.hidden = shown !== 0;
+            if (count) count.textContent = shown === total ? "(" + total + ")"
+                                                          : "(" + shown + " " + {{ t("of")|tojson }} + " " + total + ")";
+        }
+
+        input.addEventListener("input", function () {
+            // The field was cleared, but the page arrived filtered from the
+            // server — bring the full list back with a reload.
+            if (serverFiltered && input.value.trim() === "") {
+                window.location.href = "/clients";
+                return;
+            }
+            apply();
+        });
+
+        if (clear) {
+            clear.addEventListener("click", function () {
+                if (serverFiltered) { window.location.href = "/clients"; return; }
+                input.value = "";
+                apply();
+                input.focus();
+            });
+        }
+
+        input.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && input.value !== "") {
+                e.preventDefault();
+                if (serverFiltered) { window.location.href = "/clients"; return; }
+                input.value = "";
+                apply();
+            }
+        });
+
+        // With live search there is no reason to submit the form — it exists
+        // only for the case where JS is absent.
+        if (form) form.addEventListener("submit", function (e) { e.preventDefault(); });
+
+        clientFilters.onChange(apply);
+        apply();
+    })();
+
+    // Working the filters
+    (function () {
+        var more = document.getElementById("filters-more");
+        var toggle = document.getElementById("filters-toggle");
+        var reset = document.getElementById("filters-reset");
+        var s = clientFilters.state;
+
+        function refreshReset() {
+            if (reset) reset.hidden = !clientFilters.active();
+        }
+        function changed() { refreshReset(); clientFilters.changed(); }
+
+        document.querySelectorAll(".segmented[data-filter]").forEach(function (group) {
+            var key = group.dataset.filter;
+            group.querySelectorAll("button").forEach(function (b) {
+                b.addEventListener("click", function () {
+                    group.querySelectorAll("button").forEach(function (x) { x.classList.remove("on"); });
+                    b.classList.add("on");
+                    s[key] = b.dataset.value;
+                    changed();
+                });
+            });
+        });
+
+        var from = document.getElementById("f-from");
+        var to = document.getElementById("f-to");
+        var gbMin = document.getElementById("f-gb-min");
+        var gbMax = document.getElementById("f-gb-max");
+
+        function num(el) {
+            var v = parseFloat(el.value);
+            return el.value === "" || isNaN(v) ? null : v;
+        }
+        function day(el, endOfDay) {
+            if (!el.value) return null;
+            var d = new Date(el.value + (endOfDay ? "T23:59:59.999" : "T00:00:00"));
+            return isNaN(d.getTime()) ? null : d.getTime();
+        }
+
+        [from, to, gbMin, gbMax].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener("input", function () {
+                s.from = day(from, false);
+                s.to = day(to, true);      // "to" is inclusive, right to the end of the day
+                s.gbMin = num(gbMin);
+                s.gbMax = num(gbMax);
+                changed();
+            });
+        });
+
+        if (toggle) {
+            toggle.addEventListener("click", function () {
+                more.hidden = !more.hidden;
+                toggle.classList.toggle("primary", !more.hidden);
+            });
+        }
+
+        if (reset) {
+            reset.addEventListener("click", function () {
+                document.querySelectorAll(".segmented[data-filter]").forEach(function (group) {
+                    group.querySelectorAll("button").forEach(function (b, i) {
+                        b.classList.toggle("on", i === 0);
+                    });
+                    s[group.dataset.filter] = "";
+                });
+                [from, to, gbMin, gbMax].forEach(function (el) { if (el) el.value = ""; });
+                s.from = s.to = s.gbMin = s.gbMax = null;
+                changed();
+            });
+        }
+
+        refreshReset();
+    })();
+
+    // Sorting by a click on the header. The rows are already on the page, so
+    // they are simply reordered inside tbody; the choice is kept in the browser.
+    (function () {
+        var table = document.querySelector("table");
+        if (!table) return;
+        var tbody = table.querySelector("tbody");
+        var headers = Array.prototype.slice.call(table.querySelectorAll("th.sortable"));
+        var placeholder = document.getElementById("no-match");
+        var KEY = "clients-sort";
+
+        function rows() {
+            return Array.prototype.slice.call(tbody.querySelectorAll("tr[data-search]"));
+        }
+
+        function apply(field, dir) {
+            var header = headers.filter(function (h) { return h.dataset.sort === field; })[0];
+            if (!header) return;
+            var numeric = header.dataset.numeric === "1";
+
+            var sorted = rows().sort(function (a, b) {
+                var x = a.dataset[field], y = b.dataset[field];
+                var res = numeric ? (Number(x) - Number(y))
+                                  : x.localeCompare(y, "ru");
+                return dir === "desc" ? -res : res;
+            });
+            sorted.forEach(function (r) { tbody.appendChild(r); });
+            // the "nothing found" placeholder has to stay last
+            if (placeholder) tbody.appendChild(placeholder);
+
+            headers.forEach(function (h) {
+                h.classList.toggle("asc", h === header && dir === "asc");
+                h.classList.toggle("desc", h === header && dir === "desc");
+            });
+            try { localStorage.setItem(KEY, field + ":" + dir); } catch (e) {}
+        }
+
+        headers.forEach(function (h) {
+            h.addEventListener("click", function () {
+                var field = h.dataset.sort;
+                // the first click on the date puts newest first, which is what
+                // is usually wanted
+                var dir = h.classList.contains("asc") ? "desc"
+                        : h.classList.contains("desc") ? "asc"
+                        : (h.dataset.numeric === "1" ? "desc" : "asc");
+                apply(field, dir);
+            });
+        });
+
+        try {
+            var saved = (localStorage.getItem(KEY) || "").split(":");
+            if (saved.length === 2) apply(saved[0], saved[1]);
+        } catch (e) {}
+    })();
+
+    // The row kebab menu: closes on a click elsewhere and on Esc. The menu is
+    // position:fixed, or the panel's overflow:hidden would clip it; the
+    // coordinates are set when it opens.
+    (function () {
+        var menus = Array.prototype.slice.call(document.querySelectorAll("details.rowmenu"));
+
+        function closeAll(except) {
+            menus.forEach(function (d) { if (d !== except) d.open = false; });
+        }
+
+        menus.forEach(function (d) {
+            var body = d.querySelector(".rowmenu-body");
+            d.addEventListener("toggle", function () {
+                if (!d.open) {
+                    body.classList.remove("placed");
+                    return;
+                }
+                closeAll(d);
+                var rect = d.querySelector("summary").getBoundingClientRect();
+                // Anchor to the button's right edge through right rather than
+                // left minus width: at the moment of opening the width is still
+                // zero, and the menu used to slide off the screen.
+                body.style.left = "auto";
+                body.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
+                var height = body.offsetHeight;
+                var below = rect.bottom + 6;
+                body.style.top = (below + height > window.innerHeight ? Math.max(8, rect.top - height - 6) : below) + "px";
+                // The coordinates are in — only now is it shown.
+                body.classList.add("placed");
+            });
+        });
+
+        document.addEventListener("click", function (e) {
+            menus.forEach(function (d) { if (!d.contains(e.target)) d.open = false; });
+        });
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") closeAll(null);
+        });
+        window.addEventListener("scroll", function () { closeAll(null); }, true);
+    })();
+</script>
+{% include "_client_new_dialog.html" %}
+{% endblock %}

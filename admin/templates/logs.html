@@ -1,0 +1,101 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Logs") }}{% endblock %}
+{% block nav_logs %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 8px 0;">{{ t("Logs") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0;">
+    {{ t("Records since the process started — the last {capacity} are kept in memory, and there are {total} so far.",
+          capacity=stats.capacity, total=stats.total) }}
+    {% if stats.file %}{{ t("The full history is written to") }} <span class="mono">{{ stats.file }}</span>.{% endif %}
+</p>
+
+<div class="cards">
+    {% for name in levels %}
+    {% if stats.by_level.get(name) %}
+    <div class="card">
+        <div class="label">{{ name }}</div>
+        <div class="value" style="{% if name in ('ERROR', 'CRITICAL') %}color:#f87171;{% elif name == 'WARNING' %}color:#fbbf24;{% endif %}">
+            {{ stats.by_level[name] }}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div class="panel">
+    <div class="panel-head" style="gap: 10px; flex-wrap: wrap;">
+        <h2>{{ t("Records") }} <span class="muted" style="font-weight:400;">({{ entries|length }})</span></h2>
+        <form method="get" action="/logs" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select name="level">
+                <option value="">{{ t("all levels") }}</option>
+                {% for name in levels %}
+                <option value="{{ name }}" {% if level == name %}selected{% endif %}>{{ t("from") }} {{ name }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="q" value="{{ q }}" placeholder="{{ t('search the text…') }}">
+            <select name="limit">
+                {% for n in limit_choices %}
+                <option value="{{ n }}" {% if limit == n %}selected{% endif %}>{{ n }} {{ t("lines") }}</option>
+                {% endfor %}
+            </select>
+            <label class="checkbox-row" style="margin:0;">
+                <input type="checkbox" name="auto" value="1" {% if auto %}checked{% endif %}>
+                <span class="muted">{{ t("auto-refresh") }}</span>
+            </label>
+            <button type="submit" class="btn small primary">{{ t("Show") }}</button>
+            {% if level or q %}<a href="/logs" class="btn small">{{ t("Reset") }}</a>{% endif %}
+        </form>
+    </div>
+
+    {% if entries %}
+    <div style="overflow-x: auto;">
+        <div class="tscroll">
+            <table class="logs">
+                <tbody>
+                {% for e in entries %}
+                    <tr class="lvl-{{ e.level }}">
+                        <td class="mono muted" style="white-space:nowrap; vertical-align:top;">{{ e.time }}</td>
+                        <td style="vertical-align:top;"><span class="badge lvl {{ e.level }}">{{ e.level }}</span></td>
+                        <td class="mono muted" style="white-space:nowrap; vertical-align:top;">{{ e.logger }}</td>
+                        <td style="width:100%;">
+                            <div class="mono" style="white-space: pre-wrap; word-break: break-word;">{{ e.message }}</div>
+                            {% if e.exc %}
+                            <details style="margin-top:6px;">
+                                <summary class="muted" style="cursor:pointer;">{{ t("traceback") }}</summary>
+                                <pre class="mono" style="white-space: pre-wrap; margin:8px 0 0 0; font-size:12px;">{{ e.exc }}</pre>
+                            </details>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty">
+        {% if level or q %}{{ t("Nothing matched this filter") }}{% else %}{{ t("No records yet") }}{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Buffer") }}</h2>
+        <span class="muted">
+            {{ t("Clearing removes only what is shown here.") }}{% if stats.file %} {{ t("The file") }}
+            <span class="mono">{{ stats.file }}</span> {{ t("is left alone.") }}{% endif %}
+        </span>
+        <form method="post" action="/logs/clear" style="margin-left:auto;"
+              data-confirm="{{ t('Clear the in-memory log buffer?') }}">
+            <button type="submit" class="btn small">{{ t("Clear the buffer") }}</button>
+        </form>
+    </div>
+</div>
+
+{% if auto %}
+<script>
+    setTimeout(function () { location.reload(); }, 5000);
+</script>
+{% endif %}
+{% endblock %}

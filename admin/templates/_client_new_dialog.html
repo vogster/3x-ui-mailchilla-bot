@@ -1,0 +1,115 @@
+{% import "_fields.html" as fields %}
+{# The create-client dialog. Included on the dashboard and in the list.
+   Expects in the context: inbounds (each with a selected field) and new_defaults. #}
+<dialog id="new-client-dialog" class="wide">
+    <form method="post" action="/clients/new" id="new-client-form">
+        <div class="dlg-head">
+            <div class="t">{{ t("New client") }}</div>
+            <div class="s">{{ t("The values come from the settings; they can be changed for this client") }}</div>
+        </div>
+        <div class="dlg-body">
+            <div class="dlg-cols">
+                <div>
+                    <label for="nc-email">Email</label>
+                    <input type="text" id="nc-email" name="email" placeholder="user@example.com" required>
+                </div>
+                <div>
+                    <label for="nc-comment">{{ t("Name / comment") }}</label>
+                    <input type="text" id="nc-comment" name="comment" placeholder="{{ t('Ivan Petrov') }}">
+                </div>
+                <div>
+                    <label for="nc-limit">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited")) }}</label>
+                    <input type="number" id="nc-limit" name="limit_gb" min="0" step="1"
+                           value="{{ new_defaults.limit_gb }}">
+                </div>
+                <div>
+                    <label for="nc-days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires")) }}</label>
+                    <input type="number" id="nc-days" name="expire_days" min="0" step="1"
+                           value="{{ new_defaults.expire_days }}">
+                </div>
+            </div>
+
+            <div>
+                <label for="nc-flow">flow</label>
+                <input type="text" id="nc-flow" name="xui_flow" list="nc-flow-options"
+                       value="{{ new_defaults.flow }}" placeholder="{{ t('empty = no flow') }}">
+                <datalist id="nc-flow-options"><option value="xtls-rprx-vision"></option></datalist>
+            </div>
+
+            <div>
+                <label>{{ t("Inbounds") }}</label>
+                {% if inbounds %}
+                <div class="dlg-inbounds">
+                    {% for ib in inbounds %}
+                    <label class="checkbox-row" style="margin:0;">
+                        <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                               class="nc-inbound" {% if ib.selected %}checked{% endif %}>
+                        <span>{{ ib.remark }} <span class="muted mono">id {{ ib.id }}</span></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="hint">{{ t("Could not fetch the inbound list from the panel.") }}</div>
+                {% endif %}
+            </div>
+
+            <div class="checkbox-row">
+                <input type="checkbox" id="nc-send" name="send_email" checked>
+                <label for="nc-send">{{ t("Send the welcome letter with the subscription link") }}</label>
+            </div>
+        </div>
+        <div class="dlg-foot">
+            <span class="hint" id="nc-error" style="margin:0 auto 0 0; color:#ff6b66;"></span>
+            <button type="button" class="btn"
+                    onclick="document.getElementById('new-client-dialog').close()">{{ t("Cancel") }}</button>
+            <button type="submit" class="btn primary">{{ t("Create") }}</button>
+        </div>
+    </form>
+</dialog>
+<script>
+    // The form goes through fetch and the server answers JSON, so an error — a
+    // duplicate address, a refusal from the panel — can be shown right here
+    // without closing the dialog or losing what was typed. With no JS the form
+    // submits the ordinary way and gets the /clients/new page carrying the same
+    // error and the filled fields.
+    (function () {
+        var form = document.getElementById("new-client-form");
+        var error = document.getElementById("nc-error");
+        var submit = form.querySelector("button[type=submit]");
+
+        form.addEventListener("submit", function (e) {
+            error.textContent = "";
+
+            if (document.querySelectorAll(".nc-inbound:checked").length === 0) {
+                e.preventDefault();
+                error.textContent = {{ t("Choose at least one inbound")|tojson }};
+                return;
+            }
+
+            e.preventDefault();
+            submit.disabled = true;
+            submit.textContent = {{ t("Creating…")|tojson }};
+
+            fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                headers: { "X-Requested-With": "fetch" }
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data && data.ok) {
+                        window.location.href = data.redirect;
+                        return;
+                    }
+                    error.textContent = (data && data.error) || {{ t("Could not create the client")|tojson }};
+                })
+                .catch(function (err) {
+                    error.textContent = {{ t("The request did not go through: ")|tojson }} + err;
+                })
+                .then(function () {
+                    submit.disabled = false;
+                    submit.textContent = {{ t("Create")|tojson }};
+                });
+        });
+    })();
+</script>

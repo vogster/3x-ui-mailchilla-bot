@@ -1,0 +1,20 @@
+{{ title | plain }}
+
+{{ t("welcome.greeting") | plain }}
+
+{{ t("welcome.intro_again" if renewed else "welcome.intro_new") | plain }}
+
+{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
+{{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
+
+{{ t("welcome.manual_intro") | plain }}
+{{ sub_url }}
+{% if apps %}
+{{ t("welcome.apps_intro") | plain }}
+{% for app in apps %}  {{ app.button | plain }}: {{ app.url }}
+{% endfor %}{% endif %}
+{% if t("welcome.commands_text") %}{{ t("welcome.commands_title") | plain }}
+{{ t("welcome.commands_text") | plain }}
+{% endif %}
+--
+{{ service_name }}

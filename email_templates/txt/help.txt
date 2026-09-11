@@ -1,0 +1,20 @@
+{{ title | plain }}
+
+{{ t("help.intro") | plain }}
+
+  /status — {{ t("help.cmd_status") | plain }}
+  /help — {{ t("help.cmd_help") | plain }}
+{% if sub_url %}
+{{ t("help.sub_label") | plain }}
+{{ sub_url }}
+{% else %}
+{{ t("help.not_registered") | plain }}
+{% endif %}
+{% if steps %}
+{{ t("help.howto_title") | plain }}:
+
+{% for step in steps %}{{ loop.index }}. {{ step.title | plain }}
+{% for note in step.notes %}   {{ note | plain }}
+{% endfor %}{% endfor %}{% endif %}
+--
+{{ service_name }}

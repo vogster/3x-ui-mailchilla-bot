@@ -1,0 +1,278 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ client.remark or client.bare_email }}{% endblock %}
+{% block nav_clients %}active{% endblock %}
+{% block content %}
+<a href="/clients" class="back">← {{ t("Back to the list") }}</a>
+
+{% set toast = t("The client was created, the welcome letter is on its way") if created
+   else t("The invitation with the subscription link is on its way") if sent == "welcome"
+   else t("The letter is on its way") if sent == "message" else "" %}
+{% if toast %}
+<script>
+    // Success speaks through the toast, as everywhere else in the panel. The
+    // handler waits for DOMContentLoaded because window.showToast is declared in
+    // the base template, further down the document.
+    window.addEventListener("DOMContentLoaded", function () {
+        window.showToast({{ (toast ~ " — " ~ t("the result is in the logs"))|tojson }});
+        // strip ?sent= from the address, or a refresh would repeat the toast
+        if (window.history && history.replaceState) {
+            history.replaceState(null, "", window.location.pathname);
+        }
+    });
+</script>
+{% endif %}
+{% if error %}
+<div class="flash error" style="margin-top: 14px;">{{ error }}</div>
+{% endif %}
+
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
+    <div>
+        <h1 style="margin: 0 0 6px 0;" class="mono">{{ client.remark or client.bare_email }}</h1>
+        <p class="muted" style="margin: 0;">
+            {% if client.comment %}{{ client.comment }}{% else %}{{ t("no name") }}{% endif %}
+        </p>
+    </div>
+    <div style="display:flex; gap:9px; align-items:center; flex-wrap:wrap;">
+        <a href="/clients/{{ client.uuid }}/edit" class="btn primary">{{ t("Edit") }}</a>
+        <form method="post" action="/clients/{{ client.uuid }}/toggle" style="display:inline;">
+            <input type="hidden" name="back" value="detail">
+            {% if client.enable %}
+            <button type="submit" class="btn danger">{{ t("Disable") }}</button>
+            {% else %}
+            <button type="submit" class="btn ok">{{ t("Enable") }}</button>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<div class="cards">
+    <div class="card">
+        <div class="label">{{ t("Status") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if client.enable %}
+            <span class="badge on">{{ t("Active [badge]") }}</span>
+            {% else %}
+            <span class="badge off">{{ t("Disabled [badge]") }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Used") }}</div>
+        <div class="value">{{ client.used_gb }} {{ t("GB") }}
+            <span class="muted" style="font-size:14px;">{% if client.unlimited %}· {{ t("no limit") }}{% else %}/ {{ client.limit_gb }} {{ t("GB") }}{% endif %}</span></div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Valid until") }}</div>
+        <div class="value" style="font-size: 18px;">{{ client.expiry }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Days left") }}</div>
+        <div class="value" style="{% if client.expired %}color:#f87171;{% endif %}">
+            {% if client.days_left is none %}∞{% else %}{{ client.days_left }}{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head"><h2>{{ t("Traffic") }}</h2></div>
+    <div style="padding: 20px;">
+        {% if not client.unlimited %}
+        <div class="bar" style="width: 100%; height: 12px;">
+            <div style="width: {{ client.percent }}%;"></div>
+        </div>
+        <p class="muted" style="margin: 10px 0 16px 0;">{{ client.percent }}% {{ t("of the limit") }}</p>
+        {% endif %}
+        <div class="tscroll">
+            <table>
+                <tbody>
+                    <tr><td class="muted">{{ t("Uploaded") }}</td><td class="mono">{{ client.up_gb }} {{ t("GB") }}</td></tr>
+                    <tr><td class="muted">{{ t("Downloaded") }}</td><td class="mono">{{ client.down_gb }} {{ t("GB") }}</td></tr>
+                    <tr><td class="muted">{{ t("In total") }}</td><td class="mono">{{ client.used_gb }} {{ t("GB") }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Access") }}</h2></div>
+    <div style="padding: 20px;">
+        {% if client.sub_url %}
+        <p class="muted" style="margin: 0 0 6px 0;">{{ t("Subscription link") }}</p>
+        <div class="field-copy">
+            <div class="code-box mono" id="sub-url" title="{{ t('Click to copy') }}"
+                 style="word-break: break-all; cursor: pointer;">{{ client.sub_url }}</div>
+            <button type="button" class="icon-btn" id="copy-sub" title="{{ t('Copy the link') }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="5.6" y="5.6" width="8" height="8" rx="1.7"/>
+                    <path d="M10.4 5.6V4.1a1.6 1.6 0 0 0-1.6-1.6H4a1.6 1.6 0 0 0-1.6 1.6v4.8A1.6 1.6 0 0 0 4 10.5h1.6"/>
+                </svg>
+            </button>
+        </div>
+        {% else %}
+        <p class="muted" style="margin: 0;">{{ t("No subscription issued: the client has no subId.") }}</p>
+        {% endif %}
+
+        {% if client.bare_email %}
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px;">
+            <button type="button" class="btn"
+                    onclick="document.getElementById('msg-dialog').showModal()">
+                {{ t("Write a letter") }}
+            </button>
+            <form method="post" action="/clients/{{ client.uuid }}/resend" style="display:inline;"
+                  data-confirm="{{ t('Send the subscription link to') }} {{ client.bare_email }} {{ t('once more?') }}">
+                <button type="submit" class="btn">{{ t("Resend the invitation") }}</button>
+            </form>
+        </div>
+        <p class="hint" style="margin-top: 8px;">
+            {{ t("Both letters go to") }} <span class="mono">{{ client.bare_email }}</span>.
+        </p>
+        {% endif %}
+
+        <p class="muted" style="margin: 20px 0 8px 0;">
+            {{ t("The client's inbounds") }} ({{ client.inbounds|length }})
+            {{ fields.help(t("Each one the panel gave a link for copies that link when clicked — the same string the 3x-ui panel's own Copy button hands out, for connecting to that one server by hand. What to give out is the subscription link above: it keeps working as inbounds come and go, and it is what the letters carry.")) }}
+        </p>
+        {% if client.inbounds %}
+        <div class="chips">
+            {% for ib in client.inbounds %}
+            {% if ib.url %}
+            <button type="button" class="chip copyable{% if not ib.enable %} off{% endif %}"
+                    data-url="{{ ib.url }}" title="{{ t('Click to copy the link') }}">
+            {% else %}
+            <div class="chip{% if not ib.enable %} off{% endif %}">
+            {% endif %}
+                <div class="n">
+                    <span>{{ ib.name }}</span>
+                    {% if not ib.enable %}<span class="badge off">{{ t("off") }}</span>{% endif %}
+                    {% if ib.url %}
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5.6" y="5.6" width="8" height="8" rx="1.7"/>
+                        <path d="M10.4 5.6V4.1a1.6 1.6 0 0 0-1.6-1.6H4a1.6 1.6 0 0 0-1.6 1.6v4.8A1.6 1.6 0 0 0 4 10.5h1.6"/>
+                    </svg>
+                    {% endif %}
+                </div>
+                <div class="m">
+                    id {{ ib.id }}{% if ib.known %} · {{ ib.protocol }} · {{ t("port") }} {{ ib.port }}{% else %} · {{ t("not in the panel") }}{% endif %}
+                </div>
+            {% if ib.url %}</button>{% else %}</div>{% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted" style="margin: 0;">{{ t("Belongs to no inbound.") }}</p>
+        {% endif %}
+
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Technical details") }}</h2></div>
+    <div style="padding: 20px;">
+        <div class="tscroll">
+            <table>
+                <tbody>
+                    <tr><td class="muted">UUID</td><td class="mono">{{ client.uuid }}</td></tr>
+                    <tr><td class="muted">subId</td><td class="mono">{{ client.sub_id or "—" }}</td></tr>
+                    <tr>
+                        <td class="muted">flow</td>
+                        <td class="mono">{% if client.flow and client.flow != "—" %}{{ client.flow }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</td>
+                    </tr>
+                    <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
+                    <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
+                    <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% if client.bare_email %}
+<dialog id="msg-dialog">
+    <form method="post" action="/clients/{{ client.uuid }}/message">
+        <div class="dlg-head">
+            <div class="t">{{ t("A letter to the client") }}</div>
+            <div class="s mono">{{ client.bare_email }}</div>
+        </div>
+        <div class="dlg-body">
+            <div>
+                <label for="msg-subject">{{ t("Subject") }}</label>
+                <input type="text" id="msg-subject" name="subject"
+                       value="{{ t('A message from') }} {{ service_name }}">
+            </div>
+            <div>
+                <label>{{ t("Message kind") }}</label>
+                {% with picker_name = "kind" %}
+                    {% include "_kind_picker.html" %}
+                {% endwith %}
+            </div>
+            <div>
+                <label for="msg-text">{{ t("Letter text") }} {{ fields.help(t("It goes out in the same styling as a broadcast. Line breaks are kept.")) }}</label>
+                <textarea id="msg-text" name="message" required
+                          placeholder="{{ t('Hello! …') }}"></textarea>
+            </div>
+        </div>
+        <div class="dlg-foot">
+            <button type="button" class="btn"
+                    onclick="document.getElementById('msg-dialog').close()">{{ t("Cancel") }}</button>
+            <button type="submit" class="btn primary">{{ t("Send") }}</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+{% if client.sub_url or client.inbounds %}
+<script>
+    // Copying a link. The Clipboard API works only in a secure context:
+    // localhost counts as one, but if the panel is opened over http from
+    // another address, a fallback through a hidden field is needed.
+    (function () {
+        function fallback(text) {
+            var area = document.createElement("textarea");
+            area.value = text;
+            area.setAttribute("readonly", "");
+            area.style.position = "fixed";
+            area.style.opacity = "0";
+            document.body.appendChild(area);
+            area.select();
+            var ok = false;
+            try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+            document.body.removeChild(area);
+            return ok;
+        }
+
+        function done(ok) {
+            if (ok) window.showToast({{ t("The link was copied")|tojson }});
+            else window.showToast({{ t("Could not copy")|tojson }}, "error");
+        }
+
+        function copy(text) {
+            text = (text || "").trim();
+            if (!text) return;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(
+                    function () { done(true); },
+                    function () { done(fallback(text)); }
+                );
+                return;
+            }
+            done(fallback(text));
+        }
+
+        var box = document.getElementById("sub-url");
+        var button = document.getElementById("copy-sub");
+        function copySub() { copy(box.textContent); }
+        if (box) box.addEventListener("click", copySub);
+        if (box && button) button.addEventListener("click", copySub);
+
+        // An inbound chip carries its own connection link: the URL runs to
+        // several hundred characters, and printing it on the card would help
+        // nobody.
+        document.querySelectorAll(".chip.copyable").forEach(function (chip) {
+            chip.addEventListener("click", function () { copy(chip.dataset.url); });
+        });
+    })();
+</script>
+{% endif %}
+{% endblock %}

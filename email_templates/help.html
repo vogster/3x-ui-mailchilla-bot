@@ -1,0 +1,44 @@
+{% extends "_layout.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<p style="margin: 0 0 22px 0;">{{ t("help.intro") | emph }}</p>
+
+{# The command and its explanation one above the other: on a narrow screen a
+   long description in the right column wrapped and drifted away from the
+   command name. #}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 26px;">
+    {% for cmd, desc in [("/status", t("help.cmd_status")), ("/help", t("help.cmd_help"))] %}
+    {% if desc %}
+    <tr>
+        <td style="padding: 12px 0; border-bottom: 1px solid #1d1d20;">
+            <span style="font-family: Consolas, Menlo, monospace; font-size: 16px;
+                         font-weight: 600; color: #ededef;">{{ cmd }}</span>
+            <br>
+            <span style="font-size: 15px; color: #a0a0a8;">{{ desc | emph }}</span>
+        </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+</table>
+
+{% if sub_url %}
+<p style="margin: 0 0 8px 0;">{{ t("help.sub_label") | emph }}</p>
+{{ ui.code(sub_url) }}
+{% else %}
+<p style="margin: 0 0 22px 0;">{{ t("help.not_registered") | emph }}</p>
+{% endif %}
+
+{% if steps %}
+<p style="margin: 26px 0 10px 0; color: #ededef; font-weight: 600;">{{ t("help.howto_title") | emph }}</p>
+<ol class="body-text" style="margin: 0; padding-left: 22px; color: #c8c8cf; font-size: 16px; line-height: 1.65;">
+    {% for step in steps %}
+    <li style="margin-bottom: 9px;">
+        {{ step.title | emph }}
+        {% for note in step.notes %}
+        <br><span style="color: #a0a0a8;">{{ note | emph }}</span>
+        {% endfor %}
+    </li>
+    {% endfor %}
+</ol>
+{% endif %}
+{% endblock %}

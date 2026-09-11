@@ -1,0 +1,26 @@
+{# Picking the message kind, with a coloured dot on every row.
+   A native <select> cannot be coloured this way, hence a list of our own, with
+   the value carried by a hidden field so the form submits as usual.
+   Expects: kinds, picker_name, and optionally picker_value. #}
+{% set current = picker_value | default(kinds[1].id if kinds|length > 1 else kinds[0].id) %}
+<div class="picker" data-picker>
+    <input type="hidden" name="{{ picker_name }}" value="{{ current }}">
+    <button type="button" class="picker-btn">
+        {% for k in kinds %}{% if k.id == current %}
+        <span class="dot{% if not k.color %} none{% endif %}"
+              {% if k.color %}style="background: {{ k.color }};"{% endif %}></span>
+        <span class="picker-label">{{ k.label }}</span>
+        {% endif %}{% endfor %}
+        <span class="picker-caret">&#9662;</span>
+    </button>
+    <div class="picker-menu" hidden>
+        {% for k in kinds %}
+        <button type="button" data-value="{{ k.id }}" data-color="{{ k.color }}"
+                data-label="{{ k.label }}">
+            <span class="dot{% if not k.color %} none{% endif %}"
+                  {% if k.color %}style="background: {{ k.color }};"{% endif %}></span>
+            <span>{{ k.label }}</span>
+        </button>
+        {% endfor %}
+    </div>
+</div>

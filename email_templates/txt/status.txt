@@ -1,0 +1,13 @@
+{{ title | plain }}
+
+{{ t("status.intro", email=email) | plain }}
+
+{{ t("status.label_status") | plain }}: {{ status_text | plain }}
+{{ t("status.label_expiry") | plain }}: {{ expiry_text | plain }}
+{{ t("status.label_used") | plain }}: {{ used_text | plain }}
+{% if meter_text %}{{ meter_text | plain }}
+{% endif %}
+{% if t("status.outro") %}{{ t("status.outro") | plain }}
+{% endif %}
+--
+{{ service_name }}

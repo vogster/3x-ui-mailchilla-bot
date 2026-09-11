@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="{{ lang_code() }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ t("Sign in") }} · {{ service_name }}</title>
+    <style>
+        :root {
+            --bg: #0c0c0d;
+            --surface: #141416;
+            --surface-2: #1a1a1d;
+            --line: #26262a;
+            --fg: #ededef;
+            --fg-2: #a0a0a8;
+            --fg-3: #6b6b73;
+            --ok: #45b866;
+            --err: #ef5350;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+                         "Helvetica Neue", Arial, sans-serif;
+            font-size: 13.5px;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+        }
+        /* The background: a mesh of nodes with packets running along the links —
+           what the service itself does. Drawn on a canvas under the content. */
+        #bg { position: fixed; inset: 0; z-index: 0; display: block; }
+        /* Darkening towards the centre, so the form reads over the animation */
+        .veil {
+            position: fixed; inset: 0; z-index: 1; pointer-events: none;
+            background: radial-gradient(circle 620px at center,
+                        rgba(12,12,13,0.94) 0%,
+                        rgba(12,12,13,0.88) 22%,
+                        rgba(12,12,13,0.66) 42%,
+                        rgba(12,12,13,0.34) 62%,
+                        rgba(12,12,13,0.12) 80%,
+                        rgba(12,12,13,0) 100%);
+        }
+        /* The project wordmark, pinned to the top so the card can stay centred.
+           The letters rise in on load, and from then on a green glow travels
+           across the word every few seconds — alive, but with long enough
+           pauses that it does not nag. */
+        .wordmark {
+            position: fixed; z-index: 2;
+            top: clamp(34px, 9vh, 92px); left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 18px;
+        }
+        .wordmark .dot {
+            width: 13px; height: 13px; border-radius: 50%; flex: 0 0 13px;
+            background: var(--ok); box-shadow: 0 0 0 5px rgba(69,184,102,0.13);
+            animation: wm-dot 4.6s ease-in-out 1.2s infinite;
+        }
+        .wordmark .name {
+            font-size: clamp(38px, 8vw, 62px); font-weight: 700;
+            letter-spacing: -0.04em; line-height: 1; white-space: pre;
+        }
+        /* Two animations at once: the entrance plays through, then the wave
+           takes over the same properties because it is listed second. */
+        .wordmark .name span {
+            display: inline-block; opacity: 0;
+            animation: wm-in .62s cubic-bezier(.2,.85,.3,1) forwards,
+                       wm-wave 4.6s ease-in-out infinite;
+        }
+        @keyframes wm-in {
+            0%   { opacity: 0; transform: translateY(16px) scale(.94);
+                   color: var(--ok); text-shadow: 0 0 24px rgba(69,184,102,.6); }
+            55%  { opacity: 1; transform: none;
+                   color: var(--ok); text-shadow: 0 0 16px rgba(69,184,102,.35); }
+            100% { opacity: 1; transform: none; color: var(--fg); text-shadow: none; }
+        }
+        /* The lit window is a tenth of the cycle; the rest of it the letter
+           just stands there, so the word rests between passes. */
+        @keyframes wm-wave {
+            0%, 12%, 100% { color: var(--fg); transform: none; text-shadow: none; }
+            5%            { color: var(--ok); transform: translateY(-5px);
+                            text-shadow: 0 0 22px rgba(69,184,102,.55); }
+        }
+        @keyframes wm-dot {
+            0%, 100% { box-shadow: 0 0 0 5px rgba(69,184,102,0.13); }
+            50%      { box-shadow: 0 0 0 11px rgba(69,184,102,0.04); }
+        }
+        /* On a short screen the card is centred and the word must not reach it. */
+        @media (max-height: 620px) {
+            .wordmark { top: 24px; gap: 12px; }
+            .wordmark .name { font-size: clamp(26px, 6vw, 34px); }
+            .wordmark .dot { width: 9px; height: 9px; flex: 0 0 9px; }
+        }
+        /* Nothing here is worth motion sickness: with reduced motion asked for,
+           the word is simply there. */
+        @media (prefers-reduced-motion: reduce) {
+            .wordmark .name span { opacity: 1; animation: none; color: var(--fg); }
+            .wordmark .dot { animation: none; }
+        }
+
+        .box { width: 100%; max-width: 320px; position: relative; z-index: 2; }
+        .brand {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+            margin-bottom: 26px;
+        }
+        .brand::before {
+            content: ""; width: 7px; height: 7px; border-radius: 50%;
+            background: var(--ok); box-shadow: 0 0 0 3px rgba(69,184,102,0.14);
+        }
+        h1 { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 4px; }
+        .sub { color: var(--fg-3); font-size: 13px; margin: 0 0 24px; }
+        label {
+            display: block; color: var(--fg-2); font-size: 12px;
+            margin-bottom: 6px; font-weight: 500;
+        }
+        input {
+            width: 100%;
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            color: var(--fg);
+            padding: 9px 11px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color .12s, box-shadow .12s;
+        }
+        input:focus {
+            border-color: var(--fg-3);
+            box-shadow: 0 0 0 3px rgba(237,237,239,0.06);
+        }
+        .field { margin-bottom: 15px; }
+        button {
+            width: 100%;
+            height: 34px;
+            background: var(--fg);
+            color: var(--bg);
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: opacity .12s;
+        }
+        button:hover { opacity: 0.88; }
+        .error {
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--err);
+            background: var(--surface);
+            color: var(--fg-2);
+            padding: 10px 13px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 18px;
+        }
+        .foot { color: var(--fg-3); font-size: 12px; margin-top: 22px; text-align: center; }
+        /* The language is picked before signing in, because the sign-in screen
+           itself has to be readable to whoever is looking at it. */
+        .langs { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+        .langs button {
+            background: transparent; border: 1px solid transparent; border-radius: 7px;
+            color: var(--fg-3); font-family: inherit; font-size: 12px;
+            padding: 4px 10px; cursor: pointer; width: auto;
+            transition: color .12s, border-color .12s, background .12s;
+        }
+        .langs button:hover { color: var(--fg-2); background: var(--surface-2); }
+        .langs button.on { color: var(--fg); border-color: var(--line); background: var(--surface-2); }
+    </style>
+</head>
+<body>
+    <canvas id="bg"></canvas>
+    <div class="veil"></div>
+    <div class="wordmark">
+        <span class="dot"></span>
+        <span class="name">{% for ch in app_name %}<span
+            style="animation-delay: {{ loop.index0 * 55 }}ms, {{ 1400 + loop.index0 * 90 }}ms"
+            >{{ ch }}</span>{% endfor %}</span>
+    </div>
+    <div class="box">
+        {# On an install that kept the default, the service name and the wordmark
+           above are the same word — no reason to print it twice. #}
+        {% if service_name != app_name %}<div class="brand">{{ service_name }}</div>{% endif %}
+        <h1>{{ t("Sign in to the panel") }}</h1>
+        <p class="sub">{{ t("Managing clients and broadcasts") }}</p>
+
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+        <form method="post" action="/login">
+            <input type="hidden" name="next" value="{{ request.query_params.get('next', '/') }}">
+            <div class="field">
+                <label for="username">{{ t("Login") }}</label>
+                <input type="text" id="username" name="username" autocomplete="username" autofocus>
+            </div>
+            <div class="field">
+                <label for="password">{{ t("Password") }}</label>
+                <input type="password" id="password" name="password" autocomplete="current-password">
+            </div>
+            <button type="submit">{{ t("Sign in") }}</button>
+        </form>
+
+        <p class="foot">{{ t("The Chinchilla guards this burrow: in the grim darkness of the far future, it opens only from within") }}</p>
+
+        <form method="post" action="/lang" class="langs">
+            <input type="hidden" name="next" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+            {% for l in lang_options() %}
+            <button type="submit" name="lang" value="{{ l.code }}"
+                    {% if l.current %}class="on" aria-current="true"{% endif %}>{{ l.name }}</button>
+            {% endfor %}
+        </form>
+    </div>
+
+    <script>
+    (function () {
+        var canvas = document.getElementById("bg");
+        var ctx = canvas.getContext("2d");
+        var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        var nodes = [], packets = [], w = 0, h = 0, dpr = 1;
+        var pointer = { x: 0, y: 0, active: false };
+        var PULL = 190;          // how far the cursor's pull reaches
+        var LINK = 165;          // how close two nodes must be to count as neighbours (rescaled to the screen)
+        var running = true;
+
+        function size() {
+            dpr = Math.min(window.devicePixelRatio || 1, 2);
+            w = window.innerWidth;
+            h = window.innerHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + "px";
+            canvas.style.height = h + "px";
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            // on a large monitor the links must still reach, or the mesh falls apart
+            LINK = Math.max(150, Math.min(280, Math.min(w, h) * 0.2));
+            build();
+        }
+
+        function build() {
+            // density by area, so a large monitor is not empty and a laptop is
+            // not crowded
+            var count = Math.round(Math.min(130, Math.max(34, (w * h) / 14000)));
+            nodes = [];
+            for (var i = 0; i < count; i++) {
+                nodes.push({
+                    x: Math.random() * w,
+                    y: Math.random() * h,
+                    vx: (Math.random() - 0.5) * 0.34,
+                    vy: (Math.random() - 0.5) * 0.34,
+                    r: 1 + Math.random() * 1.4,
+                    // a phase and frequency of its own: without them the whole
+                    // mesh drifts in unison and looks dead
+                    px: Math.random() * Math.PI * 2,
+                    py: Math.random() * Math.PI * 2,
+                    fx: 0.25 + Math.random() * 0.5,
+                    fy: 0.25 + Math.random() * 0.5
+                });
+            }
+            packets = [];
+        }
+
+        function spawn() {
+            if (nodes.length < 2) return;
+            var a = (Math.random() * nodes.length) | 0;
+            var near = [];
+            for (var i = 0; i < nodes.length; i++) {
+                if (i === a) continue;
+                var dx = nodes[i].x - nodes[a].x, dy = nodes[i].y - nodes[a].y;
+                if (dx * dx + dy * dy < LINK * LINK) near.push(i);
+            }
+            if (!near.length) return;
+            packets.push({
+                a: a,
+                b: near[(Math.random() * near.length) | 0],
+                t: 0,
+                speed: 0.004 + Math.random() * 0.006
+            });
+        }
+
+        function frame() {
+            ctx.clearRect(0, 0, w, h);
+
+            var t = performance.now() / 1000;
+
+            if (!still) {
+                for (var i = 0; i < nodes.length; i++) {
+                    var n = nodes[i];
+                    n.x += n.vx + Math.sin(t * n.fx + n.px) * 0.22;
+                    n.y += n.vy + Math.cos(t * n.fy + n.py) * 0.22;
+
+                    // the cursor gently pushes nearby nodes aside
+                    if (pointer.active) {
+                        var pdx = n.x - pointer.x, pdy = n.y - pointer.y;
+                        var pd2 = pdx * pdx + pdy * pdy;
+                        if (pd2 < PULL * PULL && pd2 > 4) {
+                            var pd = Math.sqrt(pd2);
+                            var force = (1 - pd / PULL) * 1.1;
+                            n.x += (pdx / pd) * force;
+                            n.y += (pdy / pd) * force;
+                        }
+                    }
+
+                    if (n.x < -20) n.x = w + 20; else if (n.x > w + 20) n.x = -20;
+                    if (n.y < -20) n.y = h + 20; else if (n.y > h + 20) n.y = -20;
+                }
+            }
+
+            // links: the closer the nodes, the more visible the line
+            for (var i = 0; i < nodes.length; i++) {
+                for (var j = i + 1; j < nodes.length; j++) {
+                    var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+                    var d2 = dx * dx + dy * dy;
+                    if (d2 > LINK * LINK) continue;
+                    var alpha = (1 - Math.sqrt(d2) / LINK) * 0.3;
+                    ctx.strokeStyle = "rgba(170,175,190," + alpha.toFixed(3) + ")";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(nodes[i].x, nodes[i].y);
+                    ctx.lineTo(nodes[j].x, nodes[j].y);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.fillStyle = "rgba(200,205,220,0.6)";
+            for (var i = 0; i < nodes.length; i++) {
+                var nd = nodes[i];
+                var pulse = still ? nd.r : nd.r + Math.sin(t * 1.6 + nd.px) * 0.35;
+                ctx.beginPath();
+                ctx.arc(nd.x, nd.y, Math.max(0.4, pulse), 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // links from the cursor to the nearest nodes — a visible trail
+            if (pointer.active && !still) {
+                for (var i = 0; i < nodes.length; i++) {
+                    var dx = nodes[i].x - pointer.x, dy = nodes[i].y - pointer.y;
+                    var d2 = dx * dx + dy * dy;
+                    if (d2 > PULL * PULL) continue;
+                    var a = (1 - Math.sqrt(d2) / PULL) * 0.42;
+                    ctx.strokeStyle = "rgba(215,220,235," + a.toFixed(3) + ")";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(pointer.x, pointer.y);
+                    ctx.lineTo(nodes[i].x, nodes[i].y);
+                    ctx.stroke();
+                }
+            }
+
+            // packets run along the links
+            for (var p = packets.length - 1; p >= 0; p--) {
+                var pk = packets[p];
+                pk.t += pk.speed;
+                if (pk.t >= 1) { packets.splice(p, 1); continue; }
+                var A = nodes[pk.a], B = nodes[pk.b];
+                if (!A || !B) { packets.splice(p, 1); continue; }
+                var x = A.x + (B.x - A.x) * pk.t, y = A.y + (B.y - A.y) * pk.t;
+                var fade = Math.sin(pk.t * Math.PI);           // fades out towards either end
+                ctx.strokeStyle = "rgba(69,184,102," + (0.5 * fade).toFixed(3) + ")";
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.moveTo(A.x + (B.x - A.x) * Math.max(0, pk.t - 0.16), A.y + (B.y - A.y) * Math.max(0, pk.t - 0.16));
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                ctx.fillStyle = "rgba(120,220,150," + (0.85 * fade).toFixed(3) + ")";
+                ctx.beginPath();
+                ctx.arc(x, y, 1.9, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (!still && Math.random() < 0.09 && packets.length < 22) spawn();
+            if (running && !still) requestAnimationFrame(frame);
+        }
+
+        window.addEventListener("pointermove", function (e) {
+            pointer.x = e.clientX; pointer.y = e.clientY; pointer.active = true;
+        });
+        window.addEventListener("pointerleave", function () { pointer.active = false; });
+        window.addEventListener("blur", function () { pointer.active = false; });
+
+        window.addEventListener("resize", size);
+        document.addEventListener("visibilitychange", function () {
+            // do not burn the processor on a hidden tab
+            if (document.hidden) { running = false; }
+            else if (!running) { running = true; if (!still) requestAnimationFrame(frame); }
+        });
+
+        size();
+        frame();
+    })();
+    </script>
+</body>
+</html>

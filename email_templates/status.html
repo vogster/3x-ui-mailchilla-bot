@@ -1,0 +1,26 @@
+{% extends "_layout.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<p style="margin: 0 0 22px 0;">{{ t("status.intro", email=email) | emph }}</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
+    <tr>
+        <td class="stat-label" style="padding: 11px 0; border-bottom: 1px solid #1d1d20; color: #a0a0a8; font-size: 15px;">{{ t("status.label_status") }}</td>
+        <td class="stat-value" align="right" style="padding: 11px 0; border-bottom: 1px solid #1d1d20; font-size: 15px; font-weight: 600;
+                   color: {{ '#45b866' if is_active else '#ef5350' }};">{{ status_text }}</td>
+    </tr>
+    {{ ui.stat(t("status.label_expiry"), expiry_text) }}
+    {{ ui.stat(t("status.label_used"), used_text) }}
+</table>
+
+{% if percent is not none %}
+{{ ui.meter(percent) }}
+{% if meter_text %}
+<p style="margin: 10px 0 0 0; color: #8a8a93; font-size: 15px;">{{ meter_text | emph }}</p>
+{% endif %}
+{% endif %}
+
+{% if t("status.outro") %}
+<p style="margin: 24px 0 0 0;">{{ t("status.outro") | emph }}</p>
+{% endif %}
+{% endblock %}

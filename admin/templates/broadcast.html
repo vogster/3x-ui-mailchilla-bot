@@ -1,0 +1,679 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("Broadcast") }}{% endblock %}
+{% block nav_broadcast %}active{% endblock %}
+{% block content %}
+<style>
+    .bc-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 22px; align-items: start; }
+    @media (max-width: 1080px) { .bc-grid { grid-template-columns: 1fr; } }
+
+    .rcpt-tools {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 11px 20px; border-bottom: 1px solid var(--line-soft);
+    }
+    .rcpt-tools .muted { font-size: 12px; }
+    .rcpt-tools select { padding: 5px 9px; font-size: 12px; }
+
+    .rcpt-list { max-height: 470px; overflow-y: auto; }
+    .rcpt {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 20px; cursor: pointer;
+        border-bottom: 1px solid var(--line-soft);
+        transition: background .12s;
+    }
+    .rcpt:last-child { border-bottom: none; }
+    .rcpt:hover { background: var(--surface-2); }
+    .rcpt:has(input:checked) { background: var(--surface-2); }
+    .rcpt input { vertical-align: 0; }
+
+    .rcpt .who { flex: 1; min-width: 0; }
+    /* Address and name on the left, status and traffic on the right. The right
+       column is always two lines and sets the height, so for a client with no
+       name the address simply centres itself and the row keeps its height. */
+    .rcpt .row-top {
+        display: flex; align-items: center; gap: 10px;
+        /* Two lines on the left run slightly taller than two on the right, so a row
+           without a name came out a pixel shorter. Pin the height to the larger. */
+        min-height: 39px;
+    }
+    .rcpt .ident {
+        flex: 1; min-width: 0;
+        display: flex; flex-direction: column; justify-content: center; gap: 1px;
+    }
+    .rcpt .meta {
+        display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+    }
+    /* The address is the leading line: it is what a recipient is picked by. The
+       name below tells two similar addresses apart but is no identifier itself. */
+    .rcpt .ident .n {
+        color: var(--fg);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rcpt .ident .e {
+        font-size: 12px; color: var(--fg-3);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rcpt .tr { font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+    .rcpt .tr.hot { color: var(--warn); }
+    .rcpt .tr.over { color: var(--err); }
+    .rcpt .bar { margin-top: 5px; }
+
+    /* The roulette: the strip scrolls left and the marker in the centre catches
+       the winner. */
+    .roller {
+        position: relative; width: 100%; height: 132px; overflow: hidden;
+        border: 1px solid var(--line); border-radius: var(--radius);
+        background: var(--bg);
+    }
+    .roller-track {
+        position: absolute; top: 10px; left: 0; height: 112px;
+        display: flex; gap: 8px; will-change: transform;
+    }
+    .roller-marker {
+        position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; z-index: 3;
+        transform: translateX(-50%); background: var(--warn);
+        box-shadow: 0 0 10px rgba(208, 162, 21, .55);
+    }
+    .roller-marker::before, .roller-marker::after {
+        content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+        border-left: 6px solid transparent; border-right: 6px solid transparent;
+    }
+    .roller-marker::before { top: 0; border-top: 8px solid var(--warn); }
+    .roller-marker::after { bottom: 0; border-bottom: 8px solid var(--warn); }
+    .roller-fade {
+        position: absolute; top: 0; bottom: 0; width: 64px; z-index: 2;
+        pointer-events: none;
+    }
+    .roller-fade.l { left: 0; background: linear-gradient(90deg, var(--bg), transparent); }
+    .roller-fade.r { right: 0; background: linear-gradient(270deg, var(--bg), transparent); }
+
+    .roulette-item {
+        flex: 0 0 96px; width: 96px; position: relative; overflow: hidden;
+        border: 1px solid var(--line); border-radius: 8px;
+        display: flex; flex-direction: column; justify-content: flex-end;
+        padding: 8px 9px 11px;
+        background: linear-gradient(180deg, var(--rc-soft), transparent 70%), var(--surface);
+    }
+    .roulette-item::after {
+        content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+        height: 3px; background: var(--rc);
+    }
+    .roulette-item .n {
+        font-size: 10.5px; color: var(--fg);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .roulette-item .w {
+        font-size: 9.5px; color: var(--fg-3); margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .roulette-item.win { border-color: var(--rc); box-shadow: 0 0 0 1px var(--rc), 0 0 22px var(--rc-soft); }
+
+    #roulette-confetti { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4;
+                     pointer-events: none; }
+
+    .roulette-result {
+        min-height: 44px; text-align: center;
+        display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    }
+    .roulette-result .who { font-size: 15px; font-weight: 600; }
+    .roulette-result .sub { font-size: 12px; color: var(--fg-3); }
+    .rcpt .badge { font-size: 11.5px; }
+</style>
+
+<h1 style="margin: 0 0 6px 0;">{{ t("Mass broadcast") }}</h1>
+<p class="muted" style="margin: 0 0 22px 0;">
+    {{ t("The letter goes to the chosen recipients in the background — the page can be closed and the sending will not stop.") }}
+</p>
+
+{% if error %}<div class="flash error" style="margin-bottom: 20px;">{{ error }}</div>{% endif %}
+
+<form method="post" action="/broadcast" id="broadcast-form">
+<div class="bc-grid">
+
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("Message") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="subject">{{ t("Subject") }} {{ fields.help(t("It shows in the list of letters and in the letter's own heading.")) }}</label>
+                <input type="text" id="subject" name="subject"
+                       value="{{ t('An important notice from') }} {{ service_name }}" required>
+            </div>
+            <div>
+                <label for="message">{{ t("Message text") }} {{ fields.help(t("Line breaks are kept. The text is wrapped in the same template as the rest of the service's letters.")) }}</label>
+                <textarea id="message" name="message" placeholder="{{ t('Type the broadcast text…') }}"
+                          style="min-height: 190px;" required></textarea>
+            </div>
+            <div>
+                <label>{{ t("Message kind") }} {{ fields.help(t("Sets the colour of the stripe beside the text: plain has none, information is green, warning is yellow, urgent is red.")) }}</label>
+                {% with picker_name = "kind" %}
+                    {% include "_kind_picker.html" %}
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Recipients") }}</h2>
+            <div class="search" style="max-width: 240px;">
+                <input type="text" id="rcpt-search" placeholder="{{ t('Search by name or address…') }}"
+                       autocomplete="off">
+                <button type="button" class="search-clear" id="rcpt-search-clear"
+                        title="{{ t('Clear') }}" hidden>
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                         stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                </button>
+            </div>
+        </div>
+
+        {% if recipients %}
+        <div class="rcpt-tools">
+            <select id="rcpt-filter" title="{{ t('Who to show') }}">
+                <option value="all">{{ t("All") }} · {{ recipient_count }}</option>
+                <option value="active">{{ t("Active [filter]") }} · {{ active_count }}</option>
+                <option value="disabled">{{ t("Disabled [filter]") }} · {{ recipient_count - active_count }}</option>
+                <option value="exhausted">{{ t("Limit used up") }}</option>
+                <option value="nearly">{{ t("Traffic running out") }}</option>
+                <option value="unlimited">{{ t("No limit") }}</option>
+            </select>
+            <select id="rcpt-sort" title="{{ t('Order') }}">
+                <option value="email">{{ t("By address") }}</option>
+                <option value="traffic">{{ t("Most traffic spent") }}</option>
+                <option value="left">{{ t("Least left") }}</option>
+                <option value="new">{{ t("Newest first") }}</option>
+                <option value="old">{{ t("Oldest first") }}</option>
+            </select>
+            {% if skipped_count %}
+            <span class="muted" style="margin-left: auto;"
+                  title="{{ t('These clients carry an arbitrary identifier in the panel email field rather than an address — there is nowhere to write to.') }}">
+                {{ t("no address:") }} {{ skipped_count }}
+            </span>
+            {% endif %}
+        </div>
+
+        <div class="rcpt-tools">
+            <div class="segmented">
+                <button type="button" data-sel="all">{{ t("All") }}</button>
+                <button type="button" data-sel="none">{{ t("None [selection]") }}</button>
+                <button type="button" data-sel="invert">{{ t("Invert") }}</button>
+            </div>
+            <span class="muted" id="rcpt-summary"></span>
+            <button type="button" class="btn small" id="roulette-open" style="margin-left:auto;"
+                    title="{{ t('Draw one recipient') }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                     stroke-linejoin="round"
+                     style="width:13px;height:13px;vertical-align:-2px;margin-right:5px;">
+                    <rect x="1.5" y="4.6" width="13" height="6.8" rx="1.4"/>
+                    <path d="M8 3.2v9.6M5 6.4v3.2M11 6.4v3.2"/>
+                </svg>{{ t("Roulette") }}
+            </button>
+        </div>
+
+        <div class="rcpt-list" id="rcpt-list">
+            {% for c in recipients %}
+            <label class="rcpt"
+                   data-search="{{ (c.name ~ ' ' ~ c.bare_email)|lower }}"
+                   data-email="{{ c.bare_email|lower }}"
+                   data-enabled="{{ 1 if c.enable else 0 }}"
+                   data-traffic="{{ c.used_bytes }}"
+                   data-left="{{ c.left_bytes }}"
+                   data-created="{{ c.created_ms }}"
+                   data-percent="{{ c.percent }}"
+                   data-limited="{{ 1 if c.limit_bytes else 0 }}">
+                <input type="checkbox" name="emails" value="{{ c.bare_email }}"
+                       {% if c.enable %}checked{% endif %}>
+                <div class="who">
+                    <div class="row-top">
+                        <div class="ident">
+                            <span class="n mono">{{ c.bare_email }}</span>
+                            {% if c.name %}<span class="e">{{ c.name }}</span>{% endif %}
+                        </div>
+                        <div class="meta">
+                            {% if c.enable %}
+                            <span class="badge on">{{ t("Active [badge]") }}</span>
+                            {% else %}
+                            <span class="badge off">{{ t("Disabled [badge]") }}</span>
+                            {% endif %}
+                            {% if c.limit_bytes %}
+                            <span class="tr {% if c.percent >= 100 %}over{% elif c.percent >= 80 %}hot{% endif %}">
+                                {{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}
+                            </span>
+                            {% else %}
+                            <span class="tr">{{ c.used_gb }} {{ t("GB") }} · {{ t("no limit") }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if c.limit_bytes %}
+                    <div class="bar"><div style="width: {{ c.percent }}%;"></div></div>
+                    {% endif %}
+                </div>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="empty" id="rcpt-empty" hidden>{{ t("Nobody matched the filter") }}</div>
+        {% else %}
+        <div class="empty">
+            {{ t("No clients with a mail address.") }}
+            {% if skipped_count %}<br>{{ t("No address in the email field:") }} {{ skipped_count }}.{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+{% if recipients %}
+<div class="form-bar">
+    <span class="state" id="bc-state">{{ t("Chosen:") }} 0</span>
+    <button type="submit" class="btn primary" id="submit-btn">{{ t("Send") }}</button>
+</div>
+{% endif %}
+</form>
+
+<script>
+    // Russian needs three plural forms, English two. Feeding the Slavic rule an
+    // English list whose "few" and "many" are the same word reads correctly in
+    // both, so one rule serves the panel in either language.
+    function pick(n, forms) {
+        var m10 = n % 10, m100 = n % 100;
+        if (m10 === 1 && m100 !== 11) return forms[0];
+        if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
+        return forms[2];
+    }
+    var DATIVE = [{{ t("recipient [dative one]")|tojson }},
+                  {{ t("recipients [dative few]")|tojson }},
+                  {{ t("recipients [dative many]")|tojson }}];
+
+    (function () {
+        var list = document.getElementById("rcpt-list");
+        if (!list) return;
+
+        var rows = Array.prototype.slice.call(list.querySelectorAll(".rcpt"));
+        var boxes = rows.map(function (r) { return r.querySelector("input"); });
+        var search = document.getElementById("rcpt-search");
+        var clear = document.getElementById("rcpt-search-clear");
+        var filterSel = document.getElementById("rcpt-filter");
+        var sortSel = document.getElementById("rcpt-sort");
+        var empty = document.getElementById("rcpt-empty");
+        var summary = document.getElementById("rcpt-summary");
+        var state = document.getElementById("bc-state");
+        var submit = document.getElementById("submit-btn");
+        var form = document.getElementById("broadcast-form");
+        var SORT_KEY = "broadcast-sort";
+
+        function num(row, name) { return Number(row.dataset[name] || 0); }
+
+        function matches(row) {
+            var needle = search.value.trim().toLowerCase();
+            if (needle && row.dataset.search.indexOf(needle) === -1) return false;
+            var limited = row.dataset.limited === "1";
+            switch (filterSel.value) {
+                case "active":    return row.dataset.enabled === "1";
+                case "disabled":  return row.dataset.enabled === "0";
+                case "exhausted": return limited && num(row, "percent") >= 100;
+                case "nearly":    return limited && num(row, "percent") >= 80
+                                          && num(row, "percent") < 100;
+                case "unlimited": return !limited;
+                default:          return true;
+            }
+        }
+
+        // An unlimited client has no remainder, and in that sort belongs last.
+        function left(row) {
+            return row.dataset.left === "" ? Infinity : Number(row.dataset.left);
+        }
+
+        function comparator() {
+            switch (sortSel.value) {
+                case "traffic": return function (a, b) { return num(b, "traffic") - num(a, "traffic"); };
+                case "left":    return function (a, b) { return left(a) - left(b); };
+                case "new":     return function (a, b) { return num(b, "created") - num(a, "created"); };
+                case "old":     return function (a, b) { return num(a, "created") - num(b, "created"); };
+                default:        return function (a, b) {
+                    // data-email specifically: data-search carries the name in
+                    // front of the address, so sorting on it would order by name.
+                    return a.dataset.email.localeCompare(b.dataset.email, "ru");
+                };
+            }
+        }
+
+        function visible() {
+            return rows.filter(function (r) { return !r.hidden; });
+        }
+
+        function refresh() {
+            var chosen = boxes.filter(function (b) { return b.checked; }).length;
+            var shown = visible().length;
+            // Recipients that are ticked but hidden by the filter will still be
+            // written to — say so plainly, or Send does something other than
+            // what the screen shows.
+            var hiddenChosen = rows.filter(function (r) {
+                return r.hidden && r.querySelector("input").checked;
+            }).length;
+
+            state.textContent = {{ t("Chosen:")|tojson }} + " " + chosen + " " + {{ t("of")|tojson }} + " " + rows.length
+                + (hiddenChosen ? " · " + {{ t("hidden by the filter:")|tojson }} + " " + hiddenChosen : "");
+            submit.textContent = chosen
+                ? {{ t("Send")|tojson }} + " " + chosen + " " + pick(chosen, DATIVE)
+                : {{ t("Send")|tojson }};
+            submit.disabled = chosen === 0;
+
+            summary.textContent = shown === rows.length ? "" : {{ t("showing:")|tojson }} + " " + shown;
+            empty.hidden = shown !== 0;
+        }
+
+        function apply() {
+            rows.forEach(function (row) { row.hidden = !matches(row); });
+            rows.slice().sort(comparator()).forEach(function (row) { list.appendChild(row); });
+            clear.hidden = !search.value;
+            refresh();
+        }
+
+        boxes.forEach(function (b) { b.addEventListener("change", refresh); });
+
+        document.querySelectorAll(".segmented [data-sel]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                // These act on what is visible: with the Disabled filter on,
+                // "All" means all the disabled ones, not everyone.
+                visible().forEach(function (row) {
+                    var box = row.querySelector("input");
+                    if (btn.dataset.sel === "all") box.checked = true;
+                    else if (btn.dataset.sel === "none") box.checked = false;
+                    else box.checked = !box.checked;
+                });
+                refresh();
+            });
+        });
+
+        search.addEventListener("input", apply);
+        clear.addEventListener("click", function () {
+            search.value = "";
+            apply();
+            search.focus();
+        });
+        // Enter in the search box must not send the broadcast.
+        search.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") e.preventDefault();
+        });
+
+        filterSel.addEventListener("change", apply);
+        sortSel.addEventListener("change", function () {
+            try { localStorage.setItem(SORT_KEY, sortSel.value); } catch (e) {}
+            apply();
+        });
+
+        // The order is remembered, the filter is not: coming back to a page that
+        // hides half the recipients is worse than picking the order again.
+        try {
+            var saved = localStorage.getItem(SORT_KEY);
+            if (saved && sortSel.querySelector('option[value="' + saved + '"]')) {
+                sortSel.value = saved;
+            }
+        } catch (e) {}
+
+        form.addEventListener("submit", function (e) {
+            if (!boxes.filter(function (b) { return b.checked; }).length) {
+                e.preventDefault();
+                window.showToast({{ t("Choose at least one recipient")|tojson }}, "error");
+            }
+        });
+
+        apply();
+    })();
+</script>
+
+{% if recipients %}
+<dialog id="roulette-dialog" class="wide">
+    <div class="dlg-head">
+        <div class="t">{{ t("Roulette") }}</div>
+        <div class="s" id="roulette-sub">{{ t("Picks one recipient at random") }}</div>
+    </div>
+    <div class="dlg-body">
+        <div class="roller" id="roller">
+            <div class="roller-track" id="roller-track"></div>
+            <div class="roller-fade l"></div>
+            <div class="roller-fade r"></div>
+            <div class="roller-marker"></div>
+            <canvas id="roulette-confetti" width="1200" height="264"></canvas>
+        </div>
+        <div class="roulette-result" id="roulette-result"></div>
+    </div>
+    <div class="dlg-foot">
+        <button type="button" class="btn" id="roulette-close">{{ t("Close") }}</button>
+        <button type="button" class="btn primary" id="roulette-spin">{{ t("Spin") }}</button>
+    </div>
+</dialog>
+{% endif %}
+
+<script>
+    // The roulette: the strip travels left and the marker catches the winner.
+    (function () {
+        var open = document.getElementById("roulette-open");
+        var dlg = document.getElementById("roulette-dialog");
+        if (!open || !dlg) return;
+
+        var roller = document.getElementById("roller");
+        var track = document.getElementById("roller-track");
+        var canvas = document.getElementById("roulette-confetti");
+        var result = document.getElementById("roulette-result");
+        var sub = document.getElementById("roulette-sub");
+        var spinBtn = document.getElementById("roulette-spin");
+        var closeBtn = document.getElementById("roulette-close");
+        var list = document.getElementById("rcpt-list");
+
+        var ITEM = 96, GAP = 8, STEP = ITEM + GAP;
+        // The rarity colours are the ones from CS:GO, blue through to gold.
+        var RARITY = [
+            { c: "#4b69ff", soft: "rgba(75,105,255,.28)", t: {{ t("common")|tojson }} },
+            { c: "#8847ff", soft: "rgba(136,71,255,.28)", t: {{ t("rare")|tojson }} },
+            { c: "#d32ce6", soft: "rgba(211,44,230,.28)", t: {{ t("special")|tojson }} },
+            { c: "#eb4b4b", soft: "rgba(235,75,75,.28)",  t: {{ t("classified")|tojson }} },
+            { c: "#ffd700", soft: "rgba(255,215,0,.30)",  t: {{ t("legendary")|tojson }} }
+        ];
+
+        var players = [], rarity = [], seq = [], spinning = false, frame = null;
+
+        // Three forms, because Russian needs three. English fills the last two
+        // with the same word, and the rule below then reads correctly in both.
+        var NOMINATIVE = [{{ t("recipient [one]")|tojson }}, {{ t("recipients [few]")|tojson }}, {{ t("recipients [many]")|tojson }}];
+        function plural(n) { return pick(n, NOMINATIVE); }
+
+        // Rarity follows traffic spent: whoever used the most gets the gold.
+        // It means nothing, but it is honester than colours drawn at random.
+        function ranks() {
+            var order = players
+                .map(function (row, i) { return { i: i, t: Number(row.dataset.traffic || 0) }; })
+                .sort(function (a, b) { return b.t - a.t; });
+            var out = new Array(players.length);
+            order.forEach(function (item, pos) {
+                var share = pos / players.length;
+                out[item.i] = pos === 0 ? 4
+                            : share < 0.12 ? 3
+                            : share < 0.30 ? 2
+                            : share < 0.55 ? 1 : 0;
+            });
+            return out;
+        }
+
+        function card(playerIndex) {
+            var row = players[playerIndex];
+            var r = RARITY[rarity[playerIndex]];
+            var box = document.createElement("div");
+            box.className = "roulette-item";
+            box.style.setProperty("--rc", r.c);
+            box.style.setProperty("--rc-soft", r.soft);
+
+            var top = document.createElement("div");
+            top.className = "n";
+            top.textContent = row.dataset.email.split("@")[0];
+            var bottom = document.createElement("div");
+            bottom.className = "w";
+            var name = row.querySelector(".e");
+            bottom.textContent = name ? name.textContent.trim()
+                                      : "@" + row.dataset.email.split("@")[1];
+            box.appendChild(top);
+            box.appendChild(bottom);
+            return box;
+        }
+
+        function build() {
+            players = Array.prototype.slice.call(list.querySelectorAll(".rcpt"))
+                .filter(function (row) { return !row.hidden; });
+            rarity = ranks();
+            result.textContent = "";
+            track.style.transform = "translateX(0px)";
+            track.textContent = "";
+
+            var n = players.length;
+            // The drum takes whoever the list is showing: the filter and the
+            // search narrow it, so a raffle among the active ones is possible.
+            sub.textContent = n === 1
+                ? {{ t("The drum holds a single recipient — not much of a draw")|tojson }}
+                : {{ t("The drum holds")|tojson }} + " " + n + " " + plural(n) + " " + {{ t("— those the list is showing right now")|tojson }};
+
+            // The strip runs several screens long, so there is something to roll.
+            seq = [];
+            var total = Math.max(70, n * 6);
+            for (var i = 0; i < total; i++) seq.push(i % n);
+            seq.forEach(function (playerIndex) { track.appendChild(card(playerIndex)); });
+        }
+
+        function spin() {
+            if (spinning || !players.length) return;
+            spinning = true;
+            spinBtn.disabled = true;
+            closeBtn.disabled = true;
+            result.textContent = "";
+            track.querySelectorAll(".roulette-item.win").forEach(function (el) {
+                el.classList.remove("win");
+            });
+
+            var winner = Math.floor(Math.random() * players.length);
+            // The winner is placed into a particular card near the end of the
+            // strip, leaving enough after it that the space to the right of the
+            // marker is not empty.
+            var pos = seq.length - 9;
+            var winCard = card(winner);
+            track.replaceChild(winCard, track.children[pos]);
+
+            // A slight offset within the card: the marker need not hit dead centre.
+            var jitter = (Math.random() - 0.5) * ITEM * 0.55;
+            var target = pos * STEP + ITEM / 2 - roller.clientWidth / 2 + jitter;
+            var duration = 5800 + Math.random() * 1400;
+            var started = null;
+
+            function tick(now) {
+                if (!started) started = now;
+                var t = Math.min((now - started) / duration, 1);
+                // A sharp start and a long coast, as in the game.
+                var eased = 1 - Math.pow(1 - t, 5);
+                track.style.transform = "translateX(" + (-target * eased).toFixed(2) + "px)";
+                if (t < 1) {
+                    frame = requestAnimationFrame(tick);
+                } else {
+                    frame = null;
+                    finish(players[winner], rarity[winner], winCard);
+                }
+            }
+            frame = requestAnimationFrame(tick);
+        }
+
+        function finish(row, rank, winCard) {
+            spinning = false;
+            closeBtn.disabled = false;
+            spinBtn.disabled = false;
+            winCard.classList.add("win");
+
+            var r = RARITY[rank];
+            result.textContent = "";
+            var who = document.createElement("div");
+            who.className = "who";
+            who.style.color = r.c;
+            who.textContent = row.dataset.email;
+            var note = document.createElement("div");
+            note.className = "sub";
+            var name = row.querySelector(".e");
+            note.textContent = r.t + (name ? " · " + name.textContent.trim() : "");
+            result.appendChild(who);
+            result.appendChild(note);
+
+            confetti(r.c);
+            setTimeout(function () {
+                if (!dlg.open) return;
+                dlg.close();
+                apply(row);
+            }, 2200);
+        }
+
+        function apply(row) {
+            list.querySelectorAll(".rcpt input").forEach(function (b) { b.checked = false; });
+            var box = row.querySelector("input");
+            box.checked = true;
+            row.scrollIntoView({ block: "center" });
+            // The counters below recount on change — clearing the boxes is done
+            // quietly, and the single tick sends the ordinary event.
+            box.dispatchEvent(new Event("change"));
+            window.showToast({{ t("One recipient came up:")|tojson }} + " " + row.dataset.email);
+        }
+
+        function confetti(color) {
+            var ctx = canvas.getContext("2d");
+            var parts = [];
+            for (var i = 0; i < 110; i++) {
+                var a = Math.random() * Math.PI * 2;
+                var speed = 4 + Math.random() * 11;
+                parts.push({
+                    x: 600, y: 132,
+                    vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - 5,
+                    size: 3 + Math.random() * 5,
+                    // Half the confetti takes the rarity colour, half is mixed.
+                    color: i % 2 ? color : "hsl(" + Math.round(Math.random() * 360) + ", 70%, 62%)",
+                    life: 1
+                });
+            }
+            var last = null;
+            (function draw(now) {
+                if (!last) last = now;
+                var dt = Math.min((now - last) / 16.7, 3);
+                last = now;
+                ctx.clearRect(0, 0, 1200, 264);
+                var alive = false;
+                parts.forEach(function (p) {
+                    if (p.life <= 0) return;
+                    alive = true;
+                    p.vy += 0.4 * dt;
+                    p.vx *= 0.99;
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.life -= 0.012 * dt;
+                    ctx.globalAlpha = Math.max(p.life, 0);
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, p.size, p.size * 1.6);
+                });
+                ctx.globalAlpha = 1;
+                if (alive) requestAnimationFrame(draw);
+                else ctx.clearRect(0, 0, 1200, 264);
+            })();
+        }
+
+        open.addEventListener("click", function () {
+            dlg.showModal();
+            // The strip's width is only known once the dialog is on screen.
+            build();
+        });
+        spinBtn.addEventListener("click", spin);
+        closeBtn.addEventListener("click", function () { dlg.close(); });
+
+        // Closed halfway: the roulette never finished, so nobody is appointed.
+        dlg.addEventListener("close", function () {
+            if (frame) { cancelAnimationFrame(frame); frame = null; }
+            spinning = false;
+            spinBtn.disabled = false;
+            closeBtn.disabled = false;
+            canvas.getContext("2d").clearRect(0, 0, 1200, 264);
+        });
+        dlg.addEventListener("cancel", function (e) {
+            if (spinning) e.preventDefault();
+        });
+    })();
+</script>
+{% endblock %}

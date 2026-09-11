@@ -1,0 +1,398 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Dashboard") }}{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 24px 0;">{{ t("Dashboard") }}</h1>
+
+{% if server %}
+<div class="panel" style="margin-bottom: 20px;" id="server-panel">
+    <div class="panel-head">
+        <h2>{{ t("The server") }}</h2>
+        <span class="muted" data-srv="versions">
+            {{ t("panel") }} {{ server.panel_version }}
+            {% if server.xray_version %}· xray {{ server.xray_version }}{% endif %}
+            {% if server.xray_state == "running" %}
+            <span class="badge on" style="margin-left: 6px;">{{ t("xray is running") }}</span>
+            {% else %}
+            <span class="badge off" style="margin-left: 6px;">{{ t("xray is down") }}</span>
+            {% endif %}
+        </span>
+        <div class="srv-tools">
+            <select id="srv-every" title="{{ t('How often to refresh on its own') }}">
+                <option value="0">{{ t("Do not refresh") }}</option>
+                <option value="5">{{ t("Every 5 s") }}</option>
+                <option value="15">{{ t("Every 15 s") }}</option>
+                <option value="30">{{ t("Every 30 s") }}</option>
+                <option value="60">{{ t("Every minute") }}</option>
+            </select>
+            <button type="button" class="icon-btn" id="srv-refresh" title="{{ t('Refresh now') }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 8a6 6 0 1 1-1.8-4.3"/>
+                    <path d="M14 1.6V4.4H11.2"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div style="padding: 20px;">
+        <div class="flash error" data-srv="xray-error" {% if not server.xray_error %}hidden{% endif %}
+             style="margin-top: 0;">{{ server.xray_error }}</div>
+        <div class="meters">
+            {% for m in [
+                {"id": "cpu", "name": t("Processor"), "percent": server.cpu,
+                 "text": t("{cores} core(s)", cores=server.cpu_cores)},
+                {"id": "mem", "name": t("Memory"), "percent": server.mem.percent, "text": server.mem.text},
+                {"id": "disk", "name": t("Disk"), "percent": server.disk.percent, "text": server.disk.text}
+            ] %}
+            <div class="meter" data-meter="{{ m.id }}">
+                <div class="h">
+                    <span>{{ m.name }}</span>
+                    <span class="mono" data-role="percent">{{ m.percent }}%</span>
+                </div>
+                <div class="bar"><i data-role="bar" style="width: {{ [m.percent, 100]|min }}%;"
+                    class="{% if m.percent >= 90 %}hot{% elif m.percent >= 75 %}warn{% endif %}"></i></div>
+                <div class="m mono" data-role="text">{{ m.text }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="muted" style="margin: 16px 0 0 0;">
+            {{ t("Uptime") }}: <span class="mono" data-srv="uptime">{{ server.uptime_text }}</span>
+            · {{ t("load") }}: <span class="mono" data-srv="loads">{{ server.loads|join(" · ") }}</span>
+            · {{ t("connections") }}: <span class="mono" data-srv="connections">{{ server.connections }}</span>
+            <span data-srv="swap-wrap" {% if not server.swap.total %}hidden{% endif %}>·
+                swap: <span class="mono" data-srv="swap">{{ server.swap.text }}</span></span>
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div class="cards">
+    <div class="card">
+        <div class="label">{{ t("Clients in total") }}</div>
+        <div class="value">{{ total }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Active [count]") }}</div>
+        <div class="value" style="color: #34d399;">{{ active }}</div>
+    </div>
+    <div class="card" data-srv="online-card" {% if online is none %}hidden{% endif %}>
+        <div class="label">{{ t("Online") }}</div>
+        <div class="value" data-srv="online">{{ online if online is not none else "—" }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Disabled [count]") }}</div>
+        <div class="value" style="color: {% if blocked %}#f87171{% else %}#e5e7eb{% endif %};">{{ blocked }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("New in 30 days") }}</div>
+        <div class="value">{{ new_this_month }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Traffic in total, GB") }}</div>
+        <div class="value">{{ total_traffic_gb }}</div>
+    </div>
+</div>
+
+<h2 class="section-label">{{ t("Quick actions") }}</h2>
+<div class="actions">
+    <button type="button" class="action accent"
+            onclick="document.getElementById('new-client-dialog').showModal()">
+        <span class="t">{{ t("Create a client") }} <span class="arrow">&rarr;</span></span>
+        <span class="d">{{ t("Add a client by hand and send them the letter with the subscription link") }}</span>
+    </button>
+    <a href="/broadcast" class="action">
+        <span class="t">{{ t("Send a broadcast") }} <span class="arrow">&rarr;</span></span>
+        <span class="d">{{ t("A letter to chosen recipients, or to every active client at once") }}</span>
+    </a>
+    <a href="/clients" class="action">
+        <span class="t">{{ t("The client list") }} <span class="arrow">&rarr;</span></span>
+        <span class="d">{{ t("Search, disabling, limits, expiry and the set of inbounds") }}</span>
+    </a>
+</div>
+
+{% if problems %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Wants attention") }}</h2>
+        {% if problems_total > problems|length %}
+        <span class="muted">{{ t("showing the latest") }} {{ problems|length }} {{ t("of") }} {{ problems_total }}</span>
+        {% endif %}
+        <div style="display:flex; gap:8px; margin-left:auto;">
+            <a href="/logs?level=WARNING" class="btn small">{{ t("All records") }}</a>
+            <form method="post" action="/logs/ack" style="display:inline;">
+                <button type="submit" class="btn small">{{ t("Mark read") }}</button>
+            </form>
+        </div>
+    </div>
+    <div style="overflow-x:auto;">
+        <div class="tscroll">
+            <table class="logs">
+                <tbody>
+                {% for e in problems %}
+                    <tr class="lvl-{{ e.level }}">
+                        <td class="mono muted" style="white-space:nowrap; vertical-align:top;">{{ e.time }}</td>
+                        <td style="vertical-align:top;"><span class="badge lvl {{ e.level }}">{{ e.level }}</span></td>
+                        <td class="mono" style="width:100%; white-space:pre-wrap; word-break:break-word;">{{ e.message }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if expiring %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Subscriptions running out") }}</h2></div>
+    <div class="tscroll">
+        <table>
+            <tbody>
+            {% for c in expiring %}
+                <tr>
+                    <td><a href="/clients/{{ c.uuid }}" class="row-link mono">{{ c.email }}</a></td>
+                    <td class="muted">{{ c.comment }}</td>
+                    <td class="mono" style="white-space:nowrap;">{{ c.when }}</td>
+                    <td style="white-space:nowrap; {% if c.expired %}color:#f87171;{% endif %}">
+                        {% if c.expired %}{{ t("expired") }}{% else %}{{ t("days left:") }} {{ c.days }}{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if near_limit %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Pressing against the traffic limit") }}</h2></div>
+    <div class="tscroll">
+        <table>
+            <tbody>
+            {% for c in near_limit %}
+                <tr>
+                    <td><a href="/clients/{{ c.uuid }}" class="row-link mono">{{ c.email }}</a></td>
+                    <td class="muted">{{ c.comment }}</td>
+                    <td class="mono" style="white-space:nowrap;">{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}</td>
+                    <td style="width:120px;"><div class="bar" style="width:100%;"><div style="width: {{ c.percent }}%;"></div></div></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="dash-pair">
+    <div class="panel" style="margin:0;">
+        <div class="panel-head">
+            <h2>{{ t("Recent registrations") }}</h2>
+            <a href="/clients" class="btn small">{{ t("All") }}</a>
+        </div>
+        {% if recent %}
+        <div class="tscroll">
+            <table>
+                <tbody>
+                {% for c in recent %}
+                    <tr>
+                        <td>
+                            <a href="/clients/{{ c.uuid }}" class="row-link">
+                                <div class="mono">{{ c.email }}</div>
+                                {% if c.comment %}<div class="muted">{{ c.comment }}</div>{% endif %}
+                            </a>
+                        </td>
+                        <td class="mono muted" style="white-space:nowrap; text-align:right;">{{ c.when }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty">{{ t("Nobody yet") }}</div>
+        {% endif %}
+    </div>
+
+    <div class="panel" style="margin:0;">
+        <div class="panel-head"><h2>{{ t("Biggest traffic") }}</h2></div>
+        {% if top %}
+        <div class="tscroll">
+            <table>
+                <tbody>
+                {% for c in top %}
+                    <tr>
+                        <td>
+                            <a href="/clients/{{ c.uuid }}" class="row-link">
+                                <div class="mono">{{ c.email }}</div>
+                                {% if c.comment %}<div class="muted">{{ c.comment }}</div>{% endif %}
+                            </a>
+                        </td>
+                        <td class="mono" style="white-space:nowrap; text-align:right;">{{ c.used_gb }} {{ t("GB") }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty">{{ t("No traffic yet") }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Inbounds") }}</h2>
+        <a href="/settings" class="btn small">{{ t("Configure") }}</a>
+    </div>
+    {% if missing_inbounds %}
+    <div style="padding: 0 20px;">
+        <div class="flash error">
+            {{ t("The settings tick inbounds that do not exist:") }}
+            <b class="mono">{{ missing_inbounds|join(", ") }}</b>. {{ t("Registration breaks off on them.") }}
+        </div>
+    </div>
+    {% endif %}
+    {% if inbounds %}
+    <div class="tscroll">
+        <table>
+            <thead>
+                <tr><th>{{ t("Name") }}</th><th>{{ t("Protocol") }}</th><th>{{ t("Port") }}</th><th>{{ t("Clients") }}</th><th>{{ t("For registrations") }}</th></tr>
+            </thead>
+            <tbody>
+            {% for ib in inbounds %}
+                <tr>
+                    <td>{{ ib.remark }}
+                        {% if not ib.enable %}<span class="badge off" style="margin-left:6px;">{{ t("off") }}</span>{% endif %}
+                    </td>
+                    <td class="mono muted">{{ ib.protocol }}</td>
+                    <td class="mono muted">{{ ib.port }}</td>
+                    <td class="mono">{{ ib.clients }}</td>
+                    <td>
+                        {% if ib.configured %}
+                        <span class="badge on">{{ t("yes") }}</span>
+                        {% else %}
+                        <span class="muted">{{ t("no") }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">{{ t("Could not fetch the inbound list") }}</div>
+    {% endif %}
+</div>
+{% include "_client_new_dialog.html" %}
+
+{% if server %}
+<script>
+    // Keeping the server panel current: by hand from the button, and on a timer
+    // if one is chosen. The choice is this browser's, so it is remembered here.
+    (function () {
+        var panel = document.getElementById("server-panel");
+        var every = document.getElementById("srv-every");
+        var button = document.getElementById("srv-refresh");
+        if (!panel || !every || !button) return;
+
+        var KEY = "server-refresh-seconds";
+        var timer = null;
+        var busy = false;
+
+        function part(name) {
+            // the online counter sits in the row of cards, not in this panel
+            return panel.querySelector('[data-srv="' + name + '"]')
+                || document.querySelector('[data-srv="' + name + '"]');
+        }
+
+        function meter(id, percent, text) {
+            var box = panel.querySelector('[data-meter="' + id + '"]');
+            if (!box) return;
+            box.querySelector('[data-role="percent"]').textContent = percent + "%";
+            var bar = box.querySelector('[data-role="bar"]');
+            bar.style.width = Math.min(percent, 100) + "%";
+            // the thresholds live in the stylesheet, so the page and this agree
+            bar.className = percent >= 90 ? "hot" : (percent >= 75 ? "warn" : "");
+            if (text !== null) box.querySelector('[data-role="text"]').textContent = text;
+        }
+
+        function online(count) {
+            var card = part("online-card");
+            if (!card) return;
+            // null means the panel cannot say; a zero is a real answer
+            card.hidden = count === null || count === undefined;
+            if (!card.hidden) part("online").textContent = count;
+        }
+
+        function draw(s) {
+            meter("cpu", s.cpu, null);
+            meter("mem", s.mem.percent, s.mem.text);
+            meter("disk", s.disk.percent, s.disk.text);
+            part("uptime").textContent = s.uptime_text;
+            part("loads").textContent = s.loads.join(" · ");
+            part("connections").textContent = s.connections;
+            part("swap-wrap").hidden = !s.swap.total;
+            part("swap").textContent = s.swap.text;
+
+            var err = part("xray-error");
+            err.textContent = s.xray_error || "";
+            err.hidden = !s.xray_error;
+
+            // xray can stop between two refreshes, and that is the one thing
+            // here worth noticing, so the badge is rebuilt rather than left.
+            var badge = part("versions").querySelector(".badge");
+            var running = s.xray_state === "running";
+            badge.className = "badge " + (running ? "on" : "off");
+            badge.textContent = running ? {{ t("xray is running")|tojson }}
+                                        : {{ t("xray is down")|tojson }};
+        }
+
+        function refresh(manual) {
+            if (busy) return;
+            busy = true;
+            button.classList.add("spinning");
+            fetch("/server-status", { credentials: "same-origin" })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d || !d.ok || !d.server) throw new Error();
+                    draw(d.server);
+                    online(d.online);
+                })
+                .catch(function () {
+                    // On a timer this must stay quiet: a panel that has gone
+                    // away would otherwise raise a toast every few seconds. The
+                    // figures simply stand until a refresh gets through.
+                    if (manual) window.showToast({{ t("Could not refresh")|tojson }}, "error");
+                })
+                .then(function () {
+                    busy = false;
+                    button.classList.remove("spinning");
+                });
+        }
+
+        function schedule() {
+            if (timer) { clearInterval(timer); timer = null; }
+            var seconds = parseInt(every.value, 10) || 0;
+            if (seconds > 0) timer = setInterval(function () { refresh(false); }, seconds * 1000);
+            try { localStorage.setItem(KEY, String(seconds)); } catch (e) {}
+        }
+
+        try {
+            var saved = localStorage.getItem(KEY);
+            if (saved !== null && every.querySelector('option[value="' + saved + '"]')) {
+                every.value = saved;
+            }
+        } catch (e) {}
+
+        every.addEventListener("change", schedule);
+        button.addEventListener("click", function () { refresh(true); });
+        // A hidden tab need not poll; it catches up when it comes back.
+        document.addEventListener("visibilitychange", function () {
+            if (document.hidden) { if (timer) { clearInterval(timer); timer = null; } }
+            else { schedule(); refresh(false); }
+        });
+        schedule();
+    })();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,29 @@
+{#
+  Fields needed both on the settings page and in the wizard.
+  The macro takes everything as arguments: an imported macro cannot see the
+  calling template's context.
+#}
+{% macro secret_field(id, key, label, st, hint) %}
+<div>
+    <label for="{{ id }}">{{ label }}{{ help(hint) }}</label>
+    <div class="secret-row">
+        <input type="text" id="{{ id }}" name="{{ id }}" class="secret-input"
+               data-key="{{ key }}" data-preview="{{ st.preview }}" value="{{ st.preview }}"
+               {% if st.isset %}data-masked="1"{% endif %}
+               placeholder="{{ t('not set') }}" autocomplete="off" spellcheck="false">
+        <button type="button" class="secret-eye" title="{{ t('Reveal in full') }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+        </button>
+    </div>
+</div>
+{% endmacro %}
+
+{#
+  The question mark beside a field's label. The text is plain, with no markup:
+  one shared bubble draws the tooltip and the text goes in as text.
+#}
+{% macro help(text) %}<button type="button" class="help" aria-label="{{ t('Hint') }}" data-tip="{{ text }}">?</button>{% endmacro %}

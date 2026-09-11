@@ -1,0 +1,36 @@
+{% extends "_layout.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<p style="margin: 0 0 14px 0;">{{ t("welcome.greeting") | emph }}</p>
+<p style="margin: 0 0 22px 0;">
+    {{ t("welcome.intro_again" if renewed else "welcome.intro_new") | emph }}
+</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px;">
+    {{ ui.stat(t("welcome.label_expire"), expire_text) }}
+    {{ ui.stat(t("welcome.label_limit"), limit_text) }}
+</table>
+
+{{ ui.button(sub_url, t("welcome.button_main")) }}
+
+{% if apps %}
+<p style="margin: 24px 0 14px 0; color: #a0a0a8; font-size: 15px; text-align: center;">
+    {{ t("welcome.apps_intro") | emph }}
+</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        {% for app in apps %}
+        <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
+        {% endfor %}
+    </tr>
+</table>
+{% endif %}
+
+<p style="margin: 26px 0 8px 0;">{{ t("welcome.manual_intro") | emph }}</p>
+{{ ui.code(sub_url) }}
+
+{% if t("welcome.commands_title") or t("welcome.commands_text") %}
+<p style="margin: 26px 0 8px 0; color: #ededef; font-weight: 600;">{{ t("welcome.commands_title") | emph }}</p>
+<p style="margin: 0;">{{ t("welcome.commands_text") | emph }}</p>
+{% endif %}
+{% endblock %}

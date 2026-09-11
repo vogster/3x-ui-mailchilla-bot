@@ -1,0 +1,50 @@
+# ── The installation's own state ───────────────────────────────────────
+# Written by the panel at runtime. These belong to one installation, not to
+# the repository: settings.json holds the mailbox passwords and the Gotify
+# token, and email_texts.json holds whatever the letters were rewritten to.
+settings.json
+email_texts.json
+*.json.tmp
+
+# Logs: the rotating file and its backups.
+logs/
+
+# Snapshots of a real installation taken before an experiment (they hold
+# passwords, so they must never be committed).
+.real-state-backup/
+
+# The real configuration: access to 3x-ui and the panel's own sign-in. It is
+# the installation's, not the repository's — .env.example is what ships.
+.env
+
+# Reference material kept beside the project: the 3x-ui API documentation.
+# Useful to have at hand, but it is somebody else's and not part of this.
+3xui-docs/
+
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# ── Editors and tooling ────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~
+.claude/
+.zcode/
+
+# ── Operating systems ──────────────────────────────────────────────────
+.DS_Store
+__MACOSX/
+Thumbs.db
+desktop.ini

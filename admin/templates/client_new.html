@@ -1,0 +1,80 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("New client") }}{% endblock %}
+{% block nav_clients %}active{% endblock %}
+{% block content %}
+<a href="/clients" class="back">← {{ t("Back to the list") }}</a>
+<h1 style="margin: 14px 0 4px 0;">{{ t("New client") }}</h1>
+<p class="muted" style="margin: 0 0 24px 0;">
+    {{ t("The values come from the settings; they can be changed for this client alone.") }}
+</p>
+
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<div class="panel">
+    <div style="padding: 24px;">
+        <form method="post" action="/clients/new" class="form-grid">
+            <div>
+                <label for="email">Email {{ fields.help(t("The client identifier in 3x-ui, and the address the letter goes to.")) }}</label>
+                <input type="text" id="email" name="email" value="{{ form.email }}"
+                       placeholder="user@example.com" autofocus>
+            </div>
+            <div>
+                <label for="comment">{{ t("Name / comment") }} {{ fields.help(t("Optional. Written into the comment field.")) }}</label>
+                <input type="text" id="comment" name="comment" value="{{ form.comment }}"
+                       placeholder="{{ t('Ivan Petrov') }}">
+            </div>
+            <div>
+                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
+                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
+                       value="{{ form.limit_gb }}">
+            </div>
+            <div>
+                <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
+                <input type="number" id="expire_days" name="expire_days" min="0" step="1"
+                       value="{{ form.expire_days }}">
+            </div>
+
+            <div>
+                <label for="xui_flow">flow {{ fields.help(t("The value from the settings. It applies only to inbounds whose transport supports flow (vless raw); in hysteria and XHTTP the panel zeroes it out itself.")) }}</label>
+                <input type="text" id="xui_flow" name="xui_flow" list="flow-options"
+                       value="{{ form.xui_flow }}" placeholder="{{ t('empty = no flow') }}">
+                <datalist id="flow-options">
+                    <option value="xtls-rprx-vision"></option>
+                </datalist>
+            </div>
+
+            <hr style="width:100%; margin: 6px 0;">
+
+            <div>
+                <label>{{ t("Inbounds") }}{{ fields.help(t(
+                    "Ticked as chosen in the settings for new registrations.")) }}</label>
+                {% if inbounds %}
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin-top: 6px;">
+                    {% for ib in inbounds %}
+                    <label class="checkbox-row" style="margin:0;">
+                        <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                               {% if ib.selected %}checked{% endif %}>
+                        <span>{{ ib.remark }} <span class="muted mono">id {{ ib.id }}</span></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="hint">{{ t("Could not fetch the inbound list from the panel.") }}</div>
+                {% endif %}
+            </div>
+
+            <div class="checkbox-row">
+                <input type="checkbox" id="send_email" name="send_email"
+                       {% if form.send_email %}checked{% endif %}>
+                <label for="send_email">{{ t("Send the welcome letter with the subscription link") }}</label>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn primary">{{ t("Create") }}</button>
+                <a href="/clients" class="btn">{{ t("Cancel") }}</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

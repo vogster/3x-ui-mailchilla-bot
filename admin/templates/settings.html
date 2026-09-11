@@ -1,0 +1,624 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("Settings") }}{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 8px 0;">{{ t("Settings") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0;">
+    {{ t("They apply at once, with no restart, and are kept in") }} <span class="mono">settings.json</span>.
+    {{ t("The values from") }} <span class="mono">.env</span> {{ t("matter only on a first run, while nothing is saved in the panel yet.") }}
+</p>
+
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% if saved %}
+<script>
+    // Success speaks through the toast. The handler waits for DOMContentLoaded
+    // because window.showToast is declared in the base template, further down.
+    window.addEventListener("DOMContentLoaded", function () {
+        window.showToast({% if saved == "texts" %}{{ t("The letter texts were saved")|tojson }}{% else %}{{ t("The settings were saved and applied")|tojson }}{% endif %});
+        // strip ?saved= from the address, or a refresh would repeat the toast
+        if (window.history && history.replaceState) {
+            history.replaceState(null, "", window.location.pathname);
+        }
+    });
+</script>
+{% endif %}
+
+{% if panel_unavailable %}
+<div class="flash error">
+    {{ t("Could not fetch the inbound list from the panel, so there is nothing to choose from. Check that 3x-ui is reachable and look at the connection settings in .env.") }}
+</div>
+{% endif %}
+
+{% if missing_inbounds %}
+<div class="flash error">
+    {{ t("Inbounds are ticked that the panel does not have:") }} <b class="mono">{{ missing_inbounds|join(", ") }}</b>.
+    {{ t("The panel adds a client down the list and stops at the first one that does not exist, never reaching the rest — so registration only half happens. Untick them and save.") }}
+</div>
+{% endif %}
+
+<div class="tabs">
+    <button type="button" class="active" data-tab="panel">{{ t("General") }}</button>
+    <button type="button" data-tab="mailbox">{{ t("Mail") }}</button>
+    <button type="button" data-tab="registration">{{ t("Registration") }}</button>
+    <button type="button" data-tab="apps">{{ t("Apps") }}</button>
+    <button type="button" data-tab="gotify">Gotify</button>
+    <button type="button" data-tab="mail">{{ t("Letters") }}</button>
+</div>
+
+<form method="post" action="/settings" class="tab-owner" data-owns="panel mailbox registration apps gotify">
+  <div class="tab-panel" data-panel="panel">
+    <div class="panel" style="margin-bottom: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Language") }}</h2>
+            <span class="muted">{{ t("the interface alone") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="panel_lang">{{ t("Panel language") }} {{ fields.help(t("The language the letters go out in is set apart from this one, on the «Letters» tab: an English panel can perfectly well send Russian letters.")) }}</label>
+                <select id="panel_lang" name="panel_lang">
+                    {% for l in lang_options() %}
+                    <option value="{{ l.code }}" {% if l.current %}selected{% endif %}>{{ l.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Service") }}</h2>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="service_name">{{ t("Service name") }} {{ fields.help(t("Goes into the letters — the signature, the subject of the welcome letter and the heading of the panel's pages.")) }}</label>
+                <input type="text" id="service_name" name="service_name"
+                       value="{{ state.SERVICE_NAME.value }}" placeholder="{{ app_name }}">
+            </div>
+            <div>
+                <label for="xui_subscription_base_url">{{ t("Subscription base address") }} {{ fields.help(t("The client token is appended to it, making the link the user pastes into their app. An empty field means: take the 3x-ui panel address and add /sub.")) }}</label>
+                <input type="text" id="xui_subscription_base_url" name="xui_subscription_base_url"
+                       value="{{ state.XUI_SUBSCRIPTION_BASE_URL.value }}"
+                       placeholder="https://sub.example.com">
+            </div>
+            <div>
+                <label for="admin_email">{{ t("Administrator address") }} {{ fields.help(t("The /broadcast mail command works from this address, and the broadcast report comes back to it. An empty value switches the command off. It is also offered as the address for test letters on the Letters tab.")) }}</label>
+                <input type="text" id="admin_email" name="admin_email"
+                       value="{{ state.ADMIN_EMAIL.value }}" placeholder="you@example.com">
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="mailbox" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Incoming · IMAP") }}</h2>
+            <span class="muted">{{ t("the mailbox the bot polls") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="imap_server">{{ t("Server") }} {{ fields.help(t("An empty value stops the mail polling.")) }}</label>
+                <input type="text" id="imap_server" name="imap_server"
+                       value="{{ state.IMAP_SERVER.value }}" placeholder="imap.example.com">
+            </div>
+            <div>
+                <label for="imap_port">{{ t("Port") }} {{ fields.help(t("993 is IMAP over SSL, which works almost everywhere.")) }}</label>
+                <input type="number" id="imap_port" name="imap_port" min="1" max="65535" step="1"
+                       value="{{ state.IMAP_PORT.value }}">
+            </div>
+            <div>
+                <label for="imap_user">{{ t("Login") }} {{ fields.help(t("Usually the full mailbox address.")) }}</label>
+                <input type="text" id="imap_user" name="imap_user"
+                       value="{{ state.IMAP_USER.value }}" placeholder="bot@example.com">
+            </div>
+            {{ fields.secret_field("imap_password", "IMAP_PASSWORD", t("Password"), state.IMAP_PASSWORD,
+                            t("For Gmail, Yandex and Mail.ru you need an app password — the ordinary mailbox password will not do.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Outgoing · SMTP") }}</h2>
+            <span class="muted">{{ t("letters leave from this address") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="smtp_server">{{ t("Server") }}</label>
+                <input type="text" id="smtp_server" name="smtp_server"
+                       value="{{ state.SMTP_SERVER.value }}" placeholder="smtp.example.com">
+            </div>
+            <div>
+                <label for="smtp_port">{{ t("Port") }} {{ fields.help(t("465 goes straight to SSL. On any other port the bot raises STARTTLS.")) }}</label>
+                <input type="number" id="smtp_port" name="smtp_port" min="1" max="65535" step="1"
+                       value="{{ state.SMTP_PORT.value }}">
+            </div>
+            <div>
+                <label for="smtp_user">{{ t("Login") }} {{ fields.help(t("It also becomes the sender address in the From header, beside the service name.")) }}</label>
+                <input type="text" id="smtp_user" name="smtp_user"
+                       value="{{ state.SMTP_USER.value }}" placeholder="bot@example.com">
+            </div>
+            {{ fields.secret_field("smtp_password", "SMTP_PASSWORD", t("Password"), state.SMTP_PASSWORD,
+                            t("Usually the same app password as for IMAP.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head"><h2>{{ t("Polling") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="poll_interval_seconds">{{ t("Mailbox check interval, seconds") }} {{ fields.help(t("This is how long the bot waits before looking into the mailbox again. Less than 5 seconds is not allowed: mail services start refusing connections that frequent. A new interval takes effect after the current wait.")) }}</label>
+                <input type="number" id="poll_interval_seconds" name="poll_interval_seconds"
+                       min="5" step="1" value="{{ state.POLL_INTERVAL_SECONDS.value }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Check") }}</h2>
+            <span class="muted">{{ t("on the values in the fields — saving is not required") }}</span>
+            <button type="button" class="btn small" id="mail-check" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div class="hint" id="mail-check-idle">
+                {{ t("The panel signs in to the mailbox over IMAP and to the SMTP server with whatever is in the fields above. If an administrator address is set on the General tab, a test letter goes there too.") }}
+            </div>
+            <ul class="check-list" id="mail-check-result" hidden></ul>
+        </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="registration" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Inbounds for new clients") }} {{ fields.help(t("A new client is added to every ticked inbound. Clients already registered are unaffected.")) }}</h2>
+            <span class="muted">
+                {% if state.XUI_INBOUND_IDS.value %}{{ t("chosen:") }} {{ state.XUI_INBOUND_IDS.value|length }}{% else %}{{ t("none chosen") }}{% endif %}
+            </span>
+        </div>
+        <div style="padding: 8px 20px 20px 20px;">
+            {% if inbounds %}
+            <input type="hidden" name="inbounds_present" value="1">
+            <div class="tscroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>{{ t("Name") }}</th>
+                            <th>{{ t("Protocol") }}</th>
+                            <th>{{ t("Port") }}</th>
+                            <th>{{ t("Clients [inbound table]") }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for ib in inbounds %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                                       id="ib{{ ib.id }}" {% if ib.selected %}checked{% endif %}>
+                            </td>
+                            <td>
+                                <label for="ib{{ ib.id }}" style="cursor: pointer;">{{ ib.remark }}</label>
+                                {% if not ib.enable %}
+                                <span class="badge off" style="margin-left: 8px;">{{ t("off") }}</span>
+                                {% endif %}
+                                <div class="muted mono">id {{ ib.id }}</div>
+                            </td>
+                            <td class="mono">{{ ib.protocol }}</td>
+                            <td class="mono">{{ ib.port }}</td>
+                            <td class="mono">{{ ib.clients }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="muted">{{ t("The list is empty — the 3x-ui panel is unreachable. The inbound selection stays as it is until the connection comes back.") }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head"><h2>{{ t("Defaults for registration") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
+                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
+                       value="{{ state.LIMIT_GB.value }}">
+            </div>
+            <div>
+                <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
+                <input type="number" id="expire_days" name="expire_days" min="0" step="1"
+                       value="{{ state.EXPIRE_DAYS.value }}">
+            </div>
+            <div>
+                <label for="codeword">{{ t("Code word for registration") }} {{ fields.help(t("A letter with this word in the subject or the body registers a new client.")) }}</label>
+                <input type="text" id="codeword" name="codeword" value="{{ state.CODEWORD.value }}">
+            </div>
+            <div>
+                <label for="xui_flow">flow {{ fields.help(t("Applied to new clients. An empty value is fine. The panel applies flow only to inbounds whose transport supports it (vless raw) and zeroes it out in hysteria and XHTTP, so a client without such inbounds keeps an empty field, and that is normal.")) }}</label>
+                <input type="text" id="xui_flow" name="xui_flow" list="flow-options"
+                       value="{{ state.XUI_FLOW.value }}" placeholder="{{ t('empty = no flow') }}">
+                <datalist id="flow-options">
+                    <option value="xtls-rprx-vision"></option>
+                </datalist>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="remark_include_name" name="remark_include_name"
+                       {% if state.REMARK_INCLUDE_NAME.value %}checked{% endif %}>
+                <label for="remark_include_name">{{ t("Write the sender's name into the client's comment") }}</label>
+            </div>
+        </div>
+    </div>
+
+  </div>
+
+  <div class="tab-panel" data-panel="apps" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t('The "Add to …" buttons in the welcome letter') }}{{ fields.help(t("In the letter the subscription link is appended to the scheme, giving happ://add/https://sub.example.com/token. An empty field removes that app's button from the letter, and the whole row of buttons is rebuilt so no gaps are left. The subscription link is always in the letter as text as well.")) }}</h2>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="happ_url">{{ t("Happ scheme") }}</label>
+                <input type="text" id="happ_url" name="happ_url"
+                       value="{{ state.HAPP_URL.value }}" placeholder="happ://add">
+            </div>
+            <div>
+                <label for="incy_url">{{ t("Incy scheme") }}</label>
+                <input type="text" id="incy_url" name="incy_url"
+                       value="{{ state.INCY_URL.value }}" placeholder="incy://add">
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="gotify" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Connection") }}</h2>
+            <span class="muted">
+                {% if state.GOTIFY_TOKEN.isset %}{{ t("token is set") }}{% else %}{{ t("token is not set") }}{% endif %}
+            </span>
+            {% if state.GOTIFY_URL.value and state.GOTIFY_TOKEN.isset %}
+            <button type="button" class="btn small" id="gotify-test" style="margin-left:auto;">
+                {{ t("Send a test one") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="gotify_url">{{ t("Gotify server address") }} {{ fields.help(t("An empty value switches the notifications off.")) }}</label>
+                <input type="text" id="gotify_url" name="gotify_url"
+                       value="{{ state.GOTIFY_URL.value }}" placeholder="https://gotify.example.com">
+            </div>
+            <div>
+                <label for="gotify_priority">{{ t("Priority") }} {{ fields.help(t("From 0 to 10. In Gotify the priority decides how loudly the push arrives.")) }}</label>
+                <input type="number" id="gotify_priority" name="gotify_priority" min="0" max="10" step="1"
+                       value="{{ state.GOTIFY_PRIORITY.value }}">
+            </div>
+            {{ fields.secret_field("gotify_token", "GOTIFY_TOKEN", t("App token"), state.GOTIFY_TOKEN,
+                            t("Created in Gotify on the Apps tab. An empty value switches the notifications off just as an empty address does.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("The registration notification text") }}</h2>
+            <span class="muted">{{ t("substitutions:") }} <span class="mono">{email}</span>,
+                <span class="mono">{name}</span>, <span class="mono">{service}</span></span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="gotify_title">{{ t("Title") }}</label>
+                <input type="text" id="gotify_title" name="gotify_title"
+                       value="{{ state.GOTIFY_TITLE.value }}">
+            </div>
+            <div>
+                <label for="gotify_message">{{ t("Text") }} {{ fields.help(t("The notification goes out when a client registers themselves, by letter with the code word. {name} is the name from the letter's header, and it may be empty.")) }}</label>
+                <textarea id="gotify_message" name="gotify_message"
+                          style="min-height:90px;">{{ state.GOTIFY_MESSAGE.value }}</textarea>
+            </div>
+        </div>
+    </div>
+  </div>
+
+    <div class="form-bar">
+        <span class="state" id="settings-state">{{ t("No changes") }}</span>
+        <a href="/settings" class="btn cancel" id="settings-cancel">{{ t("Discard the changes") }}</a>
+        <button type="submit" class="btn primary" id="settings-save">{{ t("Save") }}</button>
+    </div>
+</form>
+
+<div class="tab-owner" data-owns="mail" hidden>
+  <div class="tab-panel" data-panel="mail">
+    <form method="post" action="/settings/texts" id="texts-form">
+    <div class="filters" style="border: 1px solid var(--line); border-radius: var(--radius);
+                                margin-bottom: 16px; background: var(--surface);">
+        <div class="filter-group">
+            <span class="lbl">{{ t("Letter language") }}</span>
+            <select id="mail-lang">
+                {% for l in mail_lang_options %}
+                <option value="{{ l.code }}" {% if l.current %}selected{% endif %}>{{ l.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group" style="flex: 1;">
+            <span class="lbl">{{ t("Address for test letters") }}</span>
+            <input type="text" id="test-email" value="{{ test_email }}"
+                   placeholder="{{ t('where to send the samples') }}" style="flex: 1; min-width: 220px;">
+        </div>
+        <span class="hint" style="margin: 0;">
+            {{ t("The texts below are those of the chosen letter language, and are edited for each language separately. The samples are built on made-up data — no real client is involved.") }}
+        </span>
+    </div>
+
+    <div class="mail-editor">
+        <nav class="mail-menu">
+            {% for g in text_groups %}
+            <button type="button" data-mail="{{ g.id }}" class="{% if loop.first %}on{% endif %}">
+                <span>{{ g.title }}</span>
+                {% if g.changed %}<span class="mark">{{ g.changed }}</span>{% endif %}
+            </button>
+            {% endfor %}
+        </nav>
+
+        <div>
+            {% for g in text_groups %}
+            <div class="mail-pane panel" data-mail="{{ g.id }}" {% if not loop.first %}hidden{% endif %}>
+                <div class="panel-head">
+                    <h2>{{ g.title }}</h2>
+                    <span class="muted">{{ g.hint }}</span>
+                    <div style="display:flex; gap:8px; margin-left:auto; align-items:center;">
+                        {% if g.kinds %}
+                        <div class="mail-kind" style="width: 190px;">
+                            {% with kinds = g.kinds, picker_name = "test_kind" %}
+                                {% include "_kind_picker.html" %}
+                            {% endwith %}
+                        </div>
+                        {% endif %}
+                        {% if g.can_test %}
+                        <button type="button" class="btn small mail-test" data-group="{{ g.id }}">
+                            {{ t("Test letter") }}
+                        </button>
+                        {% endif %}
+                        {% if g.changed %}
+                        <button type="button" class="btn small mail-reset" data-group="{{ g.id }}">
+                            {{ t("Restore the originals") }}
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="padding: 22px 20px;">
+                    {% for f in g.fields %}
+                    <div class="mail-field{% if f.changed %} changed{% endif %}">
+                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
+                        {% if f.kind == "text" %}
+                        <textarea id="f-{{ loop.index }}-{{ g.id }}" name="text:{{ f.key }}"
+                                  rows="3">{{ f.value }}</textarea>
+                        {% else %}
+                        <input type="text" id="f-{{ loop.index }}-{{ g.id }}"
+                               name="text:{{ f.key }}" value="{{ f.value }}">
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-bar">
+        <span class="state" id="texts-state">{{ t("No changes") }}</span>
+        <button type="submit" class="btn primary" id="texts-save">{{ t("Save the texts") }}</button>
+    </div>
+    </form>
+
+    <!-- The language switch cannot live inside #texts-form: a form does not nest.
+         It sits beside it and is submitted from the picker above. -->
+    <form method="post" action="/settings/texts/lang" id="mail-lang-form" hidden>
+        <input type="hidden" name="lang" id="mail-lang-value">
+    </form>
+  </div>
+</div>
+
+<script>
+    // Both sections sit in one form, so Save stores everything at once,
+    // whichever tab happens to be open.
+    (function () {
+        var buttons = document.querySelectorAll(".tabs button");
+        var panels = document.querySelectorAll(".tab-panel");
+        var KEY = "settings-tab";
+
+        var owners = document.querySelectorAll(".tab-owner");
+
+        function show(name) {
+            buttons.forEach(function (b) { b.classList.toggle("active", b.dataset.tab === name); });
+            // The letter texts have a form of their own — nested forms are not
+            // allowed — so whole containers are switched as well.
+            owners.forEach(function (o) {
+                o.hidden = o.dataset.owns.split(" ").indexOf(name) === -1;
+            });
+            panels.forEach(function (p) { p.hidden = p.dataset.panel !== name; });
+            // At widths where the strip still scrolls, a tab restored from last
+            // time could be off to the right — bring it into view.
+            var on = document.querySelector('.tabs button.active');
+            if (on && on.scrollIntoView) {
+                on.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+            try { localStorage.setItem(KEY, name); } catch (e) {}
+        }
+
+        buttons.forEach(function (b) {
+            b.addEventListener("click", function () { show(b.dataset.tab); });
+        });
+
+        try {
+            var saved = localStorage.getItem(KEY);
+            if (saved && document.querySelector('.tab-panel[data-panel="' + saved + '"]')) show(saved);
+        } catch (e) {}
+
+        // A reminder of unsaved work: the settings are spread across several
+        // tabs, and it is easy to forget an edit made on a neighbouring one.
+        var form = document.querySelector('form[action="/settings"]');
+        var state = document.getElementById("settings-state");
+        if (form && state) {
+            var initial = new URLSearchParams(new FormData(form)).toString();
+            var save = document.getElementById("settings-save");
+            var cancel = document.getElementById("settings-cancel");
+
+            function refresh() {
+                var changed = new URLSearchParams(new FormData(form)).toString() !== initial;
+                state.textContent = changed ? {{ t("There are unsaved changes")|tojson }} : {{ t("No changes")|tojson }};
+                state.classList.toggle("dirty", changed);
+                // Save stays disabled while there is nothing to save; cancel
+                // appears only when there is something to cancel
+                if (save) save.disabled = !changed;
+                if (cancel) cancel.classList.toggle("show", changed);
+            }
+            refresh();
+            form.addEventListener("input", refresh);
+            form.addEventListener("change", refresh);
+        }
+
+        var test = document.getElementById("gotify-test");
+        if (test) {
+            test.addEventListener("click", function () {
+                test.disabled = true;
+                var was = test.textContent.trim();
+                test.textContent = {{ t("Sending…")|tojson }};
+                fetch("/settings/gotify/test", { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { test.textContent = d.ok ? {{ t("Sent")|tojson }} : (d.error || {{ t("It did not work")|tojson }}); })
+                    .catch(function () { test.textContent = {{ t("The request failed")|tojson }}; })
+                    .then(function () {
+                        setTimeout(function () { test.textContent = was; test.disabled = false; }, 2500);
+                    });
+            });
+        }
+    })();
+</script>
+<script>
+
+    // The letter text editor
+    (function () {
+        var menu = document.querySelectorAll(".mail-menu button");
+        var panes = document.querySelectorAll(".mail-pane");
+        var KEY = "mail-group";
+
+        function show(id) {
+            menu.forEach(function (b) { b.classList.toggle("on", b.dataset.mail === id); });
+            panes.forEach(function (p) { p.hidden = p.dataset.mail !== id; });
+            try { localStorage.setItem(KEY, id); } catch (e) {}
+        }
+        menu.forEach(function (b) {
+            b.addEventListener("click", function () { show(b.dataset.mail); });
+        });
+        try {
+            var saved = localStorage.getItem(KEY);
+            if (saved && document.querySelector('.mail-pane[data-mail="' + saved + '"]')) show(saved);
+        } catch (e) {}
+
+        // The unsaved indicator, as on the settings
+        var form = document.getElementById("texts-form");
+        var state = document.getElementById("texts-state");
+        var save = document.getElementById("texts-save");
+        if (form && state) {
+            // Only the letter texts count. The kind picker beside the broadcast's
+            // test button sits in this form too, but it chooses what the sample
+            // letter should look like — it edits nothing, and lighting up
+            // "unsaved changes" over it would be a lie.
+            function signature() {
+                var parts = [];
+                new FormData(form).forEach(function (value, key) {
+                    if (key.indexOf("text:") === 0) parts.push(key + "=" + value);
+                });
+                return parts.join("&");
+            }
+
+            var initial = signature();
+            function refresh() {
+                var changed = signature() !== initial;
+                state.textContent = changed ? {{ t("There are unsaved changes")|tojson }} : {{ t("No changes")|tojson }};
+                state.classList.toggle("dirty", changed);
+                if (save) save.disabled = !changed;
+            }
+            form.addEventListener("input", refresh);
+            refresh();
+        }
+
+        // Switching the language reloads the editor with that language's texts,
+        // so anything typed and not saved would be lost — hence the question.
+        var picker = document.getElementById("mail-lang");
+        var langForm = document.getElementById("mail-lang-form");
+        if (picker && langForm) {
+            var chosen = picker.value;
+            picker.addEventListener("change", function () {
+                var go = function () {
+                    document.getElementById("mail-lang-value").value = picker.value;
+                    langForm.submit();
+                };
+                if (save && !save.disabled) {
+                    window.confirmAction({{ t("The letter texts have unsaved changes. Switching the language will lose them. Switch anyway?")|tojson }})
+                        .then(function (ok) {
+                            if (ok) { go(); } else { picker.value = chosen; }
+                        });
+                } else {
+                    go();
+                }
+            });
+        }
+
+        function post(url, body) {
+            return fetch(url, {
+                method: "POST",
+                headers: { "X-Requested-With": "fetch", "Content-Type": "application/x-www-form-urlencoded" },
+                body: body
+            }).then(function (r) { return r.json(); });
+        }
+
+        document.querySelectorAll(".mail-test").forEach(function (b) {
+            b.addEventListener("click", function () {
+                var field = document.getElementById("test-email");
+                var to = (field && field.value || "").trim();
+                if (!to) {
+                    window.showToast({{ t("Give an address for the test letters")|tojson }}, "error");
+                    if (field) field.focus();
+                    return;
+                }
+                b.disabled = true;
+                var was = b.textContent;
+                b.textContent = {{ t("Sending…")|tojson }};
+                // the broadcast has a kind picker beside its button
+                var picker = b.parentNode.querySelector(".mail-kind input[type=hidden]");
+                var body = "group=" + encodeURIComponent(b.dataset.group) +
+                           "&email=" + encodeURIComponent(to);
+                if (picker) body += "&kind=" + encodeURIComponent(picker.value);
+                post("/settings/texts/test", body)
+                    .then(function (d) {
+                        window.showToast(d.ok ? {{ t("A test letter went to")|tojson }} + " " + to
+                                              : (d.error || {{ t("Could not send it")|tojson }}),
+                                         d.ok ? "" : "error");
+                    })
+                    .catch(function () { window.showToast({{ t("The request did not go through")|tojson }}, "error"); })
+                    .then(function () { b.disabled = false; b.textContent = was; });
+            });
+        });
+
+        document.querySelectorAll(".mail-reset").forEach(function (b) {
+            b.addEventListener("click", function () {
+                window.confirmAction({{ t("Restore this letter's original texts?")|tojson }}).then(function (ok) {
+                    if (!ok) return;
+                    post("/settings/texts/reset", "group=" + encodeURIComponent(b.dataset.group))
+                        .then(function () { window.location.reload(); })
+                        .catch(function () { window.showToast({{ t("Could not reset it")|tojson }}, "error"); });
+                });
+            });
+        });
+    })();
+</script>
+
+{% endblock %}

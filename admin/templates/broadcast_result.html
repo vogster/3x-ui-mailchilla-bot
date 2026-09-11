@@ -1,0 +1,54 @@
+{% extends "base_admin.html" %}
+{% block title %}{% if done %}{{ t("Broadcast result") }}{% else %}{{ t("Broadcast in progress") }}{% endif %}{% endblock %}
+{% block nav_broadcast %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 8px 0;">
+    {% if done %}{{ t("The broadcast is finished") }}{% else %}{{ t("The broadcast is running") }}{% endif %}
+</h1>
+
+{% if error %}
+<div class="flash error">
+    {{ t("The broadcast was cut short by an error:") }} {{ error }}
+</div>
+{% elif done %}
+<div class="flash {% if failed_count %}error{% else %}success{% endif %}">
+    {{ t("Sent") }} <b>{{ sent_count }}</b> {{ t("of") }} <b>{{ total_recipients }}</b>{% if failed_count %},
+    {{ t("not delivered") }} <b>{{ failed_count }}</b> — {{ t("details are in the log") }}{% endif %}.
+</div>
+{% else %}
+<div class="flash">
+    {{ t("Sent") }} <b>{{ sent_count }}</b> {{ t("of") }} <b>{{ total_recipients }}</b>{% if failed_count %},
+    {{ t("failures") }} <b>{{ failed_count }}</b>{% endif %}. {{ t("The page refreshes itself — it can be closed, the sending happens on the server.") }}
+</div>
+{% endif %}
+
+<div class="panel">
+    <div class="panel-head"><h2>{{ t("Progress") }}</h2></div>
+    <div style="padding: 20px;">
+        <div class="bar" style="width: 100%; height: 12px;">
+            <div style="width: {{ percent }}%;"></div>
+        </div>
+        <p class="muted" style="margin: 10px 0 0 0;">{{ percent }}%</p>
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 18px;">
+    <div class="panel-head"><h2>{{ t("Broadcast text") }}</h2></div>
+    <div style="padding: 20px;">
+        <p class="muted">{{ t("Subject:") }} {{ subject }}</p>
+        <div style="white-space: pre-wrap; line-height: 1.6;">{{ message }}</div>
+    </div>
+</div>
+
+<div style="margin-top: 18px; display:flex; gap:10px;">
+    <a href="/broadcast" class="btn primary">{{ t("New broadcast") }}</a>
+    <a href="/clients" class="btn">{{ t("To the client list") }}</a>
+</div>
+
+{% if not done %}
+<script>
+    // Keep re-reading the status until the job is finished.
+    setTimeout(function () { location.reload(); }, 3000);
+</script>
+{% endif %}
+{% endblock %}

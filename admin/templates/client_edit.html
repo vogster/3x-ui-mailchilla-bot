@@ -1,0 +1,87 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("Edit client") }}{% endblock %}
+{% block nav_clients %}active{% endblock %}
+{% block content %}
+<a href="/clients/{{ client.uuid }}" class="back">← {{ t("Back to the client") }}</a>
+<h1 style="margin: 14px 0 4px 0;">{{ t("Editing a client") }}</h1>
+<p class="muted" style="margin: 0 0 24px 0;">
+    <span class="mono">{{ client.remark or client.bare_email }}</span>{% if client.comment %} · {{ client.comment }}{% endif %}
+</p>
+
+{% if error %}
+<div class="flash error">{{ error }}</div>
+{% endif %}
+
+<div class="panel">
+    <div style="padding: 24px;">
+        <form method="post" action="/clients/{{ client.uuid }}/edit" class="form-grid">
+            <div>
+                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited. The current value is prefilled; leave it as it is to change nothing.")) }}</label>
+                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1" value="{{ limit_gb }}">
+            </div>
+            <div>
+                <label for="expire_days">{{ t("Validity, days from now") }} {{ fields.help(t("0 means it never expires. Sets a new expiry of today plus N days.")) }}</label>
+                <input type="number" id="expire_days" name="expire_days" min="0" step="1" value="{{ days_left }}">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="enable" name="enable" {% if client.enable %}checked{% endif %}>
+                <label for="enable">{{ t("Subscription is active") }}</label>
+            </div>
+
+            <hr style="width:100%; margin: 6px 0;">
+
+            <div>
+                <label>{{ t("Client identifier in the panel") }} {{ fields.help(t("The email field in 3x-ui. It is not editable here: it is the key requests to the panel are made by, and the panel accepts only a limited character set in it.")) }}</label>
+                <input type="text" value="{{ client.remark }}" disabled>
+            </div>
+            <div>
+                <label for="comment">{{ t("Name / comment") }} {{ fields.help(t("For instance: Ivan Ivanov. Written into the comment field; an empty value clears it.")) }}</label>
+                <input type="text" id="comment" name="comment" value="{{ client.comment }}">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="keep_comment" name="keep_comment" checked>
+                <label for="keep_comment">{{ t("Leave the name/comment alone (keep what the panel has)") }}</label>
+            </div>
+
+            <hr style="width:100%; margin: 6px 0;">
+
+            <div>
+                <label>{{ t("The client's inbounds") }}{{ fields.help(t("Ticking and unticking take effect on their own: the client is added to the new inbounds and taken out of the old ones, and is not touched otherwise. The subscription link, uuid, limit, expiry, name and traffic count all stay as they were.")) }}</label>
+                {% if inbounds %}
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin-top: 6px;">
+                    {% for ib in inbounds %}
+                    <label class="checkbox-row" style="margin:0;">
+                        <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                               {% if ib.selected %}checked{% endif %}>
+                        <span>{{ ib.remark }} <span class="muted mono">id {{ ib.id }}</span></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="hint">{{ t("Could not fetch the inbound list from the panel.") }}</div>
+                {% endif %}
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn primary">{{ t("Save") }}</button>
+                <a href="/clients/{{ client.uuid }}" class="btn">{{ t("Cancel") }}</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 24px;">
+    <div class="panel-head"><h2 style="color:#f87171;">{{ t("Danger zone") }}</h2></div>
+    <div style="padding: 20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <form method="post" action="/clients/{{ client.uuid }}/delete" style="display:inline;"
+              data-confirm="{{ t('Delete client') }} «{{ client.remark or client.bare_email }}» {{ t('with no way back?') }}"
+              data-confirm-danger="1">
+            <label class="checkbox-row" style="display:inline-flex; margin-right:14px;">
+                <input type="checkbox" name="keep_traffic"> {{ t("keep the traffic figures") }}
+            </label>
+            <button type="submit" class="btn danger">{{ t("Delete the client") }}</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{{ title | plain }}
+{% for p in paragraphs %}
+{{ p | plain }}
+{% endfor %}{% if bullets %}{% for item in bullets %}
+  - {{ item | plain }}
+{% endfor %}{% endif %}{% if code_text %}
+{{ code_text }}
+{% endif %}
+--
+{{ service_name }}

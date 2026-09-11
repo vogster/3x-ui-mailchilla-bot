@@ -1,0 +1,436 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("First-run setup") }}{% endblock %}
+{# The wizard takes the whole screen: no sidebar, no banner. Nothing to click
+   instead of the thing we are asking for. #}
+{% block chrome %}{% endblock %}
+{% block setup_banner %}{% endblock %}
+{% block content %}
+<style>
+    /* The base layout expects a sidebar; there is none here. */
+    .main { padding-left: 0; }
+    .container { max-width: none; padding: 0; }
+
+    .setup-top {
+        position: sticky; top: 0; z-index: 5;
+        display: flex; align-items: center; gap: 12px;
+        padding: 13px 24px;
+        background: var(--bg); border-bottom: 1px solid var(--line);
+    }
+    .setup-brand {
+        display: flex; align-items: center; gap: 9px;
+        font-size: 13px; font-weight: 600; color: var(--fg);
+    }
+    .setup-brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+    .setup-close {
+        margin-left: auto; width: 30px; height: 30px; flex: 0 0 30px;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: var(--fg-2); text-decoration: none; border-radius: var(--radius-sm);
+    }
+    .setup-close:hover { color: var(--fg); background: var(--surface); }
+    .setup-close svg { width: 15px; height: 15px; }
+    .setup-body { max-width: 960px; margin: 0 auto; padding: 32px 24px 80px; }
+
+    .wiz-rail {
+        list-style: none; margin: 0 0 26px 0; padding: 0;
+        display: flex; flex-wrap: wrap; gap: 8px 20px;
+    }
+    .wiz-rail li {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 13px; color: var(--fg-2);
+    }
+    .wiz-rail .num {
+        width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; border: 1px solid var(--line); background: var(--surface);
+    }
+    .wiz-rail li.current { color: var(--fg); }
+    .wiz-rail li.current .num { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+    .wiz-rail li.done .num { border-color: var(--ok); color: var(--ok); }
+    .wiz-rail .opt { font-size: 11px; color: var(--fg-2); opacity: .75; }
+
+    .wiz-bar {
+        display: flex; align-items: center; gap: 10px;
+        margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line);
+    }
+    .wiz-bar .grow { flex: 1; }
+    .wiz-bar .err { color: var(--err); font-size: 13px; }
+    .wiz-sum { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+    .wiz-sum li { display: flex; gap: 12px; font-size: 13px; }
+    .wiz-sum .k { width: 190px; flex: 0 0 190px; color: var(--fg-2); }
+    .wiz-sum .v { color: var(--fg); word-break: break-all; }
+    @media (max-width: 720px) {
+        .wiz-sum li { flex-direction: column; gap: 2px; }
+        .wiz-sum .k { width: auto; flex: none; }
+    }
+</style>
+
+<div class="setup-top">
+    <div class="setup-brand"><span class="dot"></span>{{ service_name }}</div>
+    <a class="setup-close" href="{{ back }}" title="{{ t('Close and go back') }}">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>
+    </a>
+</div>
+
+<div class="setup-body">
+<h1 style="margin: 0 0 8px 0;">{{ t("First-run setup") }}</h1>
+<p class="muted" style="margin: 0 0 22px 0;">
+    {{ t("Every step is saved the moment you press «Next», so you can close the tab and come back later. The optional steps can be skipped — they are always waiting for you in") }} <a href="/settings">{{ t("Settings [in the settings]") }}</a>.
+</p>
+
+<ol class="wiz-rail" id="wiz-rail">
+    <li data-for="1"><span class="num">1</span> {{ t("Service") }}</li>
+    <li data-for="2"><span class="num">2</span> {{ t("Mail") }}</li>
+    <li data-for="3"><span class="num">3</span> {{ t("Registration") }}</li>
+    <li data-for="4"><span class="num">4</span> {{ t("Notifications") }} <span class="opt">{{ t("optional") }}</span></li>
+    <li data-for="5"><span class="num">5</span> {{ t("Apps") }} <span class="opt">{{ t("optional") }}</span></li>
+    <li data-for="6"><span class="num">6</span> {{ t("Done") }}</li>
+</ol>
+
+<!-- 1. Service -->
+<div class="wiz-step" data-step="1">
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("Service") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="service_name">{{ t("Service name") }} {{ fields.help(t("It goes into the letters — the signature and the subject.")) }}</label>
+                <input type="text" id="service_name" name="service_name"
+                       value="{{ state.SERVICE_NAME.value }}" placeholder="{{ app_name }}">
+            </div>
+            <div>
+                <label for="xui_subscription_base_url">{{ t("Subscription base address") }} {{ fields.help(t("The client token is appended to it. An empty field means: take the 3x-ui panel address and add /sub.")) }}</label>
+                <input type="text" id="xui_subscription_base_url" name="xui_subscription_base_url"
+                       value="{{ state.XUI_SUBSCRIPTION_BASE_URL.value }}"
+                       placeholder="https://sub.example.com">
+            </div>
+            <div>
+                <label for="admin_email">{{ t("Administrator address") }} {{ fields.help(t("The /broadcast mail command works from this address, and the broadcast reports and test letters come back to it. It may be left empty.")) }}</label>
+                <input type="text" id="admin_email" name="admin_email"
+                       value="{{ state.ADMIN_EMAIL.value }}" placeholder="you@example.com">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Mail -->
+<div class="wiz-step" data-step="2" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Incoming · IMAP") }}</h2>
+            <span class="muted">{{ t("the mailbox the bot polls") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="imap_server">{{ t("Server") }}</label>
+                <input type="text" id="imap_server" name="imap_server"
+                       value="{{ state.IMAP_SERVER.value }}" placeholder="imap.example.com">
+            </div>
+            <div>
+                <label for="imap_port">{{ t("Port") }} {{ fields.help(t("993 is IMAP over SSL.")) }}</label>
+                <input type="number" id="imap_port" name="imap_port" min="1" max="65535"
+                       value="{{ state.IMAP_PORT.value }}">
+            </div>
+            <div>
+                <label for="imap_user">{{ t("Login") }}</label>
+                <input type="text" id="imap_user" name="imap_user"
+                       value="{{ state.IMAP_USER.value }}" placeholder="bot@example.com">
+            </div>
+            {{ fields.secret_field("imap_password", "IMAP_PASSWORD", t("Password"), state.IMAP_PASSWORD,
+                                   t("For Gmail, Yandex and Mail.ru you need an app password — the ordinary mailbox password will not do.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Outgoing · SMTP") }}</h2>
+            <span class="muted">{{ t("letters leave from this address") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="smtp_server">{{ t("Server") }}</label>
+                <input type="text" id="smtp_server" name="smtp_server"
+                       value="{{ state.SMTP_SERVER.value }}" placeholder="smtp.example.com">
+            </div>
+            <div>
+                <label for="smtp_port">{{ t("Port") }} {{ fields.help(t("465 goes straight to SSL; anything else raises STARTTLS.")) }}</label>
+                <input type="number" id="smtp_port" name="smtp_port" min="1" max="65535"
+                       value="{{ state.SMTP_PORT.value }}">
+            </div>
+            <div>
+                <label for="smtp_user">{{ t("Login") }}</label>
+                <input type="text" id="smtp_user" name="smtp_user"
+                       value="{{ state.SMTP_USER.value }}" placeholder="bot@example.com">
+            </div>
+            {{ fields.secret_field("smtp_password", "SMTP_PASSWORD", t("Password"), state.SMTP_PASSWORD,
+                                   t("Usually the same app password as for IMAP.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Check") }}</h2>
+            <span class="muted">{{ t("before saving") }}</span>
+            <button type="button" class="btn small" id="mail-check" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div class="hint" id="mail-check-idle">
+                {{ t("The panel signs in to the mailbox over IMAP and to the SMTP server with whatever is in the fields. If an administrator address was given on the first step, a letter goes there.") }}
+            </div>
+            <ul class="check-list" id="mail-check-result" hidden></ul>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Registration -->
+<div class="wiz-step" data-step="3" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Inbounds for new clients") }} {{ fields.help(t("A new client is added to every ticked inbound. With none ticked, registration will not work at all.")) }}</h2>
+            <span class="muted">{{ t("from your own 3x-ui list") }}</span>
+        </div>
+        <div style="padding: 8px 20px 20px 20px;">
+            {% if inbounds %}
+            <input type="hidden" name="inbounds_present" value="1">
+            <div class="tscroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>{{ t("Name") }}</th>
+                            <th>{{ t("Protocol") }}</th>
+                            <th>{{ t("Port") }}</th>
+                            <th>{{ t("Clients [inbound table]") }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for ib in inbounds %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                                       id="wib{{ ib.id }}" {% if ib.selected %}checked{% endif %}>
+                            </td>
+                            <td>
+                                <label for="wib{{ ib.id }}" style="cursor: pointer;">{{ ib.remark }}</label>
+                                {% if not ib.enable %}<span class="badge off" style="margin-left:8px;">{{ t("off") }}</span>{% endif %}
+                                <div class="muted mono">id {{ ib.id }}</div>
+                            </td>
+                            <td class="mono">{{ ib.protocol }}</td>
+                            <td class="mono">{{ ib.port }}</td>
+                            <td class="mono">{{ ib.clients }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="muted">{{ t("The 3x-ui panel did not answer with a list of inbounds. Check") }} <span class="mono">XUI_URL</span> {{ t("and the access to it in") }} <span class="mono">.env</span>, {{ t("then refresh the page.") }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head"><h2>{{ t("The rules for new clients") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="codeword">{{ t("Code word") }} {{ fields.help(t("A letter with this word in the subject or the body registers a new client. Choose something no one would guess.")) }}</label>
+                <input type="text" id="codeword" name="codeword" value="{{ state.CODEWORD.value }}">
+            </div>
+            <div>
+                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
+                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
+                       value="{{ state.LIMIT_GB.value }}">
+            </div>
+            <div>
+                <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
+                <input type="number" id="expire_days" name="expire_days" min="0" step="1"
+                       value="{{ state.EXPIRE_DAYS.value }}">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 4. Notifications -->
+<div class="wiz-step" data-step="4" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Gotify notifications") }} {{ fields.help(t("A push at every registration. Without Gotify everything else works as usual, so this step can be skipped.")) }}</h2>
+            <span class="muted">{{ t("optional") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="gotify_url">{{ t("Server address") }}</label>
+                <input type="text" id="gotify_url" name="gotify_url"
+                       value="{{ state.GOTIFY_URL.value }}" placeholder="https://gotify.example.com">
+            </div>
+            {{ fields.secret_field("gotify_token", "GOTIFY_TOKEN", t("App token"), state.GOTIFY_TOKEN,
+                                   t("Created in Gotify on the Apps tab. Without it no notification goes out.")) }}
+        </div>
+    </div>
+</div>
+
+<!-- 5. Apps -->
+<div class="wiz-step" data-step="5" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("The app buttons in the letter") }} {{ fields.help(t("The welcome letter gets «Add to Happ / Incy» buttons carrying the subscription link. An empty field removes that button; the link itself is always in the letter as text.")) }}</h2>
+            <span class="muted">{{ t("optional") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="happ_url">{{ t("Happ scheme") }}</label>
+                <input type="text" id="happ_url" name="happ_url"
+                       value="{{ state.HAPP_URL.value }}" placeholder="happ://add">
+            </div>
+            <div>
+                <label for="incy_url">{{ t("Incy scheme") }}</label>
+                <input type="text" id="incy_url" name="incy_url"
+                       value="{{ state.INCY_URL.value }}" placeholder="incy://add">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 6. Done -->
+<div class="wiz-step" data-step="6" hidden>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("All done") }}</h2></div>
+        <div style="padding: 24px;">
+            <ul class="wiz-sum" id="wiz-sum"></ul>
+            <p class="hint" style="margin-top: 18px;">
+                {{ t("The settings are already in force — nothing has to be restarted. Any of this can be changed in") }} <a href="/settings">{{ t("Settings [in the settings]") }}</a>, {{ t("where the texts of every letter are edited as well.") }}
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="wiz-bar">
+    <button type="button" class="btn" id="wiz-back" hidden>{{ t("Back") }}</button>
+    <span class="err" id="wiz-error"></span>
+    <span class="grow"></span>
+    <button type="button" class="btn" id="wiz-skip" hidden>{{ t("Skip") }}</button>
+    <button type="button" class="btn primary" id="wiz-next">{{ t("Next") }}</button>
+    <form method="post" action="/setup/finish" id="wiz-finish" hidden>
+        <button type="submit" class="btn primary">{{ t("Finish") }}</button>
+    </form>
+</div>
+</div>
+
+<script>
+    (function () {
+        var steps = document.querySelectorAll(".wiz-step");
+        var rail = document.querySelectorAll("#wiz-rail li");
+        var back = document.getElementById("wiz-back");
+        var next = document.getElementById("wiz-next");
+        var skip = document.getElementById("wiz-skip");
+        var finish = document.getElementById("wiz-finish");
+        var err = document.getElementById("wiz-error");
+        var UNCHANGED = {{ unchanged_marker|tojson }};
+
+        var OPTIONAL = { 4: true, 5: true };
+        var LAST = steps.length;
+        var current = 1;
+
+        function show(n) {
+            current = n;
+            err.textContent = "";
+            steps.forEach(function (el) { el.hidden = Number(el.dataset.step) !== n; });
+            rail.forEach(function (li) {
+                var i = Number(li.dataset.for);
+                li.classList.toggle("current", i === n);
+                li.classList.toggle("done", i < n);
+            });
+            back.hidden = n === 1;
+            skip.hidden = !OPTIONAL[n];
+            next.hidden = n === LAST;
+            finish.hidden = n !== LAST;
+            if (n === LAST) summarise();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        function collect(stepEl) {
+            var body = new URLSearchParams();
+            stepEl.querySelectorAll("input[name], textarea[name], select[name]").forEach(function (el) {
+                if (el.type === "checkbox") {
+                    if (el.checked) body.append(el.name, el.value);
+                    return;
+                }
+                // An untouched secret is sent as the marker, not as the mask.
+                if (el.classList.contains("secret-input") && el.dataset.masked === "1") {
+                    body.append(el.name, UNCHANGED);
+                    return;
+                }
+                body.append(el.name, el.value);
+            });
+            return body.toString();
+        }
+
+        function save(stepEl) {
+            return fetch("/setup/save", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                body: collect(stepEl)
+            }).then(function (r) {
+                return r.json().then(function (d) {
+                    if (!r.ok || !d.ok) throw new Error(d.error || {{ t("Could not save")|tojson }});
+                    return d;
+                });
+            });
+        }
+
+        function value(id) {
+            var el = document.getElementById(id);
+            return el ? el.value.trim() : "";
+        }
+
+        function summarise() {
+            var checked = document.querySelectorAll('input[name="inbound_ids"]:checked').length;
+            var box = document.getElementById("wiz-sum");
+            var rows = [
+                [{{ t("Service")|tojson }}, value("service_name") || "—"],
+                [{{ t("Mailbox")|tojson }}, value("imap_user") || {{ t("not set")|tojson }}],
+                [{{ t("Inbounds")|tojson }}, checked ? checked : {{ t("none chosen — registration will not work")|tojson }}],
+                [{{ t("Code word")|tojson }}, value("codeword") || "—"],
+                [{{ t("Administrator address")|tojson }}, value("admin_email") || {{ t("not set")|tojson }}],
+                [{{ t("Gotify notifications")|tojson }}, value("gotify_url") ? value("gotify_url") : {{ t("not configured")|tojson }}]
+            ];
+            box.textContent = "";
+            rows.forEach(function (row) {
+                var li = document.createElement("li");
+                var k = document.createElement("span");
+                k.className = "k";
+                k.textContent = row[0];
+                var v = document.createElement("span");
+                v.className = "v";
+                v.textContent = row[1];
+                li.appendChild(k);
+                li.appendChild(v);
+                box.appendChild(li);
+            });
+        }
+
+        next.addEventListener("click", function () {
+            var stepEl = document.querySelector('.wiz-step[data-step="' + current + '"]');
+            var was = next.textContent;
+            next.disabled = true;
+            next.textContent = {{ t("Saving…")|tojson }};
+            err.textContent = "";
+            save(stepEl)
+                .then(function () { show(current + 1); })
+                .catch(function (e) {
+                    err.textContent = e.message;
+                    window.showToast(e.message, "error");
+                })
+                .then(function () { next.disabled = false; next.textContent = was; });
+        });
+
+        skip.addEventListener("click", function () { show(current + 1); });
+        back.addEventListener("click", function () { show(current - 1); });
+
+        show(1);
+    })();
+</script>
+{% endblock %}
