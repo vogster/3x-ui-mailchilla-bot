@@ -1,17 +1,23 @@
 {# A button built on a table: Outlook handles neither padding nor a background
    on an <a>, so the background sits on the <td> and is repeated in the bgcolor
    attribute. On a narrow screen the .btn class stretches it full width, which
-   is easier to hit with a finger. #}
+   is easier to hit with a finger.
+
+   The secondary button is outlined in the green the letterhead already uses:
+   a dark button on a dark letter was nearly invisible, and the app buttons are
+   the whole point of the block they sit in. The padding is a pixel shorter than
+   the primary button's to make room for the thicker border, so both come out
+   the same height. #}
 {% macro button(url, label, primary=true) -%}
 <table role="presentation" class="btn" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
     <tr>
         <td align="center" bgcolor="{{ '#ededef' if primary else '#1a1a1d' }}"
             style="background-color: {{ '#ededef' if primary else '#1a1a1d' }}; border-radius: 8px;
-                   {% if not primary %}border: 1px solid #26262a;{% endif %}">
-            <a href="{{ url }}" style="display: inline-block; padding: 14px 26px;
+                   {% if not primary %}border: 2px solid #45b866;{% endif %}">
+            <a href="{{ url }}" style="display: inline-block; padding: {{ '14px 26px' if primary else '13px 25px' }};
                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
                font-size: 16px; font-weight: 600; line-height: 1.2;
-               color: {{ '#0c0c0d' if primary else '#ededef' }}; text-decoration: none;">{{ label }}</a>
+               color: {{ '#0c0c0d' if primary else '#45b866' }}; text-decoration: none;">{{ label }}</a>
         </td>
     </tr>
 </table>

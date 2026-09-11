@@ -23,6 +23,13 @@ read as something a person wants to know before updating.
 - "Later" puts the banner away for that version alone — a newer one brings it
   back.
 
+### Changed
+
+- The app buttons in the welcome letter ("Add to Happ", "Add to Incy") are
+  outlined and lettered in the green the letterhead already uses. A dark button
+  on a dark letter was all but invisible, and those buttons are the point of the
+  block they sit in.
+
 ## [0.1.2] - 2026-09-11
 
 ### Added
