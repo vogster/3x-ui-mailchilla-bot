@@ -1,0 +1,103 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+Mailchilla: an email bot plus FastAPI web panel that hands out [3x-ui](https://github.com/MHSanaei/3x-ui) VPN subscriptions. A user emails a code word, the bot creates the client in 3x-ui and mails back the subscription link. Commands accepted by mail: the code word (or `/start`), `/status`, `/help`, `/broadcast` (admin address only).
+
+## Commands
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # then fill XUI_*, ADMIN_PANEL_USER/PASSWORD/SECRET
+python run.py                 # bot thread + web panel on 127.0.0.1:8080
+python email_bot.py           # the bot alone, no panel
+```
+
+There is no test suite, no linter config and no build step. Verification is by running the process and watching the log (`logs/bot.log`, or the `/logs` page).
+
+On an installed server the same work goes through `mailchilla` (`status`, `restart`, `log`, `update`, `passwd`, `check`). The shell scripts have no tests either; `bash -n install.sh mailchilla.sh` is what CI runs, and the release workflow will not publish a tag that fails it.
+
+## Architecture
+
+**No database.** 3x-ui is the single source of truth for client state; everything is read back from its API on each request. The only local state is `settings.json` and `email_texts.json` (both gitignored — they hold secrets and per-installation text) plus the in-memory log ring buffer.
+
+**Two-layer configuration.** `config.py` reads `.env` into module-level attributes. `settings.py` then loads `settings.json` and **writes over those same `config` attributes** (`settings._apply()` does `setattr(config, key, ...)`). So:
+
+- Read a setting as `config.IMAP_SERVER` at call time — never `from config import IMAP_SERVER`, which captures a stale value.
+- `.env` only seeds a first run. Anything in `settings.MANAGED_KEYS` belongs to the panel and takes effect live, with no restart.
+- `.env` is reserved for what must exist before the panel can start: 3x-ui access, panel login, host/port, logging.
+- Adding a panel-editable setting means: a default in `config.py`, the key in `MANAGED_KEYS`, a `_coerce` branch in `settings.py`, and a field in the settings template/route.
+
+**Client identity in 3x-ui is awkward, and the helpers exist for a reason.** The 3x-ui `email` field is an identifier with a restricted character set (`build_client_email` strips the rest); the sender's display name goes into the separate `comment` field (`build_comment`), because gluing `Name <email>` into `email` makes the panel reject the client. Lookups by address scan the whole client list (`XuiClient.find_client_by_email`, via `extract_bare_email`); updates and deletes key off the UUID (`XuiClient.client_key` prefers `uuid`, falls back to the numeric `id`). Clients created by hand in 3x-ui may carry no address at all — code that mails clients must skip rows whose `bare_email` is empty.
+
+`xui_client.get_shared_client()` returns one process-wide `XuiClient`; it holds the login session cookies and re-authenticates on a 401/redirect, so don't construct `XuiClient()` directly.
+
+**Two independent languages.** The panel interface language (`PANEL_LANG`) and the language letters go out in (`MAIL_LANG`) are separate settings.
+
+- Interface: `i18n.t("English string")`, keyed on the English text itself, so English needs no catalogue. `lang/ru.py` is one flat `TEXTS` dict. A key may carry a disambiguating context in trailing brackets — `t("Active [badge]")` — which the catalogue keys on and English strips. New language = `lang/<code>.py` plus an entry in `i18n.LANGS`.
+- Letters: `email_texts.py` holds `DEFAULTS_BY_LANG` and the `GROUPS` structure that drives the settings form. Overrides are stored per language in `email_texts.json`, and only strings that actually differ from the default are written. Adding a letter string means adding it to `GROUPS` **and** to every language's defaults.
+
+**Letters are built twice.** `templates.py` renders `email_templates/<name>.html` and `email_templates/txt/<name>.txt` into an `Email(html, text)` namedtuple; every letter must have both parts. HTML is autoescaped, `.txt` is not. The only markup allowed from editable text is `**bold**` and line breaks, applied by the `emph`/`plain` filters — editable texts are text, not HTML. `t()` inside these templates is `templates.text()` (the letter texts), not `i18n.t()`.
+
+**Entry point.** `run.py` starts the IMAP poll loop in a daemon thread and uvicorn in the main thread, with shared SIGINT/SIGTERM handling (uvicorn's own signal handlers are deliberately disabled). `admin/app.py` also calls `settings.load()`/`email_texts.load()`/`applog.install()` at import, so the panel works when imported on its own; all three are idempotent.
+
+**Panel layout.** `admin/app.py` owns auth and the dashboard and mounts routers from `admin/routes_*.py`. `admin/deps.py` holds the shared Jinja2 environment, globals and `require_auth` — it exists to break an import cycle, so routers import from `deps`, never from `app`. Routes guard with `auth_redirect = require_auth(request); if auth_redirect: return auth_redirect`. `admin/rows.py` flattens a 3x-ui client into the row shape shared by the client list and the broadcast recipient picker.
+
+Broadcasts run as in-memory background jobs (`admin/routes_broadcast.py`) because sending takes minutes; the browser gets a self-refreshing status page. Job state dies with the process, by design.
+
+**No static files.** All panel CSS and JS is inline in `admin/templates/base_admin.html` (~1.4k lines); there is no `StaticFiles` mount.
+
+**Logging.** `applog.install()` attaches a ring buffer (read by `/logs`) and a rotating file to the root logger. Use `logging.getLogger(__name__)` and log at INFO for anything an admin should see in the panel; per-poll noise goes to DEBUG.
+
+## Installation, releases and the update path
+
+`install.sh` and `mailchilla.sh` live at the repository root; the installer copies the latter to `/usr/local/bin/mailchilla`. Both are bilingual.
+
+**Both need bash 4.0+** — `declare -A` for the message tables and `${var,,}` for the answer comparisons. Every supported distribution has it (CentOS 7 is already on 4.2); bash 3.2 in practice means macOS, where these scripts cannot run anyway. The version guard sits at the very top of each file, above the first `declare -A` and above `set -o pipefail`, and is deliberately written without arrays, `[[ ]]` or `set -o` so that a non-bash shell also reaches it. **Do not move it into a function** — the table is built as the file is read, so a check called from `main` never runs.
+
+**Strings in the scripts follow the same rule as `i18n.py`.** One `declare -A MSG` table keyed `lang.key`, and `t key [args]` falls back to English when a key is missing in the other language, so a partial translation is safe. `{0}`, `{1}` are the placeholders. When adding a string, add both languages — the key balance is easy to check:
+
+```bash
+grep -c '^\[ru\.' mailchilla.sh && grep -c '^\[en\.' mailchilla.sh
+```
+
+**Versions are tags, never a branch.** `install.sh` checks out the newest `v*` tag (falling back to `origin/main` only when the repository carries no tags); `mailchilla update` finds the latest with `git ls-remote --tags`, so no GitHub API and no rate limit is involved. A GitHub Release is cosmetic — nothing breaks if one is forgotten.
+
+Cutting a release means: bump `APP_VERSION` in `config.py`, write the section in `CHANGELOG.md`, commit, tag `vX.Y.Z`, push. `.github/workflows/release.yml` refuses a tag that disagrees with `APP_VERSION` — the version is displayed in the panel sidebar, so a mismatch is visible to every user. `mailchilla update` shows that same CHANGELOG section before asking for confirmation, so each entry should read as something a person wants to know before updating.
+
+**Three files are the installation, and nothing may clobber them:** `.env`, `settings.json`, `email_texts.json`. They are gitignored, which is exactly why the update is `git checkout` rather than unpacking a tarball — ignored files are left alone. `mailchilla update` still copies all three to `/opt/mailchilla-backups/<date>/` first and restores them if the panel fails to answer after the restart.
+
+No migration step exists, and none is needed: a key absent from `settings.json` falls through to `BASE[key]` in `settings._apply()`, and `email_texts.json` stores only strings that differ from the shipped default. A *downgrade* is the lossy direction — `settings.load()` warns about unknown keys and drops them on the next save, which is what the backup is for.
+
+Other things worth knowing before editing these scripts:
+
+- **Liveness is an HTTP request, not `systemctl is-active`.** With `Restart=always` a service crash-looping reads as active. `wait_for_panel` polls `http://127.0.0.1:$PORT/login`.
+- **The menu appears only on a tty.** `mailchilla` with no arguments and no terminal prints `status` instead of hanging on a prompt in cron or a pipe.
+- **Values never go into an unquoted heredoc.** `.env` is written with `printf '%s'` per line, because a password is arbitrary text and a backtick in a heredoc would execute. In the file itself values are single-quoted so python-dotenv does not expand a `$`. `env_set` in `mailchilla.sh` keeps the same convention.
+- The generated systemd unit deliberately does not use `EnvironmentFile`, for the reason `README.md` gives.
+- `/etc/mailchilla/install.conf` holds the state of the installation — directory, script language, service and user names. It is not application configuration and the app never reads it.
+
+## The 3x-ui API
+
+`3xui-docs/` (gitignored, not part of the project) holds the reference for the panel this talks to: `3xui-api-docs.md` — 116 endpoints, prose and example payloads — and `3xui-api-reference.json`, the same as a machine-readable collection. Read it before guessing at a request shape; it is the only description of the remote side available offline.
+
+Two things about it are worth knowing without opening it:
+
+**This is the newer, client-first API.** Clients have top-level endpoints — `/panel/api/clients/add`, `/update/:email`, `/del/:email`, `/:email/attach`, `/:email/detach` — rather than the classic inbound-scoped `/panel/api/inbounds/addClient` with a JSON-encoded `settings` string. A client is created once and attached to several inbounds by id in the same call, which is why `XuiClient.add_client` takes an `inbound_ids` list. Anything written against the old 3x-ui API, including most examples found online, will not match.
+
+**`update/:email` replaces the row, it does not patch it.** Every field to be kept must be sent back — that is what `XuiClient._normalize_update_payload` is for, and why updates read the client object first.
+
+Endpoints this project actually calls: `/login`; `clients/add`, `clients/list`, `clients/get/:email`, `clients/update/:email`, `clients/del/:email`, `clients/:email/attach|detach`, `clients/onlines`, `clients/links/:email`, `clients/traffic/:email`; `inbounds/list/slim`; `server/status`. The docs describe much more — bulk operations, client groups, subscription links by `subId`, Xray control, per-metric history — none of which is wired up yet.
+
+Notes that matter when reading responses: everything comes back as `{"success": bool, "msg": str, "obj": ...}`. `inbounds/list/slim` strips `settings.clients[]` down to `{email, enable, comment}` and omits uuid/subId, so it is only good for listing inbounds — per-client detail needs `clients/list` or `inbounds/get/:id`. Times are milliseconds since the epoch, traffic is bytes, and `totalGB` is bytes too despite the name. Auth works either by session cookie from `POST /login` (with `X-CSRF-Token` from `GET /csrf-token` on unsafe methods) or by `Authorization: Bearer <token>`, which skips CSRF entirely. `XuiClient` sets the bearer header at construction when `XUI_API_TOKEN` is set and short-circuits `login()`; without a token it signs in for a cookie and retries once on a 401/403 or a redirect to the login page. It never sends a CSRF header on either path — so if a panel starts enforcing CSRF on cookie sessions, the token is the working route and that is the code to fix.
+
+## Conventions
+
+- Comments in this codebase explain *why*, often at length, and frequently record a bug that motivated the current shape. Match that when touching the same code; don't strip such comments when refactoring.
+- Secrets (`IMAP_PASSWORD`, `SMTP_PASSWORD`, `GOTIFY_TOKEN`) never reach page markup: forms post back `settings.UNCHANGED` when untouched, and the real value is fetched separately by `/settings/secret`.
+- User-visible strings in panel templates and Python go through `i18n.t()`; letter strings go through the editable-texts layer instead of being hardcoded.
+- `README.md` and `README.ru.md` are parallel — a user-facing change belongs in both, and their section structure is kept identical.
+- A user-visible change also belongs in `CHANGELOG.md` under `## [Unreleased]`, since that text is what `mailchilla update` shows people.

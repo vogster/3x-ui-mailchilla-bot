@@ -6,7 +6,7 @@ load_dotenv()
 # The project's own name and version — not to be confused with SERVICE_NAME,
 # which names one particular installation and goes into the letters.
 APP_NAME = "Mailchilla"
-APP_VERSION = "0.0.1"
+APP_VERSION = "0.1.0"
 # Where the sidebar's GitHub link points.
 PROJECT_URL = "https://github.com/vogster/Mailchilla"
 

@@ -9,6 +9,9 @@ email_texts.json
 # Logs: the rotating file and its backups.
 logs/
 
+# Backups install.sh makes of a .env it is about to replace.
+.env.bak.*
+
 # Snapshots of a real installation taken before an experiment (they hold
 # passwords, so they must never be committed).
 .real-state-backup/

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version shows in the panel sidebar, so a tag that disagrees with
+      # config.APP_VERSION would leave people looking at the wrong number.
+      - name: The tag must match APP_VERSION
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app="$(python3 -c "import re;print(re.search(r'APP_VERSION = \"([^\"]+)\"', open('config.py').read()).group(1))")"
+          echo "tag=$tag  APP_VERSION=$app"
+          if [ "$tag" != "$app" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match APP_VERSION=$app in config.py"
+            exit 1
+          fi
+
+      - name: The installer must be valid bash
+        run: bash -n install.sh && bash -n mailchilla.sh
+
+      - name: Take the notes out of CHANGELOG.md
+        id: notes
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          {
+            echo "body<<CHANGELOG_EOF"
+            awk -v v="$tag" '
+              $0 ~ "^## \\[?" v "\\]?" {found=1; next}
+              found && /^## / {exit}
+              found {print}
+            ' CHANGELOG.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: true

@@ -1,0 +1,715 @@
+#!/usr/bin/env bash
+#
+# mailchilla — managing an installed Mailchilla.
+# Installed to /usr/local/bin/mailchilla by install.sh.
+#
+#   mailchilla              a menu (when the input is a terminal)
+#   mailchilla restart      the same thing as a command
+#
+# The message tables below are associative arrays, so bash 4.0 or newer is
+# required. The check has to stand here, above the first `declare -A` and above
+# `set -o pipefail`: inside a function it would never be reached, because the
+# table is built while the script is read. It is therefore written without
+# arrays, without [[ ]] and without `set -o`, so that even a shell that is not
+# bash gets this far and prints a sentence instead of a syntax error.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "Mailchilla: run this with bash — bash mailchilla" >&2
+    echo "Mailchilla: запустите через bash — bash mailchilla" >&2
+    exit 1
+fi
+case "$BASH_VERSION" in
+    [0-3].*)
+        echo "Mailchilla: bash 4.0 or newer is needed, found $BASH_VERSION." >&2
+        echo "Mailchilla: нужен bash 4.0 или новее, найден $BASH_VERSION." >&2
+        exit 1
+        ;;
+esac
+
+set -euo pipefail
+
+CONF_FILE="/etc/mailchilla/install.conf"
+INSTALL_DIR="/opt/mailchilla"
+INSTALL_LANG="en"
+SERVICE="mailchilla"
+SERVICE_USER="mailchilla"
+REPO_URL="https://github.com/vogster/Mailchilla.git"
+BACKUP_DIR="/opt/mailchilla-backups"
+
+# shellcheck disable=SC1090
+[ -r "$CONF_FILE" ] && . "$CONF_FILE"
+UI_LANG="$INSTALL_LANG"
+
+ENV_FILE="$INSTALL_DIR/.env"
+STATE_FILES=(".env" "settings.json" "email_texts.json")
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
+    RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'
+    MAG=$'\033[35m'; CYA=$'\033[36m'
+else
+    B=""; D=""; N=""; RED=""; GRN=""; YEL=""; MAG=""; CYA=""
+fi
+
+declare -A MSG=(
+
+[en.m_status]="Status"
+[ru.m_status]="Статус"
+[en.m_start]="Start"
+[ru.m_start]="Запустить"
+[en.m_stop]="Stop"
+[ru.m_stop]="Остановить"
+[en.m_restart]="Restart"
+[ru.m_restart]="Перезапустить"
+[en.m_log]="Log"
+[ru.m_log]="Логи"
+[en.m_update]="Update"
+[ru.m_update]="Обновить"
+[en.m_passwd]="Change the panel username or password"
+[ru.m_passwd]="Сменить логин или пароль панели"
+[en.m_port]="Change the port"
+[ru.m_port]="Сменить порт"
+[en.m_tunnel]="SSH tunnel to the panel"
+[ru.m_tunnel]="SSH-туннель до панели"
+[en.m_check]="Check the connection to 3x-ui"
+[ru.m_check]="Проверить связь с 3x-ui"
+[en.m_autostart]="Autostart"
+[ru.m_autostart]="Автозапуск"
+[en.m_backup]="Back up the configuration"
+[ru.m_backup]="Бэкап конфигурации"
+[en.m_lang]="Language of this menu"
+[ru.m_lang]="Язык этого меню"
+[en.m_uninstall]="Uninstall"
+[ru.m_uninstall]="Удалить"
+[en.m_quit]="Quit"
+[ru.m_quit]="Выход"
+[en.choose]="Choose"
+[ru.choose]="Выберите"
+[en.unknown]="No such item."
+[ru.unknown]="Нет такого пункта."
+[en.press]="Press Enter"
+[ru.press]="Нажмите Enter"
+
+[en.running]="running"
+[ru.running]="работает"
+[en.stopped]="stopped"
+[ru.stopped]="остановлена"
+[en.enabled]="on"
+[ru.enabled]="вкл"
+[en.disabled]="off"
+[ru.disabled]="выкл"
+[en.st_service]="Service"
+[ru.st_service]="Служба"
+[en.st_autostart]="Autostart"
+[ru.st_autostart]="Автозапуск"
+[en.st_version]="Version"
+[ru.st_version]="Версия"
+[en.st_panel]="Panel"
+[ru.st_panel]="Панель"
+[en.st_answers]="answers"
+[ru.st_answers]="отвечает"
+[en.st_silent]="does not answer"
+[ru.st_silent]="не отвечает"
+
+[en.need_root]="This needs root. Run: sudo mailchilla {0}"
+[ru.need_root]="Нужны права root. Выполните: sudo mailchilla {0}"
+[en.no_install]="Mailchilla is not installed in {0}."
+[ru.no_install]="Mailchilla не установлена в {0}."
+[en.done]="Done."
+[ru.done]="Готово."
+[en.cancelled]="Cancelled."
+[ru.cancelled]="Отменено."
+
+[en.u_current]="Installed"
+[ru.u_current]="Установлена"
+[en.u_latest]="Latest"
+[ru.u_latest]="Последняя"
+[en.u_uptodate]="The latest version is already installed."
+[ru.u_uptodate]="Уже установлена последняя версия."
+[en.u_checking]="Looking for a new version..."
+[ru.u_checking]="Ищем новую версию..."
+[en.u_offline]="Could not reach GitHub."
+[ru.u_offline]="Не удалось связаться с GitHub."
+[en.u_changes]="What has changed"
+[ru.u_changes]="Что изменилось"
+[en.u_ask]="Update to {0}?"
+[ru.u_ask]="Обновиться до {0}?"
+[en.u_local]="There are local changes to the files:"
+[ru.u_local]="В файлах есть локальные изменения:"
+[en.u_stash]="They will be put aside with git stash and can be brought back with: git -C {0} stash pop"
+[ru.u_stash]="Они будут отложены через git stash и возвращаются командой: git -C {0} stash pop"
+[en.u_pull]="Downloading {0}..."
+[ru.u_pull]="Скачиваем {0}..."
+[en.u_deps]="Updating dependencies..."
+[ru.u_deps]="Обновляем зависимости..."
+[en.u_restart]="Restarting..."
+[ru.u_restart]="Перезапускаем..."
+[en.u_ok]="Updated to {0}."
+[ru.u_ok]="Обновлено до {0}."
+[en.u_rollback]="The panel did not come up. Rolling back to {0}..."
+[ru.u_rollback]="Панель не поднялась. Откатываемся на {0}..."
+[en.u_rolled]="Rolled back. Look at the log: mailchilla log"
+[ru.u_rolled]="Откат выполнен. Посмотрите лог: mailchilla log"
+
+[en.p_user]="Username"
+[ru.p_user]="Логин"
+[en.p_pass]="New password (empty = generate)"
+[ru.p_pass]="Новый пароль (пусто — сгенерировать)"
+[en.p_pass2]="Repeat"
+[ru.p_pass2]="Повторите"
+[en.p_mismatch]="The passwords do not match."
+[ru.p_mismatch]="Пароли не совпадают."
+[en.p_quote]="A single quote in the password is not supported."
+[ru.p_quote]="Одинарная кавычка в пароле не поддерживается."
+[en.p_short]="At least 8 characters."
+[ru.p_short]="Минимум 8 символов."
+[en.p_new]="New password"
+[ru.p_new]="Новый пароль"
+[en.p_saved]="Saved. The panel has been restarted."
+[ru.p_saved]="Сохранено. Панель перезапущена."
+
+[en.port_now]="Current port"
+[ru.port_now]="Текущий порт"
+[en.port_new]="New port"
+[ru.port_new]="Новый порт"
+[en.port_bad]="A port is a number between 1 and 65535."
+[ru.port_bad]="Порт — это число от 1 до 65535."
+[en.port_busy]="Port {0} is occupied."
+[ru.port_busy]="Порт {0} занят."
+
+[en.tun_text]="The panel listens on 127.0.0.1 and is not reachable from outside — that is deliberate. Run this on your own machine:"
+[ru.tun_text]="Панель слушает 127.0.0.1 и снаружи недоступна — так задумано. Выполните на своей машине:"
+[en.tun_then]="then open"
+[ru.tun_then]="затем откройте"
+
+[en.c_checking]="Signing in to 3x-ui..."
+[ru.c_checking]="Входим в 3x-ui..."
+[en.c_ok]="Connection to 3x-ui: OK."
+[ru.c_ok]="Связь с 3x-ui: ОК."
+[en.c_fail]="Could not sign in to 3x-ui. Check XUI_URL and the credentials in {0}."
+[ru.c_fail]="Не удалось войти в 3x-ui. Проверьте XUI_URL и доступы в {0}."
+
+[en.b_done]="Backup written to {0}"
+[ru.b_done]="Бэкап записан в {0}"
+
+[en.un_warn]="This removes the service, the code and the {0} command."
+[ru.un_warn]="Будут удалены служба, код и команда {0}."
+[en.un_keep]="Keep a backup of the configuration?"
+[ru.un_keep]="Сохранить бэкап конфигурации?"
+[en.un_ask]="Really uninstall Mailchilla?"
+[ru.un_ask]="Точно удалить Mailchilla?"
+[en.un_done]="Mailchilla has been removed."
+[ru.un_done]="Mailchilla удалена."
+
+[en.lang_saved]="The menu language has been changed. The language of the panel and of the letters is set in the panel itself."
+[ru.lang_saved]="Язык меню изменён. Язык панели и писем задаётся в самой панели."
+
+[en.help_usage]="Usage"
+[ru.help_usage]="Использование"
+[en.help_nomenu]="without arguments in a terminal — a menu"
+[ru.help_nomenu]="без аргументов в терминале — меню"
+)
+
+t() {
+    local key="$1"; shift
+    local out="${MSG[$UI_LANG.$key]-${MSG[en.$key]-$key}}"
+    local i=0
+    for arg in "$@"; do
+        out="${out//\{$i\}/$arg}"
+        i=$((i + 1))
+    done
+    printf '%s' "$out"
+}
+
+say()  { printf '  %s\n' "$1"; }
+dim()  { printf '  %s%s%s\n' "$D" "$1" "$N"; }
+good() { printf '  %s✓%s %s\n' "$GRN" "$N" "$1"; }
+bad()  { printf '  %s✗%s %s\n' "$RED" "$N" "$1"; }
+warn() { printf '  %s!%s %s\n' "$YEL" "$N" "$1"; }
+rule() { printf '  %s────────────────────────────────────────────────%s\n' "$D" "$N"; }
+
+need_root() {
+    [ "$(id -u)" -eq 0 ] || { bad "$(t need_root "${1:-}")"; exit 1; }
+}
+
+need_install() {
+    [ -d "$INSTALL_DIR/.git" ] || { bad "$(t no_install "$INSTALL_DIR")"; exit 1; }
+}
+
+env_get() {
+    # Reads a key out of .env, stripping the quotes install.sh writes.
+    local key="$1" value
+    [ -r "$ENV_FILE" ] || return 0
+    value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2-)"
+    value="${value%\'}"; value="${value#\'}"
+    value="${value%\"}"; value="${value#\"}"
+    printf '%s' "$value"
+}
+
+env_set() {
+    local key="$1" value="$2" tmp
+    tmp="$(mktemp)"
+    if grep -qE "^${key}=" "$ENV_FILE"; then
+        # The value is written single-quoted, so python-dotenv takes it
+        # literally and does not try to expand a $ inside it.
+        awk -v k="$key" -v v="$value" \
+            'BEGIN{FS=OFS="="} $1==k {print k "=" "\047" v "\047"; next} {print}' \
+            "$ENV_FILE" > "$tmp"
+    else
+        cp "$ENV_FILE" "$tmp"
+        printf "%s='%s'\n" "$key" "$value" >> "$tmp"
+    fi
+    cat "$tmp" > "$ENV_FILE"
+    rm -f "$tmp"
+    chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE" 2>/dev/null || true
+    chmod 600 "$ENV_FILE"
+}
+
+panel_port() { env_get ADMIN_PANEL_PORT || printf '8080'; }
+
+current_version() {
+    git -C "$INSTALL_DIR" describe --tags --exact-match 2>/dev/null \
+        || git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null \
+        || printf '?'
+}
+
+panel_answers() {
+    curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$(panel_port)/login" 2>/dev/null
+}
+
+wait_for_panel() {
+    local i
+    for i in $(seq 1 30); do
+        panel_answers && return 0
+        sleep 1
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+cmd_status() {
+    local active enabled port
+    active="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+    enabled="$(systemctl is-enabled "$SERVICE" 2>/dev/null || true)"
+    port="$(panel_port)"
+
+    printf '\n'
+    if [ "$active" = "active" ]; then
+        printf '  %s%-14s%s %s●%s %s\n' "$D" "$(t st_service)" "$N" "$GRN" "$N" "$(t running)"
+    else
+        printf '  %s%-14s%s %s●%s %s\n' "$D" "$(t st_service)" "$N" "$RED" "$N" "$(t stopped)"
+    fi
+    if [ "$enabled" = "enabled" ]; then
+        printf '  %s%-14s%s %s\n' "$D" "$(t st_autostart)" "$N" "$(t enabled)"
+    else
+        printf '  %s%-14s%s %s\n' "$D" "$(t st_autostart)" "$N" "$(t disabled)"
+    fi
+    printf '  %s%-14s%s %s\n' "$D" "$(t st_version)" "$N" "$(current_version)"
+
+    # is-active lies when the unit restarts in a loop, so ask the panel itself.
+    if panel_answers; then
+        printf '  %s%-14s%s http://127.0.0.1:%s  %s✓ %s%s\n' \
+            "$D" "$(t st_panel)" "$N" "$port" "$GRN" "$(t st_answers)" "$N"
+    else
+        printf '  %s%-14s%s http://127.0.0.1:%s  %s✗ %s%s\n' \
+            "$D" "$(t st_panel)" "$N" "$port" "$RED" "$(t st_silent)" "$N"
+    fi
+    printf '\n'
+}
+
+cmd_start()   { need_root start;   systemctl start "$SERVICE";   good "$(t done)"; }
+cmd_stop()    { need_root stop;    systemctl stop "$SERVICE";    good "$(t done)"; }
+cmd_restart() {
+    need_root restart
+    systemctl restart "$SERVICE"
+    if wait_for_panel; then good "$(t done)"; else warn "$(t st_silent)"; fi
+}
+
+cmd_log() {
+    if [ -t 1 ]; then
+        journalctl -u "$SERVICE" -n 200 -f --no-pager
+    else
+        journalctl -u "$SERVICE" -n 200 --no-pager
+    fi
+}
+
+cmd_enable()  { need_root enable;  systemctl enable "$SERVICE" >/dev/null 2>&1; good "$(t done)"; }
+cmd_disable() { need_root disable; systemctl disable "$SERVICE" >/dev/null 2>&1; good "$(t done)"; }
+
+# Set by cmd_backup, read by cmd_update. Returning it on stdout would mean
+# silencing the message the user is meant to see.
+BACKUP_PATH=""
+
+cmd_backup() {
+    need_root backup; need_install
+    local dest="$BACKUP_DIR/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$dest"
+    local file
+    for file in "${STATE_FILES[@]}"; do
+        [ -f "$INSTALL_DIR/$file" ] && cp -a "$INSTALL_DIR/$file" "$dest/"
+    done
+    printf '%s\n' "$(current_version)" > "$dest/VERSION"
+    chmod 700 "$dest"
+    BACKUP_PATH="$dest"
+    good "$(t b_done "$dest")"
+}
+
+cmd_tunnel() {
+    local port host
+    port="$(panel_port)"
+    host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    [ -n "$host" ] || host="your-server"
+    printf '\n'
+    say "$(t tun_text)"
+    printf '\n     %s%sssh -L %s:127.0.0.1:%s root@%s%s\n\n' "$B" "$CYA" "$port" "$port" "$host" "$N"
+    printf '  %s %s%shttp://localhost:%s%s\n\n' "$(t tun_then)" "$B" "$CYA" "$port" "$N"
+}
+
+cmd_check() {
+    need_install
+    printf '\n'
+    dim "$(t c_checking)"
+    if (cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/python" -B -c '
+import sys
+sys.path.insert(0, ".")
+import logging
+logging.disable(logging.CRITICAL)
+import settings
+settings.load()
+from xui_client import get_shared_client
+sys.exit(0 if get_shared_client().login() else 1)
+') >/dev/null 2>&1; then
+        good "$(t c_ok)"
+    else
+        bad "$(t c_fail "$ENV_FILE")"
+    fi
+    printf '\n'
+}
+
+cmd_passwd() {
+    need_root passwd; need_install
+    local user pass repeat generated=0
+    printf '\n'
+    printf '  %s?%s %s [%s]: ' "$CYA" "$N" "$(t p_user)" "$(env_get ADMIN_PANEL_USER)"
+    read -r user </dev/tty
+    [ -n "$user" ] || user="$(env_get ADMIN_PANEL_USER)"
+
+    while :; do
+        printf '  %s?%s %s: ' "$CYA" "$N" "$(t p_pass)"
+        read -rs pass </dev/tty; printf '\n'
+        if [ -z "$pass" ]; then
+            pass="$(openssl rand -base64 18 | tr -d '/+=\n')"
+            generated=1
+            break
+        fi
+        case "$pass" in *\'*) warn "$(t p_quote)"; continue ;; esac
+        [ "${#pass}" -ge 8 ] || { warn "$(t p_short)"; continue; }
+        printf '  %s?%s %s: ' "$CYA" "$N" "$(t p_pass2)"
+        read -rs repeat </dev/tty; printf '\n'
+        [ "$pass" = "$repeat" ] || { warn "$(t p_mismatch)"; continue; }
+        break
+    done
+
+    env_set ADMIN_PANEL_USER "$user"
+    env_set ADMIN_PANEL_PASSWORD "$pass"
+    systemctl restart "$SERVICE"
+    printf '\n'
+    [ "$generated" = "1" ] && printf '  %s%-14s%s %s%s%s\n' "$D" "$(t p_new)" "$N" "$B$YEL" "$pass" "$N"
+    good "$(t p_saved)"
+    printf '\n'
+}
+
+cmd_port() {
+    need_root port; need_install
+    local port
+    printf '\n'
+    dim "$(t port_now): $(panel_port)"
+    while :; do
+        printf '  %s?%s %s: ' "$CYA" "$N" "$(t port_new)"
+        read -r port </dev/tty
+        [ -n "$port" ] || { printf '\n'; return; }
+        if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            warn "$(t port_bad)"; continue
+        fi
+        if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE "[:.]$port[[:space:]]"; then
+            warn "$(t port_busy "$port")"; continue
+        fi
+        break
+    done
+    env_set ADMIN_PANEL_PORT "$port"
+    systemctl restart "$SERVICE"
+    wait_for_panel || true
+    good "$(t done)"
+    cmd_tunnel
+}
+
+cmd_lang() {
+    need_root lang
+    printf '\n'
+    printf '      %s1%s  English\n' "$B" "$N"
+    printf '      %s2%s  Русский\n' "$B" "$N"
+    printf '  %s>%s ' "$CYA" "$N"
+    local answer; read -r answer </dev/tty
+    case "$answer" in
+        1|en|EN) UI_LANG="en" ;;
+        2|ru|RU) UI_LANG="ru" ;;
+        *) return ;;
+    esac
+    if [ -w "$CONF_FILE" ] || [ "$(id -u)" -eq 0 ]; then
+        sed -i "s/^INSTALL_LANG=.*/INSTALL_LANG=$UI_LANG/" "$CONF_FILE"
+    fi
+    printf '\n'
+    good "$(t lang_saved)"
+    printf '\n'
+}
+
+# --- update ---------------------------------------------------------------
+latest_tag() {
+    git ls-remote --tags --refs "$REPO_URL" 2>/dev/null \
+        | awk -F/ '{print $NF}' \
+        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+        | sort -V \
+        | tail -n 1
+}
+
+changelog_for() {
+    # The section of CHANGELOG.md belonging to one version.
+    local tag="${1#v}" file="$INSTALL_DIR/CHANGELOG.md"
+    [ -r "$file" ] || return 0
+    awk -v v="$tag" '
+        $0 ~ "^## \\[?" v "\\]?" {found=1; next}
+        found && /^## / {exit}
+        found {print}
+    ' "$file" | sed '/^[[:space:]]*$/d' | head -n 20
+}
+
+python_minor() { python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0; }
+
+cmd_update() {
+    need_root update; need_install
+    local current latest dirty stash_made=0 backup
+
+    current="$(current_version)"
+    printf '\n'
+    dim "$(t u_checking)"
+    latest="$(latest_tag || true)"
+    if [ -z "$latest" ]; then bad "$(t u_offline)"; printf '\n'; return 1; fi
+
+    printf '  %s%-12s%s %s\n' "$D" "$(t u_current)" "$N" "$current"
+    printf '  %s%-12s%s %s%s%s\n' "$D" "$(t u_latest)" "$N" "$B" "$latest" "$N"
+    if [ "$current" = "$latest" ]; then
+        printf '\n'; good "$(t u_uptodate)"; printf '\n'; return 0
+    fi
+
+    git -C "$INSTALL_DIR" fetch --tags --quiet --force
+
+    local notes
+    notes="$(changelog_for "$latest" || true)"
+    if [ -n "$notes" ]; then
+        printf '\n  %s%s%s\n' "$B" "$(t u_changes)" "$N"
+        printf '%s\n' "$notes" | sed 's/^/  /'
+    fi
+
+    # Local edits are the usual reason an update fails, so say so plainly and
+    # put them aside rather than dying on a git error.
+    dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
+    if [ -n "$dirty" ]; then
+        printf '\n'
+        warn "$(t u_local)"
+        printf '%s\n' "$dirty" | sed 's/^/      /'
+        dim "$(t u_stash "$INSTALL_DIR")"
+    fi
+
+    printf '\n  %s?%s %s [y/N]: ' "$CYA" "$N" "$(t u_ask "$latest")"
+    local answer; read -r answer </dev/tty
+    case "${answer,,}" in y|yes|д|да) ;; *) say "$(t cancelled)"; return 0 ;; esac
+
+    printf '\n'
+    cmd_backup
+    backup="$BACKUP_PATH"
+
+    if [ -n "$dirty" ]; then
+        git -C "$INSTALL_DIR" stash push --quiet -m "mailchilla update $(date -Iseconds)" || true
+        stash_made=1
+    fi
+
+    dim "$(t u_pull "$latest")"
+    git -C "$INSTALL_DIR" checkout --quiet --force "$latest"
+
+    dim "$(t u_deps)"
+    "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null
+
+    install -m 755 "$INSTALL_DIR/mailchilla.sh" /usr/local/bin/mailchilla 2>/dev/null || true
+    chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+    chmod 600 "$ENV_FILE"
+
+    dim "$(t u_restart)"
+    systemctl restart "$SERVICE"
+
+    if wait_for_panel; then
+        printf '\n'; good "$(t u_ok "$latest")"
+        [ "$stash_made" = "1" ] && dim "$(t u_stash "$INSTALL_DIR")"
+        printf '\n'
+    else
+        printf '\n'
+        warn "$(t u_rollback "$current")"
+        git -C "$INSTALL_DIR" checkout --quiet --force "$current"
+        "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null 2>&1 || true
+        local file
+        for file in "${STATE_FILES[@]}"; do
+            [ -f "$backup/$file" ] && cp -a "$backup/$file" "$INSTALL_DIR/$file"
+        done
+        chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        systemctl restart "$SERVICE"
+        bad "$(t u_rolled)"
+        printf '\n'
+        return 1
+    fi
+}
+
+cmd_uninstall() {
+    need_root uninstall
+    printf '\n'
+    warn "$(t un_warn "mailchilla")"
+    printf '  %s?%s %s [y/N]: ' "$CYA" "$N" "$(t un_ask)"
+    local answer; read -r answer </dev/tty
+    case "${answer,,}" in y|yes|д|да) ;; *) say "$(t cancelled)"; return 0 ;; esac
+
+    printf '  %s?%s %s [Y/n]: ' "$CYA" "$N" "$(t un_keep)"
+    local keep; read -r keep </dev/tty
+    case "${keep,,}" in n|no|н|нет) ;; *) cmd_backup ;; esac
+
+    systemctl stop "$SERVICE" 2>/dev/null || true
+    systemctl disable "$SERVICE" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$SERVICE.service"
+    systemctl daemon-reload
+    rm -rf "$INSTALL_DIR"
+    rm -rf "$(dirname "$CONF_FILE")"
+    userdel "$SERVICE_USER" 2>/dev/null || true
+    rm -f /usr/local/bin/mailchilla
+    printf '\n'
+    good "$(t un_done)"
+    printf '\n'
+}
+
+cmd_version() { printf '%s\n' "$(current_version)"; }
+
+cmd_help() {
+    printf '\n  %s%s%s\n\n' "$B" "$(t help_usage)" "$N"
+    printf '     mailchilla %s%s%s\n\n' "$D" "— $(t help_nomenu)" "$N"
+    local c
+    for c in status start stop restart log update passwd port tunnel check \
+             enable disable backup lang uninstall version help; do
+        printf '     mailchilla %s\n' "$c"
+    done
+    printf '\n'
+}
+
+# ---------------------------------------------------------------------------
+# Menu
+# ---------------------------------------------------------------------------
+menu_header() {
+    local active version
+    active="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+    version="$(current_version)"
+    printf '\n'
+    printf '  %s╭────────────────────────────────────────────────╮%s\n' "$MAG" "$N"
+    if [ "$active" = "active" ]; then
+        printf '  %s│%s  %sM A I L C H I L L A%s   %s●%s %s %s%s%s\n' \
+            "$MAG" "$N" "$B" "$N" "$GRN" "$N" "$(t running)" "$D" "$version" "$N"
+    else
+        printf '  %s│%s  %sM A I L C H I L L A%s   %s●%s %s %s%s%s\n' \
+            "$MAG" "$N" "$B" "$N" "$RED" "$N" "$(t stopped)" "$D" "$version" "$N"
+    fi
+    printf '  %s╰────────────────────────────────────────────────╯%s\n\n' "$MAG" "$N"
+}
+
+item() { printf '     %s%2s%s  %s\n' "$B$CYA" "$1" "$N" "$2"; }
+
+menu_loop() {
+    local choice
+    while :; do
+        menu_header
+        item 1  "$(t m_status)"
+        item 2  "$(t m_start)"
+        item 3  "$(t m_stop)"
+        item 4  "$(t m_restart)"
+        item 5  "$(t m_log)"
+        printf '\n'
+        item 6  "$(t m_update)"
+        item 7  "$(t m_passwd)"
+        item 8  "$(t m_port)"
+        item 9  "$(t m_tunnel)"
+        item 10 "$(t m_check)"
+        printf '\n'
+        item 11 "$(t m_autostart)"
+        item 12 "$(t m_backup)"
+        item 13 "$(t m_lang)"
+        item 14 "$(t m_uninstall)"
+        printf '\n'
+        item 0  "$(t m_quit)"
+        printf '\n  %s%s%s: ' "$CYA" "$(t choose)" "$N"
+        read -r choice </dev/tty || exit 0
+
+        case "$choice" in
+            1) cmd_status ;;
+            2) cmd_start ;;
+            3) cmd_stop ;;
+            4) cmd_restart ;;
+            5) cmd_log || true ;;
+            6) cmd_update || true ;;
+            7) cmd_passwd ;;
+            8) cmd_port ;;
+            9) cmd_tunnel ;;
+            10) cmd_check ;;
+            11) if [ "$(systemctl is-enabled "$SERVICE" 2>/dev/null || true)" = "enabled" ]; then
+                    cmd_disable
+                else
+                    cmd_enable
+                fi ;;
+            12) cmd_backup ;;
+            13) cmd_lang ;;
+            14) cmd_uninstall; exit 0 ;;
+            0|q|quit|exit) printf '\n'; exit 0 ;;
+            *) warn "$(t unknown)" ;;
+        esac
+
+        printf '  %s%s%s ' "$D" "$(t press)" "$N"
+        read -r _ </dev/tty || exit 0
+    done
+}
+
+# ---------------------------------------------------------------------------
+# A menu only when there is somebody to show it to: without the tty check
+# `mailchilla` from cron or in a pipe would hang on the prompt.
+# ---------------------------------------------------------------------------
+main() {
+    if [ $# -eq 0 ]; then
+        if [ -t 0 ] && [ -t 1 ]; then menu_loop; else cmd_status; fi
+        return
+    fi
+    case "$1" in
+        status)    cmd_status ;;
+        start)     cmd_start ;;
+        stop)      cmd_stop ;;
+        restart)   cmd_restart ;;
+        log|logs)  cmd_log ;;
+        update)    cmd_update ;;
+        passwd|password) cmd_passwd ;;
+        port)      cmd_port ;;
+        tunnel|ssh) cmd_tunnel ;;
+        check)     cmd_check ;;
+        enable)    cmd_enable ;;
+        disable)   cmd_disable ;;
+        backup)    cmd_backup ;;
+        lang)      cmd_lang ;;
+        uninstall|remove) cmd_uninstall ;;
+        version|-v|--version) cmd_version ;;
+        menu)      menu_loop ;;
+        help|-h|--help) cmd_help ;;
+        *) bad "$(t unknown)"; cmd_help; exit 1 ;;
+    esac
+}
+
+main "$@"

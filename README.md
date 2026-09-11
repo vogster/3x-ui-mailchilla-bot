@@ -30,7 +30,8 @@ The project started with a simple need: handing out subscriptions to people you 
 - [First run](#-first-run)
 - [Settings](#-settings)
 - [Reaching the panel](#-reaching-the-panel)
-- [Running as a service](#-running-as-a-service)
+- [Managing it](#-managing-it)
+- [Updating](#-updating)
 - [How it is built](#-how-it-is-built)
 - [Development](#-development)
 - [License](#-license)
@@ -101,6 +102,25 @@ The process log in the browser: filter by level, search, exception tracebacks. U
 
 ## 🚀 Quick start
 
+One command on a clean server with a reachable 3x-ui panel:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh)
+```
+
+The installer asks for the language first, then for access to 3x-ui and the sign-in for its own panel, and does the rest itself: packages, a system user, the latest released version into `/opt/mailchilla`, a virtual environment, `.env`, the systemd service and the `mailchilla` command. At the end it prints the address, the password and the tunnel command.
+
+Debian 11+, Ubuntu 22.04+, CentOS/AlmaLinux/Rocky/Fedora. Python 3.9 or newer is required — Ubuntu 20.04 ships 3.8 and the installer will say so rather than leave a half-installed copy.
+
+Running a script straight off the internet as root deserves a look first. If you would rather:
+
+```bash
+curl -LO https://raw.githubusercontent.com/vogster/Mailchilla/main/install.sh && less install.sh && sudo bash install.sh
+```
+
+<details>
+<summary><b>Installing by hand</b></summary>
+
 Python 3.9+, and a reachable 3x-ui panel.
 
 ```bash
@@ -115,6 +135,8 @@ cp .env.example .env
 # generate ADMIN_PANEL_SECRET: openssl rand -hex 32
 python run.py
 ```
+
+</details>
 
 One command brings up both the bot and the panel. The panel is always raised - there is nowhere else to configure the project. To run the bot on its own: `python email_bot.py`.
 
@@ -173,7 +195,33 @@ The alternative is a reverse proxy with HTTPS. Setting `ADMIN_PANEL_HOST=0.0.0.0
 
 ---
 
-## 🖥️ Running as a service
+## 🖥️ Managing it
+
+The `mailchilla` command opens a menu when run on its own, and takes the same actions as arguments — so it works by hand and from a script alike.
+
+```bash
+mailchilla
+```
+
+| | |
+|---|---|
+| `mailchilla status` | the service, the version, whether the panel answers |
+| `mailchilla restart` | also `start`, `stop` |
+| `mailchilla log` | the journal, following |
+| `mailchilla update` | check for a new version and install it |
+| `mailchilla passwd` | change the panel's username or password |
+| `mailchilla port` | change the port |
+| `mailchilla tunnel` | the ready-made SSH tunnel command |
+| `mailchilla check` | sign in to 3x-ui and report back |
+| `mailchilla backup` | copy the configuration to `/opt/mailchilla-backups` |
+| `mailchilla uninstall` | remove everything |
+
+`status` is not `systemctl is-active`: with `Restart=always` a service crash-looping still reads as running, so the panel is asked over HTTP instead.
+
+Forgotten the panel password? It lives in `.env`, and without it the panel does not start at all — `mailchilla passwd` sets a new one and restarts.
+
+<details>
+<summary><b>A systemd unit for a manual installation</b></summary>
 
 ```ini
 [Unit]
@@ -198,7 +246,25 @@ Two things that are easy to trip over:
 - **Do not use `EnvironmentFile` for `.env`.** The application reads it itself through python-dotenv, and systemd parses such files by its own rules - two parsers on one file will disagree.
 - **The user needs write access** to the project directory: `settings.json`, `email_texts.json` and `logs/` are written there.
 
-Updating: `git pull` and `systemctl restart`.
+</details>
+
+---
+
+## ⬆️ Updating
+
+```bash
+mailchilla update
+```
+
+Versions are tags, not the tip of a branch: the command asks GitHub for the newest `vX.Y.Z`, shows what changed from `CHANGELOG.md` and waits for a yes.
+
+Before touching anything it copies `.env`, `settings.json` and `email_texts.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them.
+
+Files edited on the server — a template, say — are put aside with `git stash` rather than blocking the update; the command tells you how to get them back.
+
+New settings and new letter texts need no migration: a key absent from `settings.json` falls back to the default in `config.py`, and `email_texts.json` stores only what actually differs from the shipped text.
+
+For a manual installation the old route still works: `git pull` and `systemctl restart`.
 
 ---
 
@@ -208,6 +274,8 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 
 | File | What it is for |
 |---|---|
+| `install.sh` | the installer: one command, English or Russian |
+| `mailchilla.sh` | managing an installed copy: the menu and the subcommands |
 | `run.py` | the entry point: the bot in a background thread, the panel in the main one |
 | `email_bot.py` | IMAP polling, parsing letters, commands, sending |
 | `xui_client.py` | the 3x-ui API client |
@@ -238,4 +306,4 @@ git push origin feature/my-feature
 
 ## 📄 License
 
-MIT.
+MIT — see [LICENSE](LICENSE).
