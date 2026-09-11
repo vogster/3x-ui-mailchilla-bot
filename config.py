@@ -6,7 +6,7 @@ load_dotenv()
 # The project's own name and version — not to be confused with SERVICE_NAME,
 # which names one particular installation and goes into the letters.
 APP_NAME = "Mailchilla"
-APP_VERSION = "0.1.2"
+APP_VERSION = "0.1.3"
 # Where the sidebar's GitHub link points.
 PROJECT_URL = "https://github.com/vogster/3x-ui-mailchilla-bot"
 
@@ -72,6 +72,16 @@ REMARK_INCLUDE_NAME = os.getenv("REMARK_INCLUDE_NAME", "true").strip().lower() i
 # web panel; the values here are only the starting point.
 PANEL_LANG = os.getenv("PANEL_LANG", "en").strip().lower()
 MAIL_LANG = os.getenv("MAIL_LANG", "en").strip().lower()
+
+# --- The version check ---
+# Asking GitHub, a few times a day, whether a newer version has been released.
+# It is the only request this project makes on its own behalf, and some of the
+# people running it are behind exactly the sort of blocking the project exists
+# to work around — so it can be switched off in the panel.
+UPDATE_CHECK_ENABLED = True
+# The version the banner was dismissed for. It comes back when a newer one
+# than this is released.
+UPDATE_DISMISSED_VERSION = ""
 
 # --- First-run setup ---
 # Marks the wizard as done (or declined by the user). It lives in settings.json

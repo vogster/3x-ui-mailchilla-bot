@@ -129,6 +129,7 @@ def settings_submit(
     poll_interval_seconds: str = Form("15"),
     inbound_ids: list[int] = Form(default=[]),
     inbounds_present: str = Form(""),
+    update_check_enabled: str = Form(""),
     limit_gb: str = Form(""),
     expire_days: str = Form(""),
     codeword: str = Form(""),
@@ -171,6 +172,7 @@ def settings_submit(
         "HAPP_URL": happ_url,
         "INCY_URL": incy_url,
         "REMARK_INCLUDE_NAME": remark_include_name == "on",
+        "UPDATE_CHECK_ENABLED": update_check_enabled == "on",
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:

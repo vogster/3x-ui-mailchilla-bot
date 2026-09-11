@@ -8,6 +8,21 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.3]
+
+### Added
+
+- The panel notices when a newer version has been released and says so in a
+  banner: the version installed, the one available, a link to GitHub's
+  comparison between the two, and the command to run on the server. It does not
+  update anything by itself.
+- The check is a setting on the General tab and can be switched off. It asks
+  GitHub four times a day at most, from a background thread, so rendering a page
+  never waits on the network and a server with no route to GitHub simply sees
+  no banner.
+- "Later" puts the banner away for that version alone — a newer one brings it
+  back.
+
 ## [0.1.2] - 2026-09-11
 
 ### Added

@@ -38,6 +38,8 @@ MANAGED_KEYS = (
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
     "HAPP_URL", "INCY_URL",
+    # The version check
+    "UPDATE_CHECK_ENABLED", "UPDATE_DISMISSED_VERSION",
     # Housekeeping: the first-run wizard was finished or declined. It has no
     # field on the settings page — only /setup touches it.
     "SETUP_DONE",
@@ -162,7 +164,10 @@ def _coerce(key, value):
         if not text:
             raise ValueError(i18n.t("the code word cannot be empty"))
         return text
-    if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE"):
+    if key == "UPDATE_DISMISSED_VERSION":
+        # A version string or nothing; it is only ever compared, never shown.
+        return str(value or "").strip().lstrip("v")
+    if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

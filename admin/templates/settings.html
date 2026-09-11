@@ -86,6 +86,12 @@
                 <input type="text" id="admin_email" name="admin_email"
                        value="{{ state.ADMIN_EMAIL.value }}" placeholder="you@example.com">
             </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="update_check_enabled" name="update_check_enabled"
+                       {% if state.UPDATE_CHECK_ENABLED.value %}checked{% endif %}>
+                <label for="update_check_enabled">{{ t("Check for new versions") }}
+                    {{ fields.help(t("A few times a day the panel asks GitHub whether a newer version has been released, and shows a banner when one has. It is the only request the project makes on its own behalf, and it never updates anything by itself — updating is mailchilla update on the server.")) }}</label>
+            </div>
         </div>
     </div>
   </div>

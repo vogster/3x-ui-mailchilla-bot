@@ -12,6 +12,7 @@ import config
 import email_texts
 import i18n
 import settings as app_settings
+import updater
 from admin.deps import (
     templates,
     check_panel_configured,
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 app_settings.load()
 email_texts.load()
 applog.install()
+# Idempotent, like the two above: the panel may be imported on its own, without
+# run.py having started anything.
+updater.start()
 
 app = FastAPI(title="3x-ui Email Bot Admin", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -104,6 +108,24 @@ def switch_language(request: Request, lang: str = Form(""), next: str = Form("/"
     except OSError as e:
         logger.error(f"Could not store the language: {e}")
 
+    return RedirectResponse(url=safe_path(next), status_code=303)
+
+
+@app.post("/update/dismiss")
+def dismiss_update(request: Request, version: str = Form(""), next: str = Form("/")):
+    """
+    Puts the new-version banner away until a newer one than this is released.
+
+    The version is stored rather than a flag, so dismissing 0.2.0 says nothing
+    about 0.3.0 — otherwise one impatient click would silence the banner for
+    good.
+    """
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    try:
+        app_settings.save({"UPDATE_DISMISSED_VERSION": version})
+    except (ValueError, TypeError, OSError) as e:
+        logger.error(f"Could not store the dismissed version: {e}")
     return RedirectResponse(url=safe_path(next), status_code=303)
 
 

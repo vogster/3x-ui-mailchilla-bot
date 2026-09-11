@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 import config
 import i18n
 import settings
+import updater
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -64,6 +65,9 @@ def setup_status():
 
 
 templates.env.globals["setup_status"] = setup_status
+# Reads only what the background check left in memory, so it costs a page
+# render nothing and never reaches the network itself.
+templates.env.globals["update_status"] = updater.status
 
 
 def check_panel_configured():

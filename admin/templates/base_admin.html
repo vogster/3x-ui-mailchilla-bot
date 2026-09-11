@@ -715,6 +715,18 @@
             .setup-note .acts { width: 100%; }
         }
 
+        /* The new-version banner. The same shape as the setup note, with the
+           accent colour standing for "worth knowing" rather than "wrong". */
+        .setup-note.update { border-left-color: var(--link); }
+        .setup-note .ver .from { color: var(--fg-2); }
+        .setup-note .ver .to { font-weight: 600; }
+        .setup-note code.cmd {
+            display: inline-block; margin-top: 2px;
+            padding: 2px 7px; border-radius: 4px;
+            background: var(--surface-3); border: 1px solid var(--line);
+            font-size: 12.5px;
+        }
+
         /* Statuses: a dot rather than a pill */
         .badge {
             display: inline-flex; align-items: center; gap: 6px;
@@ -975,6 +987,34 @@
                        class="btn primary">{{ t("Run the setup") }}</a>
                     <form method="post" action="/setup/dismiss">
                         <button type="submit" class="btn">{{ t("I will do it myself") }}</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+            {% endblock %}
+            {% block update_banner %}
+            {% set update = update_status() %}
+            {% if update.available %}
+            <div class="setup-note update">
+                <div class="txt">
+                    <b>{{ t("A new version has been released") }}</b>
+                    <p class="ver mono">
+                        <span class="from">{{ update.current }}</span>
+                        &rarr;
+                        <span class="to">{{ update.version }}</span>
+                    </p>
+                    <p>{{ t("Update from the server's command line:") }}
+                       <code class="cmd">mailchilla update</code></p>
+                </div>
+                <div class="acts">
+                    {% if update.changes_url %}
+                    <a href="{{ update.changes_url }}" class="btn primary"
+                       target="_blank" rel="noopener noreferrer">{{ t("See the changes") }}</a>
+                    {% endif %}
+                    <form method="post" action="/update/dismiss">
+                        <input type="hidden" name="version" value="{{ update.version }}">
+                        <input type="hidden" name="next" value="{{ request.url.path }}">
+                        <button type="submit" class="btn">{{ t("Later") }}</button>
                     </form>
                 </div>
             </div>

@@ -59,6 +59,10 @@ def main():
     import applog
     applog.install()
 
+    # The version check lives in its own thread and reports through the panel.
+    import updater
+    updater.start()
+
     # The bot runs in a daemon thread, so it dies with the main process
     bot_thread = threading.Thread(target=run_bot_loop, name="email-bot", daemon=True)
     bot_thread.start()

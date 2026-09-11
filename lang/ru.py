@@ -6,6 +6,13 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # The new-version banner
+    "A new version has been released": "Вышла новая версия",
+    "Update from the server's command line:": "Обновиться из консоли сервера:",
+    "See the changes": "Посмотреть изменения",
+    "Later": "Позже",
+    "Check for new versions": "Проверять новые версии",
+    "A few times a day the panel asks GitHub whether a newer version has been released, and shows a banner when one has. It is the only request the project makes on its own behalf, and it never updates anything by itself — updating is mailchilla update on the server.": "Несколько раз в день панель спрашивает у GitHub, не вышла ли версия новее, и показывает плашку, если вышла. Это единственный запрос, который проект делает от своего имени, и он ничего не обновляет сам — обновление это mailchilla update на сервере.",
     "Dashboard": "Дашборд",
     "Clients": "Пользователи",
     "Broadcast": "Рассылка",
