@@ -708,11 +708,18 @@
         .setup-note .txt b { display: block; font-size: 14px; margin-bottom: 5px; }
         .setup-note .txt p { margin: 0; font-size: 13px; color: var(--fg-2); line-height: 1.55; }
         .setup-note .txt p + p { margin-top: 6px; }
-        .setup-note .acts { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+        /* wrap, because a button cannot shrink below its own label and a
+           translation is free to be wider than the English: two Russian
+           captions ran straight off the right edge of a phone. */
+        .setup-note .acts { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
         .setup-note form { margin: 0; }
         @media (max-width: 720px) {
             .setup-note { flex-direction: column; gap: 14px; }
             .setup-note .acts { width: 100%; }
+            /* Share the row while both fit, and take a row each when they do
+               not — either way the full width, which is easier to hit. */
+            .setup-note .acts > * { flex: 1 1 auto; }
+            .setup-note .acts .btn { width: 100%; }
         }
 
         /* The new-version banner. The same shape as the setup note, with the
@@ -1015,8 +1022,16 @@
             {% endif %}
             {% endblock %}
             {% block update_banner %}
+            {# One banner at a time. The setup note is about nothing working yet
+               and comes first; a new version can wait until the installation is
+               running. Two of them stacked push the page itself off the screen,
+               which is worst on a phone. #}
+            {# setup_status() is asked again rather than borrowed from the block
+               above: a Jinja block does not see another block's variables. It
+               reads values already in memory and costs nothing. #}
+            {% set setup = setup_status() %}
             {% set update = update_status() %}
-            {% if update.available %}
+            {% if update.available and setup.done %}
             <div class="setup-note update">
                 <div class="txt">
                     <b>{{ t("A new version has been released") }}</b>

@@ -33,6 +33,16 @@ read as something a person wants to know before updating.
 - A switch control in the panel, for a setting that turns a whole thing on or
   off — where a tick reads as "one of several" and a switch as "on, or off".
 
+### Fixed
+
+- The setup banner and the new-version banner could stand one above the other,
+  pushing the page itself off the screen — worst on a phone, where between them
+  they filled it. The setup banner comes first now and the other waits: one is
+  about nothing working yet, the other can keep.
+- The buttons in the setup banner ran off the right edge on a narrow screen. A
+  button cannot shrink below its own label and a translation is free to be wider
+  than the English, so they wrap and take the full width instead.
+
 ### Changed
 
 - The app buttons in the welcome letter ("Add to Happ", "Add to Incy") are
