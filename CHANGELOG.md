@@ -8,7 +8,7 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
-## [0.1.3]
+## [0.1.3] - 2026-09-12
 
 ### Added
 
