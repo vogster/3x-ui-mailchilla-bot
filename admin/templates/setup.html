@@ -84,8 +84,7 @@
     <li data-for="2"><span class="num">2</span> {{ t("Mail") }}</li>
     <li data-for="3"><span class="num">3</span> {{ t("Registration") }}</li>
     <li data-for="4"><span class="num">4</span> {{ t("Notifications") }} <span class="opt">{{ t("optional") }}</span></li>
-    <li data-for="5"><span class="num">5</span> {{ t("Apps") }} <span class="opt">{{ t("optional") }}</span></li>
-    <li data-for="6"><span class="num">6</span> {{ t("Done") }}</li>
+    <li data-for="5"><span class="num">5</span> {{ t("Done") }}</li>
 </ol>
 
 <!-- 1. Service -->
@@ -248,6 +247,14 @@
                 <input type="number" id="expire_days" name="expire_days" min="0" step="1"
                        value="{{ state.EXPIRE_DAYS.value }}">
             </div>
+            <div>
+                <label for="xui_flow">{{ t("flow") }} {{ fields.help(t("The flow a new client is created with. Some inbounds need xtls-rprx-vision, others take nothing at all — leave it empty when in doubt, it can be changed later.")) }}</label>
+                <input type="text" id="xui_flow" name="xui_flow" list="setup-flow-options"
+                       value="{{ state.XUI_FLOW.value }}" placeholder="{{ t('empty = no flow') }}">
+                <datalist id="setup-flow-options">
+                    <option value="xtls-rprx-vision"></option>
+                </datalist>
+            </div>
         </div>
     </div>
 </div>
@@ -267,34 +274,18 @@
             </div>
             {{ fields.secret_field("gotify_token", "GOTIFY_TOKEN", t("App token"), state.GOTIFY_TOKEN,
                                    t("Created in Gotify on the Apps tab. Without it no notification goes out.")) }}
+            <div class="form-actions" style="margin-top: 4px; align-items: center;">
+                <button type="button" class="btn small" id="setup-gotify-test">
+                    {{ t("Send a test notification") }}
+                </button>
+                {{ fields.help(t("The address and the token are saved first, then the notification goes out.")) }}
+            </div>
         </div>
     </div>
 </div>
 
-<!-- 5. Apps -->
+<!-- 5. Done -->
 <div class="wiz-step" data-step="5" hidden>
-    <div class="panel">
-        <div class="panel-head">
-            <h2>{{ t("The app buttons in the letter") }} {{ fields.help(t("The welcome letter gets «Add to Happ / Incy» buttons carrying the subscription link. An empty field removes that button; the link itself is always in the letter as text.")) }}</h2>
-            <span class="muted">{{ t("optional") }}</span>
-        </div>
-        <div style="padding: 24px;" class="form-grid">
-            <div>
-                <label for="happ_url">{{ t("Happ scheme") }}</label>
-                <input type="text" id="happ_url" name="happ_url"
-                       value="{{ state.HAPP_URL.value }}" placeholder="happ://add">
-            </div>
-            <div>
-                <label for="incy_url">{{ t("Incy scheme") }}</label>
-                <input type="text" id="incy_url" name="incy_url"
-                       value="{{ state.INCY_URL.value }}" placeholder="incy://add">
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 6. Done -->
-<div class="wiz-step" data-step="6" hidden>
     <div class="panel">
         <div class="panel-head"><h2>{{ t("All done") }}</h2></div>
         <div style="padding: 24px;">
@@ -426,6 +417,31 @@
                 })
                 .then(function () { next.disabled = false; next.textContent = was; });
         });
+
+        // The test sends with what is stored, so the step is saved first —
+        // otherwise it would check an address the server has never seen.
+        var gtest = document.getElementById("setup-gotify-test");
+        if (gtest) {
+            gtest.addEventListener("click", function () {
+                var was = gtest.textContent.trim();
+                gtest.disabled = true;
+                gtest.textContent = {{ t("Sending…")|tojson }};
+                save(document.querySelector('.wiz-step[data-step="4"]'))
+                    .then(function () {
+                        return fetch("/settings/gotify/test",
+                                     { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                            .then(function (r) { return r.json(); });
+                    })
+                    .then(function (d) {
+                        gtest.textContent = d && d.ok ? {{ t("Sent")|tojson }}
+                                                      : ((d && d.error) || {{ t("It did not work")|tojson }});
+                    })
+                    .catch(function () { gtest.textContent = {{ t("The request failed")|tojson }}; })
+                    .then(function () {
+                        setTimeout(function () { gtest.textContent = was; gtest.disabled = false; }, 2600);
+                    });
+            });
+        }
 
         skip.addEventListener("click", function () { show(current + 1); });
         back.addEventListener("click", function () { show(current - 1); });

@@ -118,8 +118,8 @@ declare -A MSG=(
 
 [en.q_xui_url]="Address of the 3x-ui panel"
 [ru.q_xui_url]="Адрес панели 3x-ui"
-[en.q_xui_url_hint]="With the protocol and the port, for example http://1.2.3.4:2053"
-[ru.q_xui_url_hint]="С протоколом и портом, например http://1.2.3.4:2053"
+[en.q_xui_url_hint]="The whole address the panel opens at, including the path: protocol, host, port and the base path if the panel has one — for example http://1.2.3.4:2053/mypath"
+[ru.q_xui_url_hint]="Весь адрес, по которому открывается панель, вместе с путём: протокол, хост, порт и базовый путь, если он задан — например http://1.2.3.4:2053/mypath"
 [en.q_auth]="How to authenticate"
 [ru.q_auth]="Способ авторизации"
 [en.q_auth_1]="Username and password"
@@ -176,8 +176,12 @@ declare -A MSG=(
 [en.port_busy]="Port {0} is occupied. Choose another one."
 [ru.port_busy]="Порт {0} занят. Выберите другой."
 
+[en.step_failed]="That step failed. The last lines of its output:"
+[ru.step_failed]="Шаг не удался. Последние строки вывода:"
 [en.w_deps]="Installing packages, this may take a minute..."
 [ru.w_deps]="Ставим пакеты, это может занять минуту..."
+[en.w_fetch]="Downloading the source..."
+[ru.w_fetch]="Скачиваем исходники..."
 [en.w_clone]="Downloading version {0}..."
 [ru.w_clone]="Скачиваем версию {0}..."
 [en.w_venv]="Creating the virtual environment and installing dependencies..."
@@ -246,6 +250,60 @@ step() {
     printf '  %s[%d/%d]%s %s%s%s ' "$D" "$STEP" "$STEPS" "$N" "$B" "$1" "$N"
 }
 ok() { printf '%s✓%s\n' "$GRN" "$N"; }
+
+# Runs something slow with a turning bar beside it. apt and pip take minutes and
+# say nothing while they do, which reads as a hang — and their ordinary chatter
+# is pages long, so it is kept back and printed only when the step fails.
+spin_run() {
+    local msg="$1"; shift
+    local log rc=0
+    log="$(mktemp)"
+    if [ -t 1 ]; then
+        "$@" >"$log" 2>&1 &
+        local pid=$! frames='-\|/' i=0
+        while kill -0 "$pid" 2>/dev/null; do
+            printf '\r      %s%s%s %s%s%s ' "$CYA" "${frames:$((i % 4)):1}" "$N" "$D" "$msg" "$N"
+            i=$((i + 1))
+            sleep 0.12
+        done
+        wait "$pid" || rc=$?
+        # Wipe the line: the next thing printed should not land on the bar.
+        printf '\r\033[2K'
+    else
+        printf '      %s%s%s\n' "$D" "$msg" "$N"
+        "$@" >"$log" 2>&1 || rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+        printf '      %s✗%s %s\n' "$RED" "$N" "$(t step_failed)" >&2
+        tail -n 12 "$log" | sed 's/^/      /' >&2
+        rm -f "$log"
+        exit 1
+    fi
+    rm -f "$log"
+}
+
+# The same bar for something whose failure is an ordinary outcome with its own
+# message — waiting for the panel, say. It hands the status back instead of
+# stopping the installation and prints nothing of its own.
+spin_wait() {
+    local msg="$1"; shift
+    local rc=0
+    if [ -t 1 ]; then
+        "$@" >/dev/null 2>&1 &
+        local pid=$! frames='-\|/' i=0
+        while kill -0 "$pid" 2>/dev/null; do
+            printf '\r      %s%s%s %s%s%s ' "$CYA" "${frames:$((i % 4)):1}" "$N" "$D" "$msg" "$N"
+            i=$((i + 1))
+            sleep 0.12
+        done
+        wait "$pid" || rc=$?
+        printf '\r\033[2K'
+    else
+        printf '      %s%s%s\n' "$D" "$msg" "$N"
+        "$@" >/dev/null 2>&1 || rc=$?
+    fi
+    return "$rc"
+}
 
 banner() {
     printf '\n'
@@ -362,8 +420,7 @@ port_free() {
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
-fetch_code() {
-    local ref
+_fetch_repo() {
     if [ -d "$INSTALL_DIR/.git" ]; then
         git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
         git -C "$INSTALL_DIR" fetch --tags --quiet --force
@@ -372,6 +429,13 @@ fetch_code() {
         git clone --quiet "$REPO_URL" "$INSTALL_DIR"
         git -C "$INSTALL_DIR" fetch --tags --quiet --force
     fi
+}
+
+fetch_code() {
+    local ref
+    # The download runs behind the bar; working out which tag to take happens
+    # here, because a subshell could not hand VERSION back.
+    spin_run "$(t w_fetch)" _fetch_repo
 
     if [ -n "$REQ_BRANCH" ]; then
         ref="origin/$REQ_BRANCH"
@@ -389,18 +453,18 @@ fetch_code() {
             VERSION="$ref"
         fi
     fi
-    info "$(t w_clone "$VERSION")"
-    git -C "$INSTALL_DIR" checkout --quiet --force "$ref"
+    spin_run "$(t w_clone "$VERSION")" git -C "$INSTALL_DIR" checkout --quiet --force "$ref"
 }
 
-make_venv() {
-    info "$(t w_venv)"
+_make_venv() {
     if [ ! -x "$INSTALL_DIR/venv/bin/python" ]; then
         python3 -m venv "$INSTALL_DIR/venv"
     fi
     "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
-    "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null
+    "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
 }
+
+make_venv() { spin_run "$(t w_venv)" _make_venv; }
 
 write_env() {
     local file="$INSTALL_DIR/.env"
@@ -663,8 +727,9 @@ main() {
     rule
     printf '\n'
 
-    step "$(t s_deps)"; printf '\n'; info "$(t w_deps)"
-    install_packages; check_python
+    step "$(t s_deps)"; printf '\n'
+    spin_run "$(t w_deps)" install_packages
+    check_python
     printf '      %s✓%s Python %s\n' "$GRN" "$N" "$PY_VERSION"
 
     step "$(t s_user)"
@@ -701,9 +766,9 @@ main() {
     systemctl enable "$SERVICE" >/dev/null 2>&1
     ok
 
-    step "$(t s_start)"; printf '\n'; info "$(t w_start)"
+    step "$(t s_start)"; printf '\n'
     systemctl restart "$SERVICE"
-    if wait_for_panel; then
+    if spin_wait "$(t w_start)" wait_for_panel; then
         printf '      %s✓%s %s\n' "$GRN" "$N" "$(t start_ok)"
         summary
     else

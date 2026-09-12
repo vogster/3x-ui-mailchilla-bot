@@ -6,7 +6,7 @@ load_dotenv()
 # The project's own name and version — not to be confused with SERVICE_NAME,
 # which names one particular installation and goes into the letters.
 APP_NAME = "Mailchilla"
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.1.4"
 # Where the sidebar's GitHub link points.
 PROJECT_URL = "https://github.com/vogster/3x-ui-mailchilla-bot"
 
@@ -57,8 +57,12 @@ except ValueError:
     GOTIFY_PRIORITY = 5
 
 # App Urls Config
-HAPP_URL = os.getenv("HAPP_URL", "")
-INCY_URL = os.getenv("INCY_URL", "")
+# The two schemes are the same for every installation — they belong to the apps,
+# not to this server — so they are filled in from the start and the first-run
+# wizard has nothing to ask about them. Emptying one in the panel removes its
+# button from the letter.
+HAPP_URL = os.getenv("HAPP_URL", "happ://add")
+INCY_URL = os.getenv("INCY_URL", "incy://add")
 
 # --- Sender name on registration ---
 # When True, the sender's name goes into the client's separate `comment` field.

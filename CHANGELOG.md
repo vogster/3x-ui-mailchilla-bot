@@ -8,6 +8,37 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.4]
+
+### Added
+
+- The installer shows a turning bar while it works. Packages and pip take
+  minutes and say nothing meanwhile, which reads as a hang; their own output is
+  kept back and printed only if the step fails.
+- `mailchilla` says in its header when a newer version is out. It asks once per
+  run, on a four-second leash, and only ever points forward — a copy running
+  ahead of the newest tag is somebody testing a branch.
+- `mailchilla autostart` toggles autostart, and the menu entry shows whether it
+  is on. After switching it says which way it went rather than just "done".
+- The first-run wizard asks for `flow` along with the other registration
+  defaults, and can send a test notification to Gotify without leaving the step.
+
+### Changed
+
+- The wizard no longer asks about the app schemes: `happ://add` and `incy://add`
+  belong to the apps rather than to any one installation, so they are filled in
+  from the start. Emptying one in the panel still removes its button.
+- The Gotify notification texts follow the panel's language while they are
+  untouched. A text typed into the field is left exactly as typed.
+- The installer says plainly that the 3x-ui address needs the whole path,
+  including the panel's base path.
+
+### Fixed
+
+- In the menu, an action needing root threw the person out of the program
+  instead of refusing that one action — which is why autostart looked as though
+  it could not be switched.
+
 ## [0.1.3] - 2026-09-12
 
 ### Added

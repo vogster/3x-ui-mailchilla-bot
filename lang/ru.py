@@ -6,6 +6,14 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # The first-run wizard
+    "flow": "flow",
+    "The flow a new client is created with. Some inbounds need xtls-rprx-vision, others take nothing at all — leave it empty when in doubt, it can be changed later.": "Flow, с которым создаётся новый клиент. Одним inbound'ам нужен xtls-rprx-vision, другим не нужно ничего — если сомневаетесь, оставьте пустым, потом можно поменять.",
+    "Send a test notification": "Отправить тестовое уведомление",
+    "The address and the token are saved first, then the notification goes out.": "Сначала сохраняются адрес и токен, потом уходит уведомление.",
+    # Gotify notification defaults; a text typed into the field is left alone
+    "New {service} registration": "Новая регистрация в {service}",
+    "{email} has been registered.": "{email} зарегистрирован.",
     # The roulette
     "Only the recipients you have ticked go into the drum, and the one it draws is left ticked on its own.": "В барабан попадают только отмеченные получатели, а выпавший остаётся отмеченным один.",
     "Nobody is ticked — there is nothing to draw between": "Никто не отмечен — разыгрывать нечего",

@@ -52,6 +52,10 @@ fi
 
 declare -A MSG=(
 
+[en.new_version]="Version {0} is out."
+[ru.new_version]="Вышла версия {0}."
+[en.new_version_how]="mailchilla update"
+[ru.new_version_how]="mailchilla update"
 [en.m_status]="Status"
 [ru.m_status]="Статус"
 [en.m_start]="Start"
@@ -107,6 +111,12 @@ declare -A MSG=(
 [ru.st_panel]="Панель"
 [en.st_answers]="answers"
 [ru.st_answers]="отвечает"
+[en.autostart_on]="Autostart is on — the panel will come up after a reboot."
+[ru.autostart_on]="Автозапуск включён — панель поднимется после перезагрузки."
+[en.autostart_off]="Autostart is off — after a reboot it will have to be started by hand."
+[ru.autostart_off]="Автозапуск выключен — после перезагрузки придётся запускать вручную."
+[en.autostart_failed]="systemd did not accept the change."
+[ru.autostart_failed]="systemd не принял изменение."
 [en.st_silent]="does not answer"
 [ru.st_silent]="не отвечает"
 
@@ -243,8 +253,15 @@ bad()  { printf '  %s✗%s %s\n' "$RED" "$N" "$1"; }
 warn() { printf '  %s!%s %s\n' "$YEL" "$N" "$1"; }
 rule() { printf '  %s────────────────────────────────────────────────%s\n' "$D" "$N"; }
 
+# Set while the menu is up: a missing root there should refuse the one action,
+# not throw the person out of the program they are working in.
+IN_MENU=0
+
 need_root() {
-    [ "$(id -u)" -eq 0 ] || { bad "$(t need_root "${1:-}")"; exit 1; }
+    [ "$(id -u)" -eq 0 ] && return 0
+    bad "$(t need_root "${1:-}")"
+    [ "$IN_MENU" = "1" ] && return 1
+    exit 1
 }
 
 need_install() {
@@ -341,10 +358,10 @@ cmd_status() {
     printf '\n'
 }
 
-cmd_start()   { need_root start;   systemctl start "$SERVICE";   good "$(t done)"; }
-cmd_stop()    { need_root stop;    systemctl stop "$SERVICE";    good "$(t done)"; }
+cmd_start()   { need_root start || return 1;   systemctl start "$SERVICE";   good "$(t done)"; }
+cmd_stop()    { need_root stop || return 1;    systemctl stop "$SERVICE";    good "$(t done)"; }
 cmd_restart() {
-    need_root restart
+    need_root restart || return 1
     systemctl restart "$SERVICE"
     if wait_for_panel; then good "$(t done)"; else warn "$(t st_silent)"; fi
 }
@@ -357,15 +374,28 @@ cmd_log() {
     fi
 }
 
-cmd_enable()  { need_root enable;  systemctl enable "$SERVICE" >/dev/null 2>&1; good "$(t done)"; }
-cmd_disable() { need_root disable; systemctl disable "$SERVICE" >/dev/null 2>&1; good "$(t done)"; }
+autostart_on() { [ "$(systemctl is-enabled "$SERVICE" 2>/dev/null || true)" = "enabled" ]; }
+
+# Say what it became, not just "done": the menu is the only place this shows,
+# and a bare "done" leaves somebody wondering which way it went.
+cmd_enable() {
+    need_root enable || return 1
+    systemctl enable "$SERVICE" >/dev/null 2>&1 || true
+    if autostart_on; then good "$(t autostart_on)"; else bad "$(t autostart_failed)"; fi
+}
+cmd_disable() {
+    need_root disable || return 1
+    systemctl disable "$SERVICE" >/dev/null 2>&1 || true
+    if autostart_on; then bad "$(t autostart_failed)"; else good "$(t autostart_off)"; fi
+}
+cmd_autostart() { if autostart_on; then cmd_disable; else cmd_enable; fi; }
 
 # Set by cmd_backup, read by cmd_update. Returning it on stdout would mean
 # silencing the message the user is meant to see.
 BACKUP_PATH=""
 
 cmd_backup() {
-    need_root backup; need_install
+    need_root backup || return 1; need_install
     local dest="$BACKUP_DIR/$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$dest"
     local file
@@ -442,7 +472,7 @@ print("OK", len(body.get("obj") or []))
 }
 
 cmd_passwd() {
-    need_root passwd; need_install
+    need_root passwd || return 1; need_install
     local user pass repeat generated=0
     printf '\n'
     printf '  %s?%s %s [%s]: ' "$CYA" "$N" "$(t p_user)" "$(env_get ADMIN_PANEL_USER)"
@@ -475,7 +505,7 @@ cmd_passwd() {
 }
 
 cmd_port() {
-    need_root port; need_install
+    need_root port || return 1; need_install
     local port host current
     current="$(panel_host)"
     printf '\n'
@@ -519,7 +549,7 @@ cmd_port() {
 }
 
 cmd_lang() {
-    need_root lang
+    need_root lang || return 1
     printf '\n'
     printf '      %s1%s  English\n' "$B" "$N"
     printf '      %s2%s  Русский\n' "$B" "$N"
@@ -540,11 +570,39 @@ cmd_lang() {
 
 # --- update ---------------------------------------------------------------
 latest_tag() {
-    git ls-remote --tags --refs "$REPO_URL" 2>/dev/null \
+    # A short leash: the menu must not sit waiting on GitHub, and a machine with
+    # no route there should still get its menu.
+    { if command -v timeout >/dev/null 2>&1; then
+          timeout "${1:-8}" git ls-remote --tags --refs "$REPO_URL"
+      else
+          git ls-remote --tags --refs "$REPO_URL"
+      fi; } 2>/dev/null \
         | awk -F/ '{print $NF}' \
         | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
         | sort -V \
         | tail -n 1
+}
+
+# Asked once per run and remembered: the header is drawn again on every trip
+# round the menu, and one question to GitHub is enough.
+UPDATE_NOTE=""
+UPDATE_NOTE_ASKED=0
+update_note() {
+    if [ "$UPDATE_NOTE_ASKED" = "0" ]; then
+        UPDATE_NOTE_ASKED=1
+        local latest current
+        latest="$(latest_tag 4 || true)"
+        current="$(current_version)"
+        if [ -n "$latest" ] && [ "$latest" != "$current" ]; then
+            # Only forward: a copy running ahead of the newest tag is somebody
+            # testing a branch, and telling them to "update" to an older tag
+            # would be wrong.
+            if [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)" = "$latest" ]; then
+                UPDATE_NOTE="$latest"
+            fi
+        fi
+    fi
+    printf '%s' "$UPDATE_NOTE"
 }
 
 changelog_for() {
@@ -561,7 +619,7 @@ changelog_for() {
 python_minor() { python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0; }
 
 cmd_update() {
-    need_root update; need_install
+    need_root update || return 1; need_install
     local current latest dirty stash_made=0 backup
 
     current="$(current_version)"
@@ -643,7 +701,7 @@ cmd_update() {
 }
 
 cmd_uninstall() {
-    need_root uninstall
+    need_root uninstall || return 1
     printf '\n'
     warn "$(t un_warn "mailchilla")"
     printf '  %s?%s %s [y/N]: ' "$CYA" "$N" "$(t un_ask)"
@@ -674,7 +732,7 @@ cmd_help() {
     printf '     mailchilla %s%s%s\n\n' "$D" "— $(t help_nomenu)" "$N"
     local c
     for c in status start stop restart log update passwd port tunnel check \
-             enable disable backup lang uninstall version help; do
+             enable disable autostart backup lang uninstall version help; do
         printf '     mailchilla %s\n' "$c"
     done
     printf '\n'
@@ -696,12 +754,20 @@ menu_header() {
         printf '  %s│%s  %sM A I L C H I L L A%s   %s●%s %s %s%s%s\n' \
             "$MAG" "$N" "$B" "$N" "$RED" "$N" "$(t stopped)" "$D" "$version" "$N"
     fi
-    printf '  %s╰────────────────────────────────────────────────╯%s\n\n' "$MAG" "$N"
+    printf '  %s╰────────────────────────────────────────────────╯%s\n' "$MAG" "$N"
+    local note
+    note="$(update_note)"
+    if [ -n "$note" ]; then
+        printf '     %s%s%s  %s%s%s\n' "$GRN" "$(t new_version "$note")" "$N" \
+               "$D" "$(t new_version_how)" "$N"
+    fi
+    printf '\n'
 }
 
 item() { printf '     %s%2s%s  %s\n' "$B$CYA" "$1" "$N" "$2"; }
 
 menu_loop() {
+    IN_MENU=1
     local choice
     while :; do
         menu_header
@@ -717,7 +783,7 @@ menu_loop() {
         item 9  "$(t m_tunnel)"
         item 10 "$(t m_check)"
         printf '\n'
-        item 11 "$(t m_autostart)"
+        item 11 "$(t m_autostart) — $(autostart_on && t enabled || t disabled)"
         item 12 "$(t m_backup)"
         item 13 "$(t m_lang)"
         item 14 "$(t m_uninstall)"
@@ -737,11 +803,7 @@ menu_loop() {
             8) cmd_port ;;
             9) cmd_tunnel ;;
             10) cmd_check ;;
-            11) if [ "$(systemctl is-enabled "$SERVICE" 2>/dev/null || true)" = "enabled" ]; then
-                    cmd_disable
-                else
-                    cmd_enable
-                fi ;;
+            11) cmd_autostart ;;
             12) cmd_backup ;;
             13) cmd_lang ;;
             14) cmd_uninstall; exit 0 ;;
@@ -775,6 +837,7 @@ main() {
         tunnel|ssh) cmd_tunnel ;;
         check)     cmd_check ;;
         enable)    cmd_enable ;;
+        autostart) cmd_autostart ;;
         disable)   cmd_disable ;;
         backup)    cmd_backup ;;
         lang)      cmd_lang ;;

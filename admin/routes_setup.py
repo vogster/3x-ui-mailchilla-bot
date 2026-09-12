@@ -40,6 +40,7 @@ FIELD_KEYS = {
     "codeword": "CODEWORD",
     "limit_gb": "LIMIT_GB",
     "expire_days": "EXPIRE_DAYS",
+    "xui_flow": "XUI_FLOW",
     "gotify_url": "GOTIFY_URL",
     "gotify_token": "GOTIFY_TOKEN",
     "happ_url": "HAPP_URL",
