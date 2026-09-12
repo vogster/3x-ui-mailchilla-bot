@@ -39,6 +39,12 @@ read as something a person wants to know before updating.
   pushing the page itself off the screen — worst on a phone, where between them
   they filled it. The setup banner comes first now and the other waits: one is
   about nothing working yet, the other can keep.
+- The log table came out as a ribbon of one- and two-word lines on a phone. It
+  already sat in a box that scrolls sideways, but had nothing to scroll: the
+  message cell may break a word anywhere, so the column squeezed down to almost
+  nothing instead of overflowing. A floor under the table's width stops that,
+  and the box now scrolls as it does for the client list. The same table on the
+  dashboard is fixed with it.
 - The buttons in the setup banner ran off the right edge on a narrow screen. A
   button cannot shrink below its own label and a translation is free to be wider
   than the English, so they wrap and take the full width instead.

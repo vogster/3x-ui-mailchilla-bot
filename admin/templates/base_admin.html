@@ -890,6 +890,13 @@
         .hint { color: var(--fg-3); font-size: 12px; margin-top: 6px; line-height: 1.5; }
 
         /* Logs */
+        /* The table is already inside .tscroll, but it never had anything to
+           scroll: the message cell may break a word anywhere, so on a phone the
+           column squeezed down to a few characters and every record came out as
+           a tall ribbon of text. A floor under the width stops it squeezing, and
+           the box scrolls sideways as it does for the client list. The message
+           still wraps — within a column wide enough to read. */
+        table.logs { min-width: 640px; }
         table.logs td { font-size: 12.5px; padding: 9px 14px; }
         .badge.lvl {
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
