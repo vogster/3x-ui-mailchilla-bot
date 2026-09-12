@@ -11,7 +11,7 @@ import config
 import email_bot
 import i18n
 import templates as mail_templates
-from admin.deps import templates, require_auth
+from admin.deps import templates, require_auth, is_authenticated
 from xui_client import XuiClient, get_shared_client
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,10 @@ def _attach_links(rows: list, links: list) -> list:
     return spare
 
 
-def _client_detail(client_obj: dict, inbounds: list, links: list = None) -> dict:
+def _client_detail(client_obj: dict, inbounds: list, links: list = None,
+                   online: set = None) -> dict:
     """The fuller view of a client, for its own page."""
-    row = _client_row(client_obj)
+    row = _client_row(client_obj, online)
     traffic_obj = client_obj.get("traffic") or {}
     up = int(traffic_obj.get("up") or client_obj.get("up") or 0)
     down = int(traffic_obj.get("down") or client_obj.get("down") or 0)
@@ -111,8 +112,13 @@ def clients_list(request: Request, q: str = ""):
     if auth_redirect:
         return auth_redirect
 
-    all_clients = get_shared_client().get_all_clients() or []
-    rows = [_client_row(c) for c in all_clients]
+    xui = get_shared_client()
+    all_clients = xui.get_all_clients() or []
+    # One question for the whole table rather than one per row. None means the
+    # panel could not say, and the column then keeps quiet.
+    online_emails = xui.get_online_emails()
+    online = None if online_emails is None else set(online_emails)
+    rows = [_client_row(c, online) for c in all_clients]
 
     query = (q or "").strip().lower()
     if query:
@@ -132,6 +138,8 @@ def clients_list(request: Request, q: str = ""):
         "clients": rows,
         "q": q,
         "total": len(rows),
+        # Whether to draw the dots and offer the filter at all.
+        "online_known": online is not None,
     }
     context.update(new_dialog_context())
     return templates.TemplateResponse("clients.html", context)
@@ -182,6 +190,26 @@ def _new_client_context(request: Request, form: dict = None, error: str = ""):
             "send_email": form.get("send_email", True),
         },
     }
+
+
+@router.get("/clients/online")
+def clients_online(request: Request):
+    """
+    Who is connected, so the list can refresh its dots without a reload.
+
+    Declared above /clients/{client_uuid}: routes are matched in the order they
+    are written, and "online" would otherwise be taken for an identifier.
+
+    A 502 when the panel cannot say. The page then leaves the dots as they are
+    rather than blanking them — a failed request is not evidence that everybody
+    went offline.
+    """
+    if not is_authenticated(request):
+        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
+    emails = get_shared_client().get_online_emails()
+    if emails is None:
+        return JSONResponse({"ok": False}, status_code=502)
+    return JSONResponse({"ok": True, "online": emails})
 
 
 @router.get("/clients/new", response_class=HTMLResponse)
@@ -309,6 +337,10 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
     if not client_obj:
         raise HTTPException(status_code=404, detail=i18n.t("The client was not found"))
 
+    # Same question the list asks, and the same None when the panel cannot say.
+    online_emails = xui.get_online_emails()
+    online = None if online_emails is None else set(online_emails)
+
     return templates.TemplateResponse(
         "client_detail.html",
         {
@@ -317,7 +349,9 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
             # The links are a separate request; an empty answer only costs the
             # inbound chips their copy button.
             "client": _client_detail(client_obj, xui.get_inbounds(),
-                                     xui.get_client_links(client_obj.get("email") or "")),
+                                     xui.get_client_links(client_obj.get("email") or ""),
+                                     online),
+            "online_known": online is not None,
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
             "sent": sent,

@@ -37,6 +37,16 @@
                 <button type="button" data-value="0">{{ t("None") }}</button>
             </div>
         </div>
+        {% if online_known %}
+        <div class="filter-group">
+            <span class="lbl">{{ t("Connection [filter]") }}</span>
+            <div class="segmented" data-filter="online">
+                <button type="button" class="on" data-value="">{{ t("All") }}</button>
+                <button type="button" data-value="1">{{ t("Online [filter]") }}</button>
+                <button type="button" data-value="0">{{ t("Offline [filter]") }}</button>
+            </div>
+        </div>
+        {% endif %}
         <button type="button" class="btn small" id="filters-toggle" style="margin-left:auto;">
             {{ t("More filters") }}
         </button>
@@ -78,10 +88,18 @@
                     data-traffic="{{ c.used_bytes }}"
                     data-created="{{ c.created_ms }}"
                     data-enabled="{{ 1 if c.enable else 0 }}"
-                    data-hasmail="{{ 1 if c.bare_email else 0 }}">
+                    data-hasmail="{{ 1 if c.bare_email else 0 }}"
+                    data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
+                    data-remark="{{ c.remark }}">
                     <td>
                         <a href="/clients/{{ c.uuid }}" class="row-link">
-                            <div class="mono">{{ c.remark or c.bare_email }}</div>
+                            <div class="mono">
+                                {% if online_known and c.online is not none %}
+                                <span class="odot {{ 'on' if c.online else 'off' }}"
+                                      title="{{ t('Online [badge]') if c.online else t('Offline [badge]') }}"></span>
+                                {% endif %}
+                                {{ c.remark or c.bare_email }}
+                            </div>
                             {% if c.comment and c.comment != c.remark %}
                             <div class="muted">{{ c.comment }}</div>
                             {% endif %}
@@ -89,9 +107,9 @@
                     </td>
                     <td>
                         {% if c.enable %}
-                        <span class="badge on">{{ t("Active [badge]") }}</span>
+                        <span class="badge on nodot">{{ t("Active [badge]") }}</span>
                         {% else %}
-                        <span class="badge off">{{ t("Disabled [badge]") }}</span>
+                        <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
                         {% endif %}
                     </td>
                     <td>
@@ -139,11 +157,11 @@
     // visits: sorting only changes the order, while a filter hides clients, and
     // coming back to wonder where half the list went is unpleasant.
     var clientFilters = (function () {
-        var state = { status: "", mail: "", from: null, to: null, gbMin: null, gbMax: null };
+        var state = { status: "", mail: "", online: "", from: null, to: null, gbMin: null, gbMax: null };
         var listeners = [];
 
         function active() {
-            return state.status !== "" || state.mail !== "" ||
+            return state.status !== "" || state.mail !== "" || state.online !== "" ||
                    state.from !== null || state.to !== null ||
                    state.gbMin !== null || state.gbMax !== null;
         }
@@ -151,6 +169,7 @@
         function matches(row) {
             if (state.status !== "" && row.dataset.enabled !== state.status) return false;
             if (state.mail !== "" && row.dataset.hasmail !== state.mail) return false;
+            if (state.online !== "" && row.dataset.online !== state.online) return false;
             var created = Number(row.dataset.created);
             if (state.from !== null && created < state.from) return false;
             if (state.to !== null && created > state.to) return false;
@@ -312,6 +331,58 @@
         }
 
         refreshReset();
+    })();
+
+    // The dots refresh on their own; nothing else on the page is touched.
+    //
+    // Only the dot's class and the row's data-online change, and then the
+    // filters are re-applied through the same path a keystroke takes — so the
+    // search text, the chosen filters, the sort order and the counter all
+    // survive. Rows are never replaced, so an open menu keeps its element.
+    (function () {
+        if (!document.querySelector('.segmented[data-filter="online"]')) return;
+        var EVERY = 20000;
+        var ON = {{ t("Online [badge]")|tojson }};
+        var OFF = {{ t("Offline [badge]")|tojson }};
+        var busy = false;
+
+        function paint(list) {
+            var live = {};
+            for (var i = 0; i < list.length; i++) live[list[i]] = true;
+            var rows = document.querySelectorAll("tbody tr[data-remark]");
+            for (var j = 0; j < rows.length; j++) {
+                var row = rows[j];
+                var on = live[row.dataset.remark] === true;
+                if (row.dataset.online === (on ? "1" : "0")) continue;
+                row.dataset.online = on ? "1" : "0";
+                var dot = row.querySelector(".odot");
+                if (dot) {
+                    dot.className = "odot " + (on ? "on" : "off");
+                    dot.title = on ? ON : OFF;
+                }
+            }
+            // Recount and re-hide: with "online" chosen as a filter the list
+            // has to follow, and the counter with it.
+            clientFilters.changed();
+        }
+
+        function tick() {
+            // Nothing to see on a hidden tab, and no reason to keep asking the
+            // panel. A menu standing open is somebody in the middle of
+            // something — the row under it should not move.
+            if (busy || document.hidden) return;
+            if (document.querySelector("details.rowmenu[open]")) return;
+            busy = true;
+            fetch("/clients/online", { credentials: "same-origin" })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (data && data.ok && data.online) paint(data.online);
+                })
+                .catch(function () { /* the dots simply stand until it works */ })
+                .then(function () { busy = false; });
+        }
+
+        setInterval(tick, EVERY);
     })();
 
     // Sorting by a click on the header. The rows are already on the page, so

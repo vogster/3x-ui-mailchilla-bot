@@ -50,8 +50,16 @@ def _fmt_expiry(expiry_time_ms):
         return "—"
 
 
-def _client_row(client_obj: dict) -> dict:
-    """Turns a 3x-ui client object into a flat row for the table."""
+def _client_row(client_obj: dict, online: set = None) -> dict:
+    """
+    Turns a 3x-ui client object into a flat row for the table.
+
+    `online` is the set of identifiers the panel reports as connected. Leaving
+    it None means nobody asked — and "nobody asked" is not "nobody is
+    connected", so the row then says None rather than False and the table draws
+    no dot at all. An older 3x-ui has no such endpoint, and inventing an answer
+    for it would be worse than saying nothing.
+    """
     remark = client_obj.get("email", "") or ""
     bare_email = XuiClient.extract_bare_email(remark)
     traffic_obj = client_obj.get("traffic") or {}
@@ -73,6 +81,7 @@ def _client_row(client_obj: dict) -> dict:
         "comment": (client_obj.get("comment") or "").strip(),
         "bare_email": bare_email,
         "enable": client_obj.get("enable") is True,
+        "online": None if online is None else (remark in online),
         "used_gb": _fmt_gb(used),
         # The number alone, plus a flag: templates decide how to word "no limit",
         # and the wording is translated rather than compared against.

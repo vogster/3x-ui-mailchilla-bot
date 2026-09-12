@@ -39,6 +39,25 @@ read as something a person wants to know before updating.
   pushing the page itself off the screen — worst on a phone, where between them
   they filled it. The setup banner comes first now and the other waits: one is
   about nothing working yet, the other can keep.
+- Who is connected right now shows as a dot beside the address — in the client
+  list, on a client's own page and in the broadcast's recipient list. Green
+  breathes, red sits still, because most of a list is usually offline and a page
+  of blinking would be unreadable. The panel is asked once per page and again
+  every twenty seconds, and only the dots change: the search text, the filters,
+  the sort order, a half-written letter and the recipients already ticked all
+  stay exactly as they were. A tab nobody is looking at stops asking.
+- The client list and the broadcast can be filtered by connection. On the
+  broadcast it is its own control rather than another entry in the existing one,
+  so "disabled and connected" is a question that can be asked.
+- Where the panel cannot say who is online — an older 3x-ui has no such
+  endpoint — no dots are drawn and no filter is offered. Silence is better than
+  a page of red dots meaning "we did not ask".
+- The roulette draws from the recipients that are ticked, not from everything on
+  screen, and says so in a hint beside the button. Its slowdown is gentler and
+  runs longer: the strip used to cover 99.8% of the way in three seconds and
+  then creep the rest at three pixels a second, which reads as a dead stop
+  rather than as suspense. The winner is now marked with a knock, a ring thrown
+  off the card and a wash of its rarity colour.
 - On a phone the side menu becomes a bar along the bottom, where the same links
   cost nothing horizontally and land where a thumb already is. It had been
   taking 58 of a 375-pixel screen — a sixth of the width, which the tables
@@ -56,6 +75,10 @@ read as something a person wants to know before updating.
 
 ### Changed
 
+- The Active/Disabled badge is text alone in the client list, the recipient list
+  and on a client's page: the connection dot sits beside it now, and two dots on
+  one row read as one thing said twice. Elsewhere — xray on the dashboard, a
+  disabled inbound — the dot stays.
 - The app buttons in the welcome letter ("Add to Happ", "Add to Incy") are
   outlined and lettered in the green the letterhead already uses. A dark button
   on a dark letter was all but invisible, and those buttons are the point of the

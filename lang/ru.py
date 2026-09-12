@@ -6,6 +6,17 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # The roulette
+    "Only the recipients you have ticked go into the drum, and the one it draws is left ticked on its own.": "В барабан попадают только отмеченные получатели, а выпавший остаётся отмеченным один.",
+    "Nobody is ticked — there is nothing to draw between": "Никто не отмечен — разыгрывать нечего",
+    "A single recipient is ticked — not much of a draw": "Отмечен один получатель — розыгрыш так себе",
+    "— the ones you have ticked": "— те, кого вы отметили",
+    # Who is connected right now, in the client list
+    "Connection [filter]": "Подключение",
+    "Online [filter]": "В сети",
+    "Offline [filter]": "Не в сети",
+    "Online [badge]": "В сети",
+    "Offline [badge]": "Не в сети",
     # The QR code in the welcome letter
     "Send the QR code": "Отправлять QR-код",
     "The subscription link as a code, for the reader who opened the letter on a computer and would otherwise be carrying the link across to their phone by hand. It is drawn on the server and travels inside the letter, so nothing is fetched from anywhere.": "Ссылка подписки кодом — для тех, кто открыл письмо на компьютере и иначе переносил бы ссылку на телефон руками. Код рисуется на сервере и едет внутри письма, ничего никуда не запрашивается.",
@@ -229,9 +240,7 @@ TEXTS = {
     "recipient [dative one]": "получателю",
     "recipients [dative few]": "получателям",
     "recipients [dative many]": "получателям",
-    "The drum holds a single recipient — not much of a draw": "В рулетке один получатель — интрига так себе",
     "The drum holds": "В рулетке",
-    "— those the list is showing right now": "— те, что сейчас показаны в списке",
     "One recipient came up:": "Выпал один получатель:",
     "The client was created, the welcome letter is on its way": "Пользователь создан, приветственное письмо отправляется",
     "The invitation with the subscription link is on its way": "Приглашение со ссылкой подписки отправляется",

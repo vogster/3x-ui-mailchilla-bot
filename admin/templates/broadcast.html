@@ -106,7 +106,73 @@
         font-size: 9.5px; color: var(--fg-3); margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .roulette-item.win { border-color: var(--rc); box-shadow: 0 0 0 1px var(--rc), 0 0 22px var(--rc-soft); }
+    /* The winning card: a knock, then a slow breath in the rarity colour. The
+       scale is on the card alone — the strip itself must not move, it is parked
+       exactly where the marker caught it. */
+    .roulette-item.win {
+        border-color: var(--rc); z-index: 5;
+        /* Its own layer, so the letters are rasterised once instead of afresh
+           on every frame of the glow behind them. */
+        will-change: transform; backface-visibility: hidden;
+        /* Three breaths, not an endless throb: the moment is meant to pass and
+           leave a steady light behind it. `both` holds that last frame. */
+        animation: rc-punch .46s cubic-bezier(.2,.9,.3,1.5) both,
+                   rc-breathe 1.5s .46s ease-in-out 3 both;
+    }
+    /* The knock lands back on scale 1 rather than holding at 1.07. Text left at
+       a fractional scale never sits on whole pixels, and the breathing glow
+       repaints it a hair differently each time — which shows up as a shiver.
+       The winner is marked by the ring and the light instead, which cost the
+       letters nothing. */
+    @keyframes rc-punch {
+        0%   { transform: scale(1);    box-shadow: 0 0 0 1px var(--rc), 0 0 0 var(--rc-soft); }
+        45%  { transform: scale(1.16); box-shadow: 0 0 0 2px var(--rc), 0 0 46px var(--rc-soft); }
+        100% { transform: scale(1);    box-shadow: 0 0 0 2px var(--rc), 0 0 26px var(--rc-soft); }
+    }
+    @keyframes rc-breathe {
+        0%, 100% { box-shadow: 0 0 0 2px var(--rc), 0 0 26px var(--rc-soft); }
+        50%      { box-shadow: 0 0 0 3px var(--rc), 0 0 52px var(--rc-soft); }
+    }
+
+    /* A ring thrown off the card at the moment it is caught, and a wash of the
+       colour across the drum behind it. Both are painted over everything and
+       take no clicks. */
+    .roller-burst, .roller-flash {
+        position: absolute; z-index: 4; pointer-events: none; opacity: 0;
+    }
+    .roller-burst {
+        left: 50%; top: 50%; width: 96px; height: 112px; margin: -56px 0 0 -48px;
+        border: 2px solid var(--rc); border-radius: 10px;
+    }
+    .roller-flash {
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, var(--rc-soft), transparent 62%);
+    }
+    .roller-burst.go  { animation: rc-ring .8s ease-out forwards; }
+    .roller-flash.go  { animation: rc-wash 1s ease-out forwards; }
+    @keyframes rc-ring {
+        0%   { opacity: .95; transform: scale(1); }
+        100% { opacity: 0;   transform: scale(2.8); }
+    }
+    @keyframes rc-wash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    /* The name arrives a beat after the card, and the rarity a beat after that. */
+    .roulette-result .who { animation: rc-rise .42s .08s ease-out both; }
+    .roulette-result .sub { animation: rc-rise .42s .2s ease-out both; }
+    @keyframes rc-rise {
+        from { opacity: 0; transform: translateY(9px) scale(.94); }
+        to   { opacity: 1; transform: none; }
+    }
+
+    /* Asked for less movement: the winner is simply marked and left alone. */
+    @media (prefers-reduced-motion: reduce) {
+        .roulette-item.win {
+            animation: none;
+            box-shadow: 0 0 0 3px var(--rc), 0 0 26px var(--rc-soft);
+        }
+        .roller-burst.go, .roller-flash.go { animation: none; opacity: 0; }
+        .roulette-result .who, .roulette-result .sub { animation: none; }
+    }
 
     #roulette-confetti { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4;
                      pointer-events: none; }
@@ -176,6 +242,13 @@
                 <option value="nearly">{{ t("Traffic running out") }}</option>
                 <option value="unlimited">{{ t("No limit") }}</option>
             </select>
+            {% if online_known %}
+            <select id="rcpt-online" title="{{ t('Connection [filter]') }}">
+                <option value="">{{ t("All") }}</option>
+                <option value="1">{{ t("Online [filter]") }}</option>
+                <option value="0">{{ t("Offline [filter]") }}</option>
+            </select>
+            {% endif %}
             <select id="rcpt-sort" title="{{ t('Order') }}">
                 <option value="email">{{ t("By address") }}</option>
                 <option value="traffic">{{ t("Most traffic spent") }}</option>
@@ -207,6 +280,7 @@
                     <path d="M8 3.2v9.6M5 6.4v3.2M11 6.4v3.2"/>
                 </svg>{{ t("Roulette") }}
             </button>
+            {{ fields.help(t("Only the recipients you have ticked go into the drum, and the one it draws is left ticked on its own.")) }}
         </div>
 
         <div class="rcpt-list" id="rcpt-list">
@@ -219,20 +293,33 @@
                    data-left="{{ c.left_bytes }}"
                    data-created="{{ c.created_ms }}"
                    data-percent="{{ c.percent }}"
-                   data-limited="{{ 1 if c.limit_bytes else 0 }}">
+                   data-limited="{{ 1 if c.limit_bytes else 0 }}"
+                   data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
+                   {# the panel's own identifier, which is what the online list carries —
+                      data-email is the bare address and would not match #}
+                   data-remark="{{ c.remark }}">
                 <input type="checkbox" name="emails" value="{{ c.bare_email }}"
                        {% if c.enable %}checked{% endif %}>
                 <div class="who">
                     <div class="row-top">
                         <div class="ident">
-                            <span class="n mono">{{ c.bare_email }}</span>
+                            {# inside the address line, not above it: .ident lays its
+                               children out in a column, so a dot of its own became a
+                               third row instead of standing beside the address. #}
+                            <span class="n mono">
+                                {% if online_known and c.online is not none %}
+                                <span class="odot {{ 'on' if c.online else 'off' }}"
+                                      title="{{ t('Online [badge]') if c.online else t('Offline [badge]') }}"></span>
+                                {% endif %}
+                                {{ c.bare_email }}
+                            </span>
                             {% if c.name %}<span class="e">{{ c.name }}</span>{% endif %}
                         </div>
                         <div class="meta">
                             {% if c.enable %}
-                            <span class="badge on">{{ t("Active [badge]") }}</span>
+                            <span class="badge on nodot">{{ t("Active [badge]") }}</span>
                             {% else %}
-                            <span class="badge off">{{ t("Disabled [badge]") }}</span>
+                            <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
                             {% endif %}
                             {% if c.limit_bytes %}
                             <span class="tr {% if c.percent >= 100 %}over{% elif c.percent >= 80 %}hot{% endif %}">
@@ -298,6 +385,7 @@
         var state = document.getElementById("bc-state");
         var submit = document.getElementById("submit-btn");
         var form = document.getElementById("broadcast-form");
+        var onlineSel = document.getElementById("rcpt-online");
         var SORT_KEY = "broadcast-sort";
 
         function num(row, name) { return Number(row.dataset[name] || 0); }
@@ -305,6 +393,10 @@
         function matches(row) {
             var needle = search.value.trim().toLowerCase();
             if (needle && row.dataset.search.indexOf(needle) === -1) return false;
+            // A separate axis, so it narrows whatever the other picker chose
+            // rather than replacing it: "disabled and connected" is a question
+            // worth being able to ask.
+            if (onlineSel && onlineSel.value !== "" && row.dataset.online !== onlineSel.value) return false;
             var limited = row.dataset.limited === "1";
             switch (filterSel.value) {
                 case "active":    return row.dataset.enabled === "1";
@@ -370,6 +462,59 @@
 
         boxes.forEach(function (b) { b.addEventListener("change", refresh); });
 
+        // The dots keep themselves current, and nothing else moves.
+        //
+        // Deliberately not apply(): that one also re-sorts and puts every row
+        // back into the list, which is a lot of shuffling under somebody's
+        // hands for a dot that changed colour. Visibility is recomputed and the
+        // counters redrawn, and that is all — the ticks, the message, the
+        // search text and the order all stay as they were. A recipient who is
+        // ticked and then hidden by the filter is not lost either: the page
+        // already counts those and says "hidden by the filter: N".
+        (function () {
+            if (!onlineSel) return;
+            var EVERY = 20000;
+            var ON = {{ t("Online [badge]")|tojson }};
+            var OFF = {{ t("Offline [badge]")|tojson }};
+            var busy = false;
+
+            setInterval(function () {
+                // The roulette builds its strip from these very rows; moving
+                // them about mid-spin is somebody else's turn ruined.
+                if (busy || document.hidden) return;
+                // Looked up here rather than above: this script runs before the
+                // dialog appears further down the document, and holding on to
+                // the null it returns then would leave the guard switched off.
+                var roulette = document.getElementById("roulette-dialog");
+                if (roulette && roulette.open) return;
+                busy = true;
+                fetch("/clients/online", { credentials: "same-origin" })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data || !data.ok || !data.online) return;
+                        var live = {};
+                        for (var i = 0; i < data.online.length; i++) live[data.online[i]] = true;
+                        var moved = false;
+                        rows.forEach(function (row) {
+                            var on = live[row.dataset.remark] === true;
+                            if (row.dataset.online === (on ? "1" : "0")) return;
+                            row.dataset.online = on ? "1" : "0";
+                            var dot = row.querySelector(".odot");
+                            if (dot) {
+                                dot.className = "odot " + (on ? "on" : "off");
+                                dot.title = on ? ON : OFF;
+                            }
+                            moved = true;
+                        });
+                        if (!moved) return;
+                        rows.forEach(function (row) { row.hidden = !matches(row); });
+                        refresh();
+                    })
+                    .catch(function () { /* the dots stand until a request works */ })
+                    .then(function () { busy = false; });
+            }, EVERY);
+        })();
+
         document.querySelectorAll(".segmented [data-sel]").forEach(function (btn) {
             btn.addEventListener("click", function () {
                 // These act on what is visible: with the Disabled filter on,
@@ -396,6 +541,7 @@
         });
 
         filterSel.addEventListener("change", apply);
+        if (onlineSel) onlineSel.addEventListener("change", apply);
         sortSel.addEventListener("change", function () {
             try { localStorage.setItem(SORT_KEY, sortSel.value); } catch (e) {}
             apply();
@@ -433,6 +579,8 @@
             <div class="roller-fade l"></div>
             <div class="roller-fade r"></div>
             <div class="roller-marker"></div>
+            <div class="roller-flash" id="roller-flash"></div>
+            <div class="roller-burst" id="roller-burst"></div>
             <canvas id="roulette-confetti" width="1200" height="264"></canvas>
         </div>
         <div class="roulette-result" id="roulette-result"></div>
@@ -452,6 +600,8 @@
         if (!open || !dlg) return;
 
         var roller = document.getElementById("roller");
+        var burst = document.getElementById("roller-burst");
+        var flash = document.getElementById("roller-flash");
         var track = document.getElementById("roller-track");
         var canvas = document.getElementById("roulette-confetti");
         var result = document.getElementById("roulette-result");
@@ -516,23 +666,33 @@
         }
 
         function build() {
+            // The drum takes the ticked ones, not everything on screen. Drawing
+            // among people somebody never chose is a different question from the
+            // one being asked, and the draw ends by leaving a single tick — so
+            // what it narrows should be the selection itself.
             players = Array.prototype.slice.call(list.querySelectorAll(".rcpt"))
-                .filter(function (row) { return !row.hidden; });
+                .filter(function (row) { return row.querySelector("input").checked; });
             rarity = ranks();
             result.textContent = "";
             track.style.transform = "translateX(0px)";
             track.textContent = "";
 
             var n = players.length;
-            // The drum takes whoever the list is showing: the filter and the
-            // search narrow it, so a raffle among the active ones is possible.
-            sub.textContent = n === 1
-                ? {{ t("The drum holds a single recipient — not much of a draw")|tojson }}
-                : {{ t("The drum holds")|tojson }} + " " + n + " " + plural(n) + " " + {{ t("— those the list is showing right now")|tojson }};
+            spinBtn.disabled = n === 0;
+            sub.textContent = n === 0
+                ? {{ t("Nobody is ticked — there is nothing to draw between")|tojson }}
+                : n === 1
+                ? {{ t("A single recipient is ticked — not much of a draw")|tojson }}
+                : {{ t("The drum holds")|tojson }} + " " + n + " " + plural(n) + " " + {{ t("— the ones you have ticked")|tojson }};
+
+            // Nothing to roll, and i % 0 would fill the strip with NaN.
+            if (n === 0) return;
 
             // The strip runs several screens long, so there is something to roll.
+            // Long enough that the gentler curve below still opens at speed: a
+            // shallower slowdown over a short strip would start off crawling.
             seq = [];
-            var total = Math.max(70, n * 6);
+            var total = Math.max(140, n * 8);
             for (var i = 0; i < total; i++) seq.push(i % n);
             seq.forEach(function (playerIndex) { track.appendChild(card(playerIndex)); });
         }
@@ -558,18 +718,32 @@
             // A slight offset within the card: the marker need not hit dead centre.
             var jitter = (Math.random() - 0.5) * ITEM * 0.55;
             var target = pos * STEP + ITEM / 2 - roller.clientWidth / 2 + jitter;
-            var duration = 5800 + Math.random() * 1400;
+            var duration = 9800 + Math.random() * 1600;
             var started = null;
 
             function tick(now) {
                 if (!started) started = now;
                 var t = Math.min((now - started) / duration, 1);
                 // A sharp start and a long coast, as in the game.
-                var eased = 1 - Math.pow(1 - t, 5);
+                //
+                // The exponent was 5, which looks right written down and reads
+                // as a dead stop: the strip covered 99.8% of the way in the
+                // first three seconds and then crept the rest at three pixels a
+                // second — not suspense, just a pause. At 3.4 over a longer
+                // strip it opens just as fast (about 37 cards a second) and
+                // still ticks past visibly to the end: roughly 4, then 2, then
+                // 1 card in each of the last seconds, with the final card alone
+                // taking two and a half.
+                var eased = 1 - Math.pow(1 - t, 3.4);
                 track.style.transform = "translateX(" + (-target * eased).toFixed(2) + "px)";
                 if (t < 1) {
                     frame = requestAnimationFrame(tick);
                 } else {
+                    // Come to rest on a whole pixel. A fractional offset leaves
+                    // the winning card's text sitting between pixels, and every
+                    // repaint of the glow behind it re-rasterises the letters a
+                    // hair differently — which reads as a shiver.
+                    track.style.transform = "translateX(" + -Math.round(target) + "px)";
                     frame = null;
                     finish(players[winner], rarity[winner], winCard);
                 }
@@ -584,6 +758,18 @@
             winCard.classList.add("win");
 
             var r = RARITY[rank];
+            // The ring and the wash live on the drum, not on the card, so the
+            // colour has to be handed to them: the card carries its own.
+            roller.style.setProperty("--rc", r.c);
+            roller.style.setProperty("--rc-soft", r.soft);
+            [burst, flash].forEach(function (el) {
+                if (!el) return;
+                // Restarting a finished animation needs the class off, a reflow
+                // to make the browser notice, and the class on again.
+                el.classList.remove("go");
+                void el.offsetWidth;
+                el.classList.add("go");
+            });
             result.textContent = "";
             var who = document.createElement("div");
             who.className = "who";
@@ -597,11 +783,13 @@
             result.appendChild(note);
 
             confetti(r.c);
+            // Long enough to watch the card settle and read the name; it was
+            // 2.2s, which cut the breath off halfway.
             setTimeout(function () {
                 if (!dlg.open) return;
                 dlg.close();
                 apply(row);
-            }, 2200);
+            }, 3400);
         }
 
         function apply(row) {
@@ -670,6 +858,13 @@
             spinBtn.disabled = false;
             closeBtn.disabled = false;
             canvas.getContext("2d").clearRect(0, 0, 1200, 264);
+            // Nothing should be left animating behind a closed dialog. The strip
+            // is rebuilt on the next opening anyway, but until then the winner
+            // would go on breathing out of sight.
+            track.querySelectorAll(".roulette-item.win").forEach(function (el) {
+                el.classList.remove("win");
+            });
+            [burst, flash].forEach(function (el) { if (el) el.classList.remove("go"); });
         });
         dlg.addEventListener("cancel", function (e) {
             if (spinning) e.preventDefault();

@@ -796,12 +796,41 @@
             font-size: 12.5px;
         }
 
+        /* Who is connected right now. Green breathes so the eye finds it in a
+           long list; red does not, because most of a list is usually offline and
+           a page of blinking would be unreadable. The ring is drawn with a
+           box-shadow, which costs no layout — it grows and fades on its own. */
+        .odot {
+            flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%;
+            display: inline-block; vertical-align: middle;
+        }
+        .odot.on { background: var(--ok); animation: odot-pulse 2.4s ease-in-out infinite; }
+        /* The brighter red the logs and the traffic meter already use, at full
+           strength: dimmed to .45 it read as switched off rather than as a
+           state of its own. */
+        .odot.off { background: #f87171; }
+        @keyframes odot-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(69, 184, 102, .45); }
+            70%  { box-shadow: 0 0 0 6px rgba(69, 184, 102, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(69, 184, 102, 0); }
+        }
+        /* Somebody who asked the system for less movement gets a steady dot. */
+        @media (prefers-reduced-motion: reduce) {
+            .odot.on { animation: none; box-shadow: 0 0 0 3px rgba(69, 184, 102, .16); }
+        }
+
         /* Statuses: a dot rather than a pill */
         .badge {
             display: inline-flex; align-items: center; gap: 6px;
             font-size: 12px; color: var(--fg-2); white-space: nowrap;
         }
         .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        /* Text alone, for the badge in a table of clients. In the client list a
+           connection dot stands right beside it, and two dots on one row read as
+           one thing said twice; the broadcast's recipient list follows so the
+           two tables keep the same language. Elsewhere — the client's own page,
+           xray on the dashboard, a disabled inbound — the dot stays. */
+        .badge.nodot::before { display: none; }
         .badge.on { color: var(--ok); }
         .badge.off { color: var(--err); }
 

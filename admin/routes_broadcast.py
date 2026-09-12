@@ -96,6 +96,10 @@ def broadcast_form(request: Request, error: str = ""):
 
     xui = get_shared_client()
     all_clients = xui.get_all_clients() or []
+    # Asked once for the whole list, as on the client pages. None when the panel
+    # cannot say, and then neither the dots nor their filter appear.
+    online_emails = xui.get_online_emails()
+    online = None if online_emails is None else set(online_emails)
 
     # The list holds both active and disabled clients: the status shows in the
     # row and the filter can narrow it to either. The only ones dropped are those
@@ -104,7 +108,7 @@ def broadcast_form(request: Request, error: str = ""):
     recipients = []
     skipped = 0
     for client_obj in all_clients:
-        row = _client_row(client_obj)
+        row = _client_row(client_obj, online)
         if not row["bare_email"]:
             skipped += 1
             continue
@@ -130,6 +134,7 @@ def broadcast_form(request: Request, error: str = ""):
             "recipient_count": len(recipients),
             "active_count": sum(1 for r in recipients if r["enable"]),
             "skipped_count": skipped,
+            "online_known": online is not None,
             "kinds": mail_templates.broadcast_kind_options(),
             "error": error,
         },

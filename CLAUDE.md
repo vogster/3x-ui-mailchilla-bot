@@ -20,6 +20,8 @@ python email_bot.py           # the bot alone, no panel
 
 There is no test suite, no linter config and no build step. Verification is by running the process and watching the log (`logs/bot.log`, or the `/logs` page).
 
+**A running panel picks up template edits but not Python ones.** Jinja re-reads a template on every render, while routes, `settings.py` and the rest are already imported — so editing both and reloading the page leaves the new markup running against the old route. The markup then reads context keys the route never sent, Jinja quietly resolves them to Undefined, and the feature disappears instead of erroring. Restart the process after any Python change, and be suspicious of "it renders but the new thing is missing".
+
 **Anything that exercises saving writes the installation's own files.** `settings.save()` and `email_texts.save()` write `settings.json` and `email_texts.json` in the project directory itself — there is no test mode and no fixture path. A throwaway request against `/settings` or `/settings/texts` therefore overwrites a real configuration, and `email_texts.reset()` discards real edits. Run such checks against a copy of the directory, never against a checkout someone is running the panel from.
 
 On an installed server the same work goes through `mailchilla` (`status`, `restart`, `log`, `update`, `passwd`, `check`). The shell scripts have no tests either; `bash -n install.sh mailchilla.sh` is what CI runs, and the release workflow will not publish a tag that fails it.
