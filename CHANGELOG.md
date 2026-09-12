@@ -39,6 +39,11 @@ read as something a person wants to know before updating.
   pushing the page itself off the screen — worst on a phone, where between them
   they filled it. The setup banner comes first now and the other waits: one is
   about nothing working yet, the other can keep.
+- On a phone the side menu becomes a bar along the bottom, where the same links
+  cost nothing horizontally and land where a thumb already is. It had been
+  taking 58 of a 375-pixel screen — a sixth of the width, which the tables
+  wanted. The captions come back under the icons, and signing out sits apart as
+  a narrow icon so it is not tapped by mistake. Wider screens are unchanged.
 - The log table came out as a ribbon of one- and two-word lines on a phone. It
   already sat in a box that scrolls sideways, but had nothing to scroll: the
   message cell may break a word anywhere, so the column squeezed down to almost

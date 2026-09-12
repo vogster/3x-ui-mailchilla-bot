@@ -149,6 +149,68 @@
             .sb-toggle { display: none; }
         }
 
+        /* On a phone the rail becomes a bottom bar. 58px of a 375px screen is a
+           sixth of the width, and the tables want every pixel of it; along the
+           bottom the same links cost nothing horizontally and land where a
+           thumb already is. The markup does not change — only the direction. */
+        @media (max-width: 620px) {
+            :root, body.sb-collapsed { --sb: 0px; }
+            .sidebar {
+                top: auto; right: 0; bottom: 0; width: auto;
+                flex-direction: row; align-items: stretch; gap: 0;
+                padding: 0 2px;
+                /* The top corners are rounded like everything else on the page,
+                   so the bar reads as a panel resting on the edge rather than a
+                   slab welded to it. The border runs round three sides, or the
+                   line would stop dead where the curve begins; the bottom one is
+                   off because there is nothing below it. The panel already
+                   clips its children, so nothing pokes out of a corner. */
+                border: 1px solid var(--line); border-bottom: 0;
+                border-radius: var(--radius) var(--radius) 0 0;
+                /* clear of the home indicator on a phone that has one */
+                padding-bottom: env(safe-area-inset-bottom, 0px);
+                transition: none;
+            }
+            /* The name and the collapse button have nowhere to go in a bar, and
+               neither is needed: the brand is in the page, and a bar cannot
+               collapse. */
+            .sb-head { display: none; }
+            .sb-nav, .sb-foot { flex-direction: row; gap: 0; }
+            .sb-nav { flex: 1; }
+            .sb-nav a, .sb-foot .logout {
+                flex: 1 1 0; min-width: 0;
+                flex-direction: column; justify-content: center; gap: 3px;
+                padding: 7px 2px 6px; border-radius: 0;
+                font-size: 9.5px; line-height: 1.15; text-align: center;
+            }
+            .sb-nav a svg, .sb-foot .logout svg { width: 19px; height: 19px; }
+            /* Signing out is not a destination, so it gets neither a tab's
+               width nor a caption: a narrow icon past a divider, out of the way
+               of a thumb aiming for the tab beside it. Still 44px wide, which is
+               about as small as a target may be. This has to stand after the
+               rule above — same specificity, so order decides. */
+            .sb-foot { flex: 0 0 auto; }
+            .sb-foot .logout {
+                flex: 0 0 44px; border-left: 1px solid var(--line-soft);
+                color: var(--fg-3);
+            }
+            .sb-foot .logout .lbl { display: none !important; }
+            /* The captions come back: an icon alone says little, and down here
+               there is room under it. A long one is cut rather than allowed to
+               push its neighbours about. */
+            .sidebar .lbl {
+                display: block !important;
+                max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            }
+            /* A filled pill under every tab is noise; the current one is simply
+               lit up, as a phone app does it. */
+            .sb-nav a:hover, .sb-foot .logout:hover { background: transparent; }
+            .sb-nav a.active { background: transparent; color: var(--ok); }
+            /* Room for the bar itself, so the last thing on the page is not
+               hidden underneath it. */
+            .container { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+        }
+
         /* Messages */
         .flash {
             background: var(--surface);
