@@ -67,6 +67,10 @@ read as something a person wants to know before updating.
 - In the menu, an action needing root threw the person out of the program
   instead of refusing that one action — which is why autostart looked as though
   it could not be switched.
+- On a phone, a long address in the client list wrapped underneath its own
+  connection dot, which read as a fault rather than as a long address. The
+  column keeps the two on one line and the table scrolls sideways, as it already
+  did.
 
 ## [0.1.3] - 2026-09-12
 
