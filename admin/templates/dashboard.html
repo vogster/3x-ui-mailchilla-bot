@@ -2,7 +2,17 @@
 {% block title %}{{ t("Dashboard") }}{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 {% block content %}
-<h1 style="margin: 0 0 24px 0;">{{ t("Dashboard") }}</h1>
+<h1 style="margin: 0 0 10px 0;">{{ t("Dashboard") }}</h1>
+
+{# Outside the server panel on purpose: that one disappears when 3x-ui cannot be
+   reached, and a mail loop that has quietly stopped is exactly what one wants to
+   see at that moment. The two have nothing to do with each other. #}
+<p style="margin: 0 0 22px 0;">
+    <span class="badge {{ 'on' if mail.state == 'ok' else 'off' if mail.state == 'bad' else '' }}"
+          data-srv="mail" {% if mail.detail %}title="{{ mail.detail }}"{% endif %}>
+        {{ t("mail") }}: {{ mail.text }}
+    </span>
+</p>
 
 {% if server %}
 <div class="panel" style="margin-bottom: 20px;" id="server-panel">
@@ -347,6 +357,14 @@
                                         : {{ t("xray is down")|tojson }};
         }
 
+        function paintMail(m) {
+            var el = document.querySelector('[data-srv="mail"]');
+            if (!el || !m) return;
+            el.className = "badge" + (m.state === "ok" ? " on" : m.state === "bad" ? " off" : "");
+            el.textContent = {{ t("mail")|tojson }} + ": " + m.text;
+            if (m.detail) { el.title = m.detail; } else { el.removeAttribute("title"); }
+        }
+
         function refresh(manual) {
             if (busy) return;
             busy = true;
@@ -357,6 +375,7 @@
                     if (!d || !d.ok || !d.server) throw new Error();
                     draw(d.server);
                     online(d.online);
+                    paintMail(d.mail);
                 })
                 .catch(function () {
                     // On a timer this must stay quiet: a panel that has gone

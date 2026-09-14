@@ -502,10 +502,31 @@ def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = No
     logger.info(f"Broadcast finished. Sent successfully: {success_count}/{len(emails)}.")
     return success_count
 
-def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn, sender_name: str = ""):
-    """Reads a letter and carries out whatever it asks for."""
-    mail_conn.store(msg_num, '+FLAGS', '\\Seen')
+def _mark_seen(mail_conn, msg_num):
+    """Marks the letter read, and does not let that failure lose the letter."""
+    try:
+        mail_conn.store(msg_num, '+FLAGS', '\\Seen')
+    except Exception as e:
+        logger.warning(f"Could not mark letter #{msg_num} as read: {e}")
 
+
+def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn, sender_name: str = ""):
+    """
+    Reads a letter and carries out whatever it asks for.
+
+    The letter is marked read *after* it has been dealt with, not before. It used
+    to be the other way round, and the gap between the two cost whole
+    registrations: 3x-ui unreachable, SMTP refusing, the process restarted — the
+    letter was already `\\Seen` by then, the next cycle never saw it again, and
+    somebody who wrote the code word simply got nothing back. Left unread it is
+    picked up on the next pass, and the commands are safe to repeat: registering
+    an address that already exists sends the link again, and status and help only
+    ever send a letter.
+
+    /broadcast is the exception and is marked before it runs. It is the one
+    command that is not safe to repeat — a mass letter going out twice is worse
+    than one that did not go out at all and can simply be sent again by hand.
+    """
     subject_clean = subject.strip()
     body_clean = body.strip()
 
@@ -528,6 +549,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             else:
                 broadcast_content = body_clean
 
+        _mark_seen(mail_conn, msg_num)
         if broadcast_content:
             sent_count = handle_broadcast(broadcast_content)
             send_email_reply(from_email, templates.notice_subject("broadcast_done"),
@@ -550,6 +572,10 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     else:
         handle_unknown(from_email, subject_clean)
 
+    # Only now: anything that raised above leaves the letter unread for the
+    # next cycle, which is the whole point.
+    _mark_seen(mail_conn, msg_num)
+
 # How long to wait for the mail server on any single operation. Mail services
 # stall now and then, and a check that gives up is cheap: the letters stay
 # unread and the next cycle collects them.
@@ -561,6 +587,28 @@ FAILURES_BEFORE_ALARM = 3
 
 # Failed checks since the last one that worked.
 _consecutive_failures = 0
+# When the mailbox was last read through without trouble, and what went wrong
+# the last time it did not. The panel shows both: a mail loop that has quietly
+# stopped working looks exactly like a mailbox nobody is writing to.
+_last_ok_at = None
+_last_error = ""
+
+# A letter that throws on every attempt would otherwise be retried for ever, now
+# that the read flag waits for success. Counted by Message-ID and kept in
+# memory: a restart gives it a fresh chance, which is what one wants after
+# fixing whatever it tripped over.
+MAX_ATTEMPTS = 3
+_attempts = {}
+
+
+def mail_health() -> dict:
+    """How the mail loop is doing, for the dashboard."""
+    return {
+        "configured": bool(config.IMAP_USER and config.IMAP_PASSWORD),
+        "last_ok_at": _last_ok_at,
+        "failures": _consecutive_failures,
+        "error": _last_error,
+    }
 
 
 def _disconnect(mail, graceful: bool):
@@ -592,7 +640,7 @@ def _disconnect(mail, graceful: bool):
 
 def check_mail():
     """Connects over IMAP, looks for unread letters and handles them."""
-    global _consecutive_failures
+    global _consecutive_failures, _last_ok_at, _last_error
 
     if not config.IMAP_USER or not config.IMAP_PASSWORD:
         logger.error("IMAP credentials are not configured; skipping the mail check.")
@@ -624,6 +672,7 @@ def check_mail():
         if messages:
             logger.info(f"New letters found to handle: {len(messages)}")
         for num in messages:
+            msg_id = None
             try:
                 status, data = mail.fetch(num, "(RFC822)")
                 if status != "OK" or not data:
@@ -632,6 +681,7 @@ def check_mail():
                 
                 raw_email = data[0][1]
                 msg = email.message_from_bytes(raw_email)
+                msg_id = msg.get("Message-ID") or None
 
                 from_header = msg.get("From", "")
                 # Decode the From header so the sender's name comes out right.
@@ -661,11 +711,27 @@ def check_mail():
                 body = get_email_body(msg)
 
                 process_message(num, from_email, subject, body, mail, sender_name)
-                
+                if msg_id:
+                    _attempts.pop(msg_id, None)
+
             except Exception as e:
-                logger.error(f"Error handling letter #{num}: {e}", exc_info=True)
+                if msg_id:
+                    tries = _attempts.get(msg_id, 0) + 1
+                    _attempts[msg_id] = tries
+                else:
+                    # Nothing to count by. Rather than risk retrying it for ever,
+                    # this one attempt is treated as the last.
+                    tries = MAX_ATTEMPTS
+                logger.error(f"Error handling letter #{num} (attempt {tries}): {e}", exc_info=True)
+                if tries >= MAX_ATTEMPTS:
+                    logger.error(f"Letter #{num} failed {tries} times and is being marked read "
+                                 f"so the loop can move on. Nothing was answered to it.")
+                    _mark_seen(mail, num)
+                    _attempts.pop(msg_id, None)
 
         reached_the_end = True
+        _last_ok_at = time.time()
+        _last_error = ""
         if _consecutive_failures:
             logger.info(f"The mailbox answers again, after {_consecutive_failures} "
                         f"failed check(s) in a row.")
@@ -674,6 +740,7 @@ def check_mail():
     except Exception as e:
         _consecutive_failures += 1
         detail = f"{type(e).__name__}: {e}".strip(": ")
+        _last_error = f"{phase}: {detail}"
         message = (f"The mail check failed while {phase}: {detail}. "
                    f"Failed checks in a row: {_consecutive_failures}.")
         # One stall costs a single cycle and nothing else: unread letters stay

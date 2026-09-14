@@ -6,6 +6,14 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # The mail loop on the dashboard
+    "mail": "почта",
+    "the mailbox is not set up": "ящик не настроен",
+    "no check has got through yet": "проверок пока не было",
+    "checked just now": "проверена только что",
+    "checked {n} min ago": "проверена {n} мин назад",
+    "checked {n} h ago": "проверена {n} ч назад",
+    "{n} checks in a row failed": "{n} проверки подряд не прошли",
     # The first-run wizard
     "flow": "flow",
     "The flow a new client is created with. Some inbounds need xtls-rprx-vision, others take nothing at all — leave it empty when in doubt, it can be changed later.": "Flow, с которым создаётся новый клиент. Одним inbound'ам нужен xtls-rprx-vision, другим не нужно ничего — если сомневаетесь, оставьте пустым, потом можно поменять.",

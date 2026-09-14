@@ -23,8 +23,23 @@ read as something a person wants to know before updating.
 - The first-run wizard asks for `flow` along with the other registration
   defaults, and can send a test notification to Gotify without leaving the step.
 
+- The dashboard says how the mail loop is doing: when it last read the mailbox
+  through, or how many checks in a row have failed and why. A loop that has
+  quietly stopped — a changed password, a blocked mailbox — used to look exactly
+  like a mailbox nobody writes to, and the first sign of it was somebody
+  complaining that the code word does nothing.
+- Tests, and a workflow that runs them on every push: the identity helpers, every
+  branch of the settings coercion, both parts of every letter, the MIME shape
+  with a picture and without, version comparison, and a pass that fails when a
+  Russian translation is missing. `unittest` from the standard library, so
+  nothing new ships to anybody.
+
 ### Changed
 
+- The bottom bar on a phone is taller — 60px rather than 47 — with roomier icons
+  and captions.
+- The small buttons throughout the panel have three more pixels of height and a
+  little more air either side; at 27px the text was pinched against the edges.
 - The wizard no longer asks about the app schemes: `happ://add` and `incy://add`
   belong to the apps rather than to any one installation, so they are filled in
   from the start. Emptying one in the panel still removes its button.
@@ -35,6 +50,12 @@ read as something a person wants to know before updating.
 
 ### Fixed
 
+- A letter is marked read after it has been dealt with, not before. The gap
+  between the two cost whole registrations: 3x-ui unreachable, SMTP refusing, the
+  process restarted — the letter was already read by then, the next cycle never
+  saw it again, and somebody who wrote the code word simply got nothing back.
+  Left unread it is picked up on the next pass. `/broadcast` is still marked
+  first: it is the one command that must not run twice.
 - In the menu, an action needing root threw the person out of the program
   instead of refusing that one action — which is why autostart looked as though
   it could not be switched.
