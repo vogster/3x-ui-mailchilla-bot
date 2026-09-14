@@ -23,6 +23,14 @@ read as something a person wants to know before updating.
 - The first-run wizard asks for `flow` along with the other registration
   defaults, and can send a test notification to Gotify without leaving the step.
 
+- Name synchronisation, on the Mail tab: it reads the letters in the mailbox,
+  takes the name each sender signs themselves with, and offers a table of the
+  clients whose name in 3x-ui differs — tick who to update. A client with no
+  name at all counts as a difference, since filling one in is the usual reason
+  for doing this. The letters are read headers-only and never marked, so a
+  registration waiting to be handled is not swallowed by pressing the button,
+  and nothing is written until the choice is made. The panel is hidden while no
+  mailbox is set up.
 - The dashboard says how the mail loop is doing: when it last read the mailbox
   through, or how many checks in a row have failed and why. A loop that has
   quietly stopped — a changed password, a blocked mailbox — used to look exactly

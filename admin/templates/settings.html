@@ -175,6 +175,25 @@
             <ul class="check-list" id="mail-check-result" hidden></ul>
         </div>
     </div>
+
+    {% if state.IMAP_USER.isset %}
+    {# Hidden until there is a mailbox to read: without one the button could only
+       ever answer that there is nothing to look in. #}
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Name synchronisation") }}
+                {{ fields.help(t("Looks through the letters in the mailbox, takes the name each sender signs themselves with, and offers to write it into the client's comment in 3x-ui. Nothing is changed until you choose who to update. The letters are only read, never marked.")) }}</h2>
+            <button type="button" class="btn small" id="names-scan" style="margin-left:auto;">
+                {{ t("Take names from the letters") }}
+            </button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div class="hint" id="names-idle">
+                {{ t("A client registered before the name was being recorded, or added by hand, has an empty comment — the list then shows people by address alone.") }}
+            </div>
+        </div>
+    </div>
+    {% endif %}
   </div>
 
   <div class="tab-panel" data-panel="registration" hidden>
@@ -637,6 +656,170 @@
                         .catch(function () { window.showToast({{ t("Could not reset it")|tojson }}, "error"); });
                 });
             });
+        });
+    })();
+</script>
+
+
+<dialog id="names-dialog" class="wide">
+    <div class="dlg-head">
+        <div class="t">{{ t("Names from the letters") }}</div>
+        <div class="s" id="names-sub"></div>
+    </div>
+    <div class="tscroll" style="max-height: 52vh;">
+        <table id="names-table">
+            <thead>
+                <tr>
+                    <th style="width: 40px;">
+                        <input type="checkbox" id="names-all" title="{{ t('All') }}">
+                    </th>
+                    <th>{{ t("Address") }}</th>
+                    {# not t("Name"): that one is an inbound's name in this
+                       catalogue, and here it is a person's. #}
+                    <th>{{ t("Name [person]") }}</th>
+                </tr>
+            </thead>
+            <tbody id="names-body"></tbody>
+        </table>
+    </div>
+    <div class="dlg-foot">
+        <span class="muted" id="names-count" style="margin-right:auto;"></span>
+        <button type="button" class="btn" id="names-close">{{ t("Close") }}</button>
+        <button type="button" class="btn primary" id="names-apply">{{ t("Update the chosen") }}</button>
+    </div>
+</dialog>
+
+<script>
+    // Name synchronisation: look through the mailbox, show what differs, write
+    // back only what was ticked.
+    (function () {
+        var scan = document.getElementById("names-scan");
+        if (!scan) return;                     // no mailbox, no panel, no button
+        var dlg = document.getElementById("names-dialog");
+        var body = document.getElementById("names-body");
+        var sub = document.getElementById("names-sub");
+        var count = document.getElementById("names-count");
+        var all = document.getElementById("names-all");
+        var apply = document.getElementById("names-apply");
+        var close = document.getElementById("names-close");
+        var rows = [];
+
+        function boxes() {
+            return Array.prototype.slice.call(body.querySelectorAll("input[type=checkbox]"));
+        }
+
+        function recount() {
+            var chosen = boxes().filter(function (b) { return b.checked; }).length;
+            count.textContent = {{ t("Chosen:")|tojson }} + " " + chosen + " " + {{ t("of")|tojson }} + " " + rows.length;
+            apply.disabled = chosen === 0;
+            var every = chosen === rows.length && rows.length > 0;
+            all.checked = every;
+            all.indeterminate = chosen > 0 && !every;
+        }
+
+        function draw() {
+            body.textContent = "";
+            rows.forEach(function (row, i) {
+                var tr = document.createElement("tr");
+
+                var tick = document.createElement("td");
+                var box = document.createElement("input");
+                box.type = "checkbox";
+                // Everything offered is a difference worth fixing, so it starts
+                // ticked; untick what you would rather leave alone.
+                box.checked = true;
+                box.dataset.i = i;
+                box.addEventListener("change", recount);
+                tick.appendChild(box);
+
+                var mail = document.createElement("td");
+                mail.className = "mono";
+                mail.textContent = row.email;
+
+                var name = document.createElement("td");
+                if (row.current) {
+                    // What is being replaced matters as much as what replaces it.
+                    var was = document.createElement("span");
+                    was.className = "muted";
+                    was.style.textDecoration = "line-through";
+                    was.textContent = row.current;
+                    name.appendChild(was);
+                    name.appendChild(document.createTextNode("  →  "));
+                }
+                name.appendChild(document.createTextNode(row.name));
+
+                tr.appendChild(tick);
+                tr.appendChild(mail);
+                tr.appendChild(name);
+                body.appendChild(tr);
+            });
+            recount();
+        }
+
+        all.addEventListener("change", function () {
+            boxes().forEach(function (b) { b.checked = all.checked; });
+            recount();
+        });
+
+        scan.addEventListener("click", function () {
+            var was = scan.textContent.trim();
+            scan.disabled = true;
+            scan.textContent = {{ t("Looking…")|tojson }};
+            fetch("/settings/mail/names/scan", { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (res) {
+                    if (!res.d || !res.d.ok) {
+                        window.showToast((res.d && res.d.error) || {{ t("It did not work")|tojson }}, "error");
+                        return;
+                    }
+                    rows = res.d.rows || [];
+                    if (res.d.senders === 0) {
+                        // An empty mailbox is not a fault, and saying "nothing
+                        // differs" about it would be misleading.
+                        window.showToast({{ t("There are no letters in the mailbox to take names from")|tojson }});
+                        return;
+                    }
+                    if (rows.length === 0) {
+                        window.showToast({{ t("Every name already matches")|tojson }});
+                        return;
+                    }
+                    sub.textContent = {{ t("Senders found:")|tojson }} + " " + res.d.senders + " · "
+                                    + {{ t("names differ:")|tojson }} + " " + rows.length;
+                    draw();
+                    dlg.showModal();
+                })
+                .catch(function () { window.showToast({{ t("The request failed")|tojson }}, "error"); })
+                .then(function () { scan.disabled = false; scan.textContent = was; });
+        });
+
+        close.addEventListener("click", function () { dlg.close(); });
+
+        apply.addEventListener("click", function () {
+            var chosen = boxes().filter(function (b) { return b.checked; })
+                                .map(function (b) { return rows[Number(b.dataset.i)]; });
+            if (!chosen.length) return;
+            apply.disabled = true;
+            apply.textContent = {{ t("Saving…")|tojson }};
+            fetch("/settings/mail/names/apply", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rows: chosen })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d || !d.ok) throw new Error();
+                    dlg.close();
+                    var text = {{ t("Names written:")|tojson }} + " " + d.updated;
+                    if (d.failed && d.failed.length) {
+                        text += " · " + {{ t("could not be written:")|tojson }} + " " + d.failed.join(", ");
+                    }
+                    window.showToast(text, d.failed && d.failed.length ? "error" : "");
+                })
+                .catch(function () { window.showToast({{ t("The request failed")|tojson }}, "error"); })
+                .then(function () {
+                    apply.disabled = false;
+                    apply.textContent = {{ t("Update the chosen")|tojson }};
+                });
         });
     })();
 </script>

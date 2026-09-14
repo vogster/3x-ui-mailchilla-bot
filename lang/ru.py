@@ -6,6 +6,24 @@ values are what is shown instead. A key that is missing here simply shows in
 English, so a partial translation is safe.
 """
 TEXTS = {
+    # Name synchronisation
+    "Address": "Адрес",
+    "Name [person]": "Имя",
+    "Name synchronisation": "Синхронизация имён",
+    "Take names from the letters": "Записать имена из писем",
+    "Looks through the letters in the mailbox, takes the name each sender signs themselves with, and offers to write it into the client's comment in 3x-ui. Nothing is changed until you choose who to update. The letters are only read, never marked.": "Просматривает письма в ящике, берёт имя, которым подписывается отправитель, и предлагает записать его в комментарий клиента в 3x-ui. Ничего не меняется, пока вы не выберете, кого обновить. Письма только читаются и не помечаются прочитанными.",
+    "A client registered before the name was being recorded, or added by hand, has an empty comment — the list then shows people by address alone.": "У клиента, зарегистрированного до того, как имя стало записываться, или заведённого руками, комментарий пуст — и список показывает людей одними адресами.",
+    "Names from the letters": "Имена из писем",
+    "Update the chosen": "Обновить выбранных",
+    "Looking…": "Ищем…",
+    "Senders found:": "Отправителей найдено:",
+    "names differ:": "имена расходятся:",
+    "There are no letters in the mailbox to take names from": "В ящике нет писем, из которых можно взять имена",
+    "Every name already matches": "Все имена уже совпадают",
+    "Names written:": "Имена записаны:",
+    "could not be written:": "не удалось записать:",
+    "The mailbox is not set up": "Почтовый ящик не настроен",
+    "Could not read the mailbox": "Не удалось прочитать ящик",
     # The mail loop on the dashboard
     "mail": "почта",
     "the mailbox is not set up": "ящик не настроен",

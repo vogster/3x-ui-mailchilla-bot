@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 
 import config
 import templates
-from xui_client import get_shared_client
+from xui_client import XuiClient, get_shared_client
 
 
 logging.basicConfig(
@@ -501,6 +501,123 @@ def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = No
 
     logger.info(f"Broadcast finished. Sent successfully: {success_count}/{len(emails)}.")
     return success_count
+
+def decode_mime_header(value: str) -> str:
+    """A header as a person would read it, whatever it was encoded with."""
+    parts = []
+    for chunk, charset in decode_header(value or ""):
+        if isinstance(chunk, bytes):
+            parts.append(chunk.decode(charset or "utf-8", errors="ignore"))
+        else:
+            parts.append(str(chunk))
+    return " ".join(parts).strip()
+
+
+def sender_name_from(from_header: str) -> tuple:
+    """
+    (address, name) out of a From header, or (address, "") when it carries none.
+
+    A display name that is only the address again — which some clients send —
+    counts as no name: writing it into the comment would say nothing the email
+    field does not already say.
+    """
+    decoded = decode_mime_header(from_header)
+    name, address = parseaddr(decoded)
+    address = (address or "").strip().lower()
+    name = (name or "").replace("\r", " ").replace("\n", " ").strip()
+    if name.lower() == address:
+        name = ""
+    return address, name
+
+
+# Headers alone, and PEEK so the scan does not mark anything read: an unhandled
+# registration must not be swallowed by somebody pressing a button in settings.
+_HEADERS = "(BODY.PEEK[HEADER.FIELDS (FROM)])"
+# A ceiling, so a mailbox with years of unrelated mail in it cannot hold the
+# panel open indefinitely. The newest letters are the ones that matter.
+SCAN_LIMIT = 5000
+SCAN_BATCH = 200
+
+
+def scan_sender_names(limit: int = SCAN_LIMIT) -> dict:
+    """
+    Every address that has written, with the name it last signed itself as.
+
+    Reads the whole inbox, newest last, so a later letter overwrites an earlier
+    one and the most recent spelling of a name wins. Raises on a mailbox that
+    cannot be opened; an empty mailbox is not an error and comes back as {}.
+    """
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        raise RuntimeError("the mailbox is not set up")
+
+    found = {}
+    mail = None
+    try:
+        mail = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=IMAP_TIMEOUT)
+        mail.login(config.IMAP_USER, config.IMAP_PASSWORD)
+        mail.select("inbox", readonly=True)
+
+        status, response = mail.search(None, "ALL")
+        if status != "OK":
+            raise RuntimeError(f"the mailbox could not be searched: {status}")
+        numbers = response[0].split() if response and response[0] else []
+        if not numbers:
+            return {}
+        numbers = numbers[-limit:]
+
+        for start in range(0, len(numbers), SCAN_BATCH):
+            batch = numbers[start:start + SCAN_BATCH]
+            status, data = mail.fetch(b",".join(batch).decode(), _HEADERS)
+            if status != "OK" or not data:
+                continue
+            for item in data:
+                # Every other element is the literal; the rest are the ")" bits.
+                if not isinstance(item, tuple) or len(item) < 2:
+                    continue
+                try:
+                    raw = item[1].decode("utf-8", errors="ignore")
+                    header = email.message_from_string(raw).get("From", "")
+                    address, name = sender_name_from(header)
+                except Exception:
+                    # One unreadable letter is not a reason to abandon the rest.
+                    continue
+                if address and name:
+                    found[address] = name
+        return found
+    finally:
+        _disconnect(mail, graceful=True)
+
+
+def name_mismatches(clients: list, found: dict) -> list:
+    """
+    The clients whose name in 3x-ui does not match the one their letters carry.
+
+    Pure on purpose: the reading of the mailbox is awkward to test and this is
+    the part with the judgement in it. A client with no name at all counts as a
+    mismatch — filling one in is the usual reason for doing this — while a client
+    nobody has written to, or one whose name already matches, does not appear.
+    """
+    rows = []
+    for client_obj in clients or []:
+        remark = client_obj.get("email", "") or ""
+        address = XuiClient.extract_bare_email(remark)
+        if not address:
+            continue
+        name = found.get(address)
+        if not name:
+            continue
+        current = (client_obj.get("comment") or "").strip()
+        if current == name:
+            continue
+        rows.append({
+            "uuid": XuiClient.client_key(client_obj),
+            "email": address,
+            "current": current,
+            "name": name,
+        })
+    rows.sort(key=lambda r: r["email"])
+    return rows
+
 
 def _mark_seen(mail_conn, msg_num):
     """Marks the letter read, and does not let that failure lose the letter."""
