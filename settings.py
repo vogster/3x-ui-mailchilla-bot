@@ -175,10 +175,20 @@ def _coerce(key, value):
     raise ValueError(i18n.t("unknown setting: {key}", key=key))
 
 
+# The notification texts are read by the administrator, not by a client, so an
+# untouched default follows the panel's own language. Something typed into the
+# field is left exactly as typed — it is then in _stored and never comes here.
+_TRANSLATED_DEFAULTS = ("GOTIFY_TITLE", "GOTIFY_MESSAGE")
+
+
 def _apply():
     """Spreads the values across config attributes. Callers read config.X in place."""
     for key in MANAGED_KEYS:
         setattr(config, key, _stored.get(key, BASE[key]))
+    # After the loop: PANEL_LANG has to be in place before anything is translated.
+    for key in _TRANSLATED_DEFAULTS:
+        if key not in _stored:
+            setattr(config, key, i18n.t(BASE[key]))
 
 
 def _write(values: dict):

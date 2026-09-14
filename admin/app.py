@@ -1,6 +1,7 @@
 """The web panel for running the 3x-ui email bot (FastAPI)."""
 import secrets
 import logging
+import time
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Form
@@ -9,6 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import applog
 import config
+import email_bot
 import email_texts
 import i18n
 import settings as app_settings
@@ -211,6 +213,38 @@ def _online_count(clients=None):
     return sum(1 for e in emails if e in known)
 
 
+def _mail_block():
+    """
+    How the mail loop is doing, in a shape the template can show.
+
+    A loop that has quietly stopped — a changed password, a blocked mailbox —
+    looks from the outside exactly like a mailbox nobody writes to, and the
+    first sign of it used to be somebody complaining that the code word does
+    nothing.
+    """
+    health = email_bot.mail_health()
+    if not health["configured"]:
+        return {"state": "off", "text": i18n.t("the mailbox is not set up")}
+    if health["failures"] >= email_bot.FAILURES_BEFORE_ALARM:
+        return {"state": "bad",
+                "text": i18n.t("{n} checks in a row failed", n=health["failures"]),
+                "detail": health["error"]}
+    if health["last_ok_at"] is None:
+        return {"state": "wait", "text": i18n.t("no check has got through yet")}
+    ago = max(int(time.time() - health["last_ok_at"]), 0)
+    if ago < 90:
+        text = i18n.t("checked just now")
+    elif ago < 3600:
+        text = i18n.t("checked {n} min ago", n=ago // 60)
+    else:
+        text = i18n.t("checked {n} h ago", n=ago // 3600)
+    # Long past the polling interval means the loop is not turning, even though
+    # no single check has reported a failure.
+    stalled = ago > max(config.POLL_INTERVAL_SECONDS * 4, 120)
+    return {"state": "bad" if stalled else "ok", "text": text,
+            "detail": health["error"] if stalled else ""}
+
+
 def _server_block():
     """
     The server panel's contents, ready to display.
@@ -241,7 +275,8 @@ def server_status(request: Request):
                             status_code=502)
     # The online count sits in the row of counters rather than in this block,
     # but it goes stale at the same rate, so it travels with it.
-    return JSONResponse({"ok": True, "server": server, "online": _online_count()})
+    return JSONResponse({"ok": True, "server": server, "online": _online_count(),
+                         "mail": _mail_block()})
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -356,6 +391,7 @@ def dashboard(request: Request):
             "near_limit": near_limit,
             "inbounds": inbounds,
             "server": server,
+            "mail": _mail_block(),
             "missing_inbounds": missing_inbounds,
             "problems": problems,
             "problems_total": problems_total,

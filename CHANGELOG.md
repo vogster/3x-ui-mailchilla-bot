@@ -8,6 +8,70 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.4] - 2026-09-14
+
+### Added
+
+- The installer shows a turning bar while it works. Packages and pip take
+  minutes and say nothing meanwhile, which reads as a hang; their own output is
+  kept back and printed only if the step fails.
+- `mailchilla` says in its header when a newer version is out. It asks once per
+  run, on a four-second leash, and only ever points forward — a copy running
+  ahead of the newest tag is somebody testing a branch.
+- `mailchilla autostart` toggles autostart, and the menu entry shows whether it
+  is on. After switching it says which way it went rather than just "done".
+- The first-run wizard asks for `flow` along with the other registration
+  defaults, and can send a test notification to Gotify without leaving the step.
+
+- Name synchronisation, on the Mail tab: it reads the letters in the mailbox,
+  takes the name each sender signs themselves with, and offers a table of the
+  clients whose name in 3x-ui differs — tick who to update. A client with no
+  name at all counts as a difference, since filling one in is the usual reason
+  for doing this. The letters are read headers-only and never marked, so a
+  registration waiting to be handled is not swallowed by pressing the button,
+  and nothing is written until the choice is made. The panel is hidden while no
+  mailbox is set up.
+- The dashboard says how the mail loop is doing: when it last read the mailbox
+  through, or how many checks in a row have failed and why. A loop that has
+  quietly stopped — a changed password, a blocked mailbox — used to look exactly
+  like a mailbox nobody writes to, and the first sign of it was somebody
+  complaining that the code word does nothing.
+- Tests, and a workflow that runs them on every push: the identity helpers, every
+  branch of the settings coercion, both parts of every letter, the MIME shape
+  with a picture and without, version comparison, and a pass that fails when a
+  Russian translation is missing. `unittest` from the standard library, so
+  nothing new ships to anybody.
+
+### Changed
+
+- The bottom bar on a phone is taller — 60px rather than 47 — with roomier icons
+  and captions.
+- The small buttons throughout the panel have three more pixels of height and a
+  little more air either side; at 27px the text was pinched against the edges.
+- The wizard no longer asks about the app schemes: `happ://add` and `incy://add`
+  belong to the apps rather than to any one installation, so they are filled in
+  from the start. Emptying one in the panel still removes its button.
+- The Gotify notification texts follow the panel's language while they are
+  untouched. A text typed into the field is left exactly as typed.
+- The installer says plainly that the 3x-ui address needs the whole path,
+  including the panel's base path.
+
+### Fixed
+
+- A letter is marked read after it has been dealt with, not before. The gap
+  between the two cost whole registrations: 3x-ui unreachable, SMTP refusing, the
+  process restarted — the letter was already read by then, the next cycle never
+  saw it again, and somebody who wrote the code word simply got nothing back.
+  Left unread it is picked up on the next pass. `/broadcast` is still marked
+  first: it is the one command that must not run twice.
+- In the menu, an action needing root threw the person out of the program
+  instead of refusing that one action — which is why autostart looked as though
+  it could not be switched.
+- On a phone, a long address in the client list wrapped underneath its own
+  connection dot, which read as a fault rather than as a long address. The
+  column keeps the two on one line and the table scrolls sideways, as it already
+  did.
+
 ## [0.1.3] - 2026-09-12
 
 ### Added

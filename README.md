@@ -51,14 +51,15 @@ You write a letter with a command, in the subject or in the body - the bot handl
 | `/help` | instructions for setting up a client app |
 | `/broadcast` | a letter to every active client (from the administrator only) |
 
-The sender's name lands in the client's comment - the list then shows people rather than addresses.
+The sender's name lands in the client's comment - the list then shows people rather than addresses. For everyone registered before that, one button on the Mail tab reads the names out of the letters already in the mailbox and offers a table of who to fill in.
 
 **🖥️ The web panel**
 
 ![Client list](docs/screenshots/clients.png)
 
-- A client list with live search, sorting and filters (status, mail, period, traffic)
-- The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button
+- A client list with live search, sorting and filters (status, mail, connection, period, traffic)
+- Who is connected right now shows as a dot beside the address - green breathes, red sits still - on the list, on a client's own page and in the broadcast's recipient list. It refreshes itself every twenty seconds without disturbing anything you are in the middle of
+- The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button. Beside it, how the mail loop is doing - a bot that has quietly stopped reading the mailbox otherwise looks exactly like a mailbox nobody writes to
 - A client's card: traffic, expiry, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
 - Each inbound also carries its own ready-made connection URL, the same string 3x-ui's copy button hands out. One click copies it
 - Creating a client by hand, changing the limit, the expiry or the set of inbounds, disabling an account
@@ -82,9 +83,17 @@ And something completely unserious: the **Roulette** button rolls the visible re
 
 Table-based layout with inline styles, flat colours, a text version in every letter. It arrives looking the same in Gmail, on phones and in Outlook.
 
+The welcome letter carries a QR code of the subscription link, for the reader who opened their mail on a computer and would otherwise be copying the link across to their phone by hand. It is drawn on the server and travels inside the letter - no QR service is handed everyone's subscription link.
+
 Every text is editable from the panel: subjects, headings, captions, the footer, the service replies. Each letter has a test-send button.
 
 ![Letter settings](docs/screenshots/settings-mail.png)
+
+**📱 From a phone**
+
+![The panel on a phone](docs/screenshots/mobile.png)
+
+The panel is meant to be used from a phone, not merely to survive on one. The side menu becomes a bar along the bottom, where the links cost nothing horizontally and land where a thumb already is. Tables scroll sideways inside their own box rather than dragging the page with them, and the letter editor, the filters and the broadcast all fold into one column.
 
 **🌍 Two languages**
 
@@ -97,6 +106,8 @@ The interface strings live in `lang/`, the letter texts in the panel itself, one
 ![Logs](docs/screenshots/logs.png)
 
 The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration.
+
+The panel also notices when a newer version has been released and says so in a banner, with a link to what changed and the command to run. It updates nothing by itself, and the check can be switched off.
 
 ---
 

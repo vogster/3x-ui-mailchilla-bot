@@ -93,7 +93,11 @@
                     data-remark="{{ c.remark }}">
                     <td>
                         <a href="/clients/{{ c.uuid }}" class="row-link">
-                            <div class="mono">
+                            {# nowrap: on a narrow screen the longest address
+                               otherwise wraps under its own dot, which reads as
+                               a fault rather than as a long address. The table
+                               is in a box that scrolls sideways; let it. #}
+                            <div class="mono" style="white-space: nowrap;">
                                 {% if online_known and c.online is not none %}
                                 <span class="odot {{ 'on' if c.online else 'off' }}"
                                       title="{{ t('Online [badge]') if c.online else t('Offline [badge]') }}"></span>

@@ -179,11 +179,14 @@
             .sb-nav { flex: 1; }
             .sb-nav a, .sb-foot .logout {
                 flex: 1 1 0; min-width: 0;
-                flex-direction: column; justify-content: center; gap: 3px;
-                padding: 7px 2px 6px; border-radius: 0;
-                font-size: 9.5px; line-height: 1.15; text-align: center;
+                flex-direction: column; justify-content: center; gap: 4px;
+                /* Roomier than it was: at 47px the whole bar the targets were
+                   technically large enough and still felt like pinpricks, which
+                   is what a thumb actually goes by. */
+                padding: 11px 2px 10px; border-radius: 0;
+                font-size: 10px; line-height: 1.15; text-align: center;
             }
-            .sb-nav a svg, .sb-foot .logout svg { width: 19px; height: 19px; }
+            .sb-nav a svg, .sb-foot .logout svg { width: 22px; height: 22px; }
             /* Signing out is not a destination, so it gets neither a tab's
                width nor a caption: a narrow icon past a divider, out of the way
                of a thumb aiming for the tab beside it. Still 44px wide, which is
@@ -191,7 +194,7 @@
                rule above — same specificity, so order decides. */
             .sb-foot { flex: 0 0 auto; }
             .sb-foot .logout {
-                flex: 0 0 44px; border-left: 1px solid var(--line-soft);
+                flex: 0 0 48px; border-left: 1px solid var(--line-soft);
                 color: var(--fg-3);
             }
             .sb-foot .logout .lbl { display: none !important; }
@@ -208,7 +211,7 @@
             .sb-nav a.active { background: transparent; color: var(--ok); }
             /* Room for the bar itself, so the last thing on the page is not
                hidden underneath it. */
-            .container { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+            .container { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
         }
 
         /* Messages */
@@ -879,7 +882,12 @@
         .btn.ok:hover { background: rgba(69,184,102,0.2); border-color: var(--ok); color: #5fcb7d; }
         .btn.danger.quiet { background: transparent; border-color: var(--line); }
         .btn.danger.quiet:hover { background: rgba(239,83,80,0.16); border-color: rgba(239,83,80,0.6); }
-        .btn.small { height: 27px; padding: 0 10px; font-size: 12px; }
+        /* 27px around 12px text left the letters pinched against the edges,
+           which Cyrillic descenders make worse. Three pixels of height and a
+           little more air either side is all it took; the eighteen buttons
+           wearing this class all sit in panel heads and toolbars, so it is one
+           change rather than eighteen. */
+        .btn.small { height: 30px; padding: 0 12px; font-size: 12.5px; }
 
         /* Input fields */
         input[type=text], input[type=number], input[type=password], textarea, select {

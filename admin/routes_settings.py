@@ -349,6 +349,86 @@ def settings_mail_test(
     return JSONResponse({"ok": ok, "steps": steps})
 
 
+@router.post("/settings/mail/names/scan")
+def settings_names_scan(request: Request):
+    """
+    Looks through the mailbox and reports the clients whose name has drifted.
+
+    Changes nothing: the letters are read headers-only and with PEEK, so an
+    unhandled registration is not swallowed by somebody pressing this button,
+    and no client is touched until the next route is called with a choice.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        return JSONResponse({"ok": False, "error": i18n.t("The mailbox is not set up")},
+                            status_code=400)
+
+    logger.info("Panel: looking through the mailbox for sender names.")
+    try:
+        found = email_bot.scan_sender_names()
+    except Exception as e:
+        logger.error(f"Could not read the mailbox for names: {e}", exc_info=True)
+        return JSONResponse({"ok": False, "error": i18n.t("Could not read the mailbox")},
+                            status_code=502)
+
+    clients = get_shared_client().get_all_clients()
+    if clients is None:
+        return JSONResponse({"ok": False, "error": i18n.t("The panel did not answer")},
+                            status_code=502)
+
+    rows = email_bot.name_mismatches(clients, found)
+    logger.info(f"Panel: {len(found)} addresses in the mailbox, {len(rows)} names differ.")
+    return JSONResponse({"ok": True, "rows": rows, "senders": len(found)})
+
+
+@router.post("/settings/mail/names/apply")
+async def settings_names_apply(request: Request):
+    """
+    Writes the chosen names into the clients' comments.
+
+    The names come back from the page rather than being looked up again: they
+    are what the administrator was shown and agreed to, and a second scan could
+    quietly disagree with the table they were reading.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+
+    try:
+        chosen = (await request.json()).get("rows") or []
+    except Exception:
+        return JSONResponse({"ok": False, "error": i18n.t("The request failed")}, status_code=400)
+
+    xui = get_shared_client()
+    updated, failed = 0, []
+    for row in chosen:
+        uuid_value = str(row.get("uuid") or "")
+        name = str(row.get("name") or "").strip()
+        if not uuid_value or not name:
+            continue
+        client_obj = xui.find_client_by_uuid(uuid_value)
+        if not client_obj:
+            # Deleted between the scan and the choice.
+            failed.append(row.get("email") or uuid_value)
+            continue
+        try:
+            ok = xui.update_client(uuid_value, new_comment=name, client_obj=client_obj)
+        except Exception as e:
+            logger.error(f"Could not write the name for {row.get('email')}: {e}")
+            ok = False
+        if ok:
+            updated += 1
+        else:
+            failed.append(row.get("email") or uuid_value)
+
+    logger.info(f"Panel: names written for {updated} client(s)"
+                + (f", {len(failed)} failed: {', '.join(failed)}" if failed else "."))
+    return JSONResponse({"ok": True, "updated": updated, "failed": failed})
+
+
 @router.post("/settings/gotify/test")
 def settings_gotify_test(request: Request):
     """Sends a test notification with the current settings and text."""

@@ -1,0 +1,43 @@
+name: Checks
+
+# The release workflow runs on a tag and is the last gate; this one runs on the
+# way there, so a missing translation or a broken script is found while it is
+# still cheap to fix.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # The floor the code actually needs: list[int] in annotations, which
+          # FastAPI evaluates at run time.
+          python-version: "3.9"
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: The shell scripts must parse
+        run: bash -n install.sh && bash -n mailchilla.sh
+
+      - name: The message tables must be symmetrical
+        run: |
+          for f in install.sh mailchilla.sh; do
+            en=$(grep -c '^\[en\.' "$f"); ru=$(grep -c '^\[ru\.' "$f")
+            echo "$f: en=$en ru=$ru"
+            [ "$en" = "$ru" ] || { echo "::error::$f has $en English keys and $ru Russian ones"; exit 1; }
+          done
+
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Everything must import
+        # The panel is imported on its own by admin/app.py, and a route file that
+        # does not import is a 500 nobody sees until the page is opened.
+        run: python -c "import run, admin.app, updater, email_bot, templates"

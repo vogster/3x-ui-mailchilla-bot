@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 
 import config
 import templates
-from xui_client import get_shared_client
+from xui_client import XuiClient, get_shared_client
 
 
 logging.basicConfig(
@@ -502,10 +502,148 @@ def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = No
     logger.info(f"Broadcast finished. Sent successfully: {success_count}/{len(emails)}.")
     return success_count
 
-def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn, sender_name: str = ""):
-    """Reads a letter and carries out whatever it asks for."""
-    mail_conn.store(msg_num, '+FLAGS', '\\Seen')
+def decode_mime_header(value: str) -> str:
+    """A header as a person would read it, whatever it was encoded with."""
+    parts = []
+    for chunk, charset in decode_header(value or ""):
+        if isinstance(chunk, bytes):
+            parts.append(chunk.decode(charset or "utf-8", errors="ignore"))
+        else:
+            parts.append(str(chunk))
+    return " ".join(parts).strip()
 
+
+def sender_name_from(from_header: str) -> tuple:
+    """
+    (address, name) out of a From header, or (address, "") when it carries none.
+
+    A display name that is only the address again — which some clients send —
+    counts as no name: writing it into the comment would say nothing the email
+    field does not already say.
+    """
+    decoded = decode_mime_header(from_header)
+    name, address = parseaddr(decoded)
+    address = (address or "").strip().lower()
+    name = (name or "").replace("\r", " ").replace("\n", " ").strip()
+    if name.lower() == address:
+        name = ""
+    return address, name
+
+
+# Headers alone, and PEEK so the scan does not mark anything read: an unhandled
+# registration must not be swallowed by somebody pressing a button in settings.
+_HEADERS = "(BODY.PEEK[HEADER.FIELDS (FROM)])"
+# A ceiling, so a mailbox with years of unrelated mail in it cannot hold the
+# panel open indefinitely. The newest letters are the ones that matter.
+SCAN_LIMIT = 5000
+SCAN_BATCH = 200
+
+
+def scan_sender_names(limit: int = SCAN_LIMIT) -> dict:
+    """
+    Every address that has written, with the name it last signed itself as.
+
+    Reads the whole inbox, newest last, so a later letter overwrites an earlier
+    one and the most recent spelling of a name wins. Raises on a mailbox that
+    cannot be opened; an empty mailbox is not an error and comes back as {}.
+    """
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        raise RuntimeError("the mailbox is not set up")
+
+    found = {}
+    mail = None
+    try:
+        mail = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=IMAP_TIMEOUT)
+        mail.login(config.IMAP_USER, config.IMAP_PASSWORD)
+        mail.select("inbox", readonly=True)
+
+        status, response = mail.search(None, "ALL")
+        if status != "OK":
+            raise RuntimeError(f"the mailbox could not be searched: {status}")
+        numbers = response[0].split() if response and response[0] else []
+        if not numbers:
+            return {}
+        numbers = numbers[-limit:]
+
+        for start in range(0, len(numbers), SCAN_BATCH):
+            batch = numbers[start:start + SCAN_BATCH]
+            status, data = mail.fetch(b",".join(batch).decode(), _HEADERS)
+            if status != "OK" or not data:
+                continue
+            for item in data:
+                # Every other element is the literal; the rest are the ")" bits.
+                if not isinstance(item, tuple) or len(item) < 2:
+                    continue
+                try:
+                    raw = item[1].decode("utf-8", errors="ignore")
+                    header = email.message_from_string(raw).get("From", "")
+                    address, name = sender_name_from(header)
+                except Exception:
+                    # One unreadable letter is not a reason to abandon the rest.
+                    continue
+                if address and name:
+                    found[address] = name
+        return found
+    finally:
+        _disconnect(mail, graceful=True)
+
+
+def name_mismatches(clients: list, found: dict) -> list:
+    """
+    The clients whose name in 3x-ui does not match the one their letters carry.
+
+    Pure on purpose: the reading of the mailbox is awkward to test and this is
+    the part with the judgement in it. A client with no name at all counts as a
+    mismatch — filling one in is the usual reason for doing this — while a client
+    nobody has written to, or one whose name already matches, does not appear.
+    """
+    rows = []
+    for client_obj in clients or []:
+        remark = client_obj.get("email", "") or ""
+        address = XuiClient.extract_bare_email(remark)
+        if not address:
+            continue
+        name = found.get(address)
+        if not name:
+            continue
+        current = (client_obj.get("comment") or "").strip()
+        if current == name:
+            continue
+        rows.append({
+            "uuid": XuiClient.client_key(client_obj),
+            "email": address,
+            "current": current,
+            "name": name,
+        })
+    rows.sort(key=lambda r: r["email"])
+    return rows
+
+
+def _mark_seen(mail_conn, msg_num):
+    """Marks the letter read, and does not let that failure lose the letter."""
+    try:
+        mail_conn.store(msg_num, '+FLAGS', '\\Seen')
+    except Exception as e:
+        logger.warning(f"Could not mark letter #{msg_num} as read: {e}")
+
+
+def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn, sender_name: str = ""):
+    """
+    Reads a letter and carries out whatever it asks for.
+
+    The letter is marked read *after* it has been dealt with, not before. It used
+    to be the other way round, and the gap between the two cost whole
+    registrations: 3x-ui unreachable, SMTP refusing, the process restarted — the
+    letter was already `\\Seen` by then, the next cycle never saw it again, and
+    somebody who wrote the code word simply got nothing back. Left unread it is
+    picked up on the next pass, and the commands are safe to repeat: registering
+    an address that already exists sends the link again, and status and help only
+    ever send a letter.
+
+    /broadcast is the exception and is marked before it runs. It is the one
+    command that is not safe to repeat — a mass letter going out twice is worse
+    than one that did not go out at all and can simply be sent again by hand.
+    """
     subject_clean = subject.strip()
     body_clean = body.strip()
 
@@ -528,6 +666,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             else:
                 broadcast_content = body_clean
 
+        _mark_seen(mail_conn, msg_num)
         if broadcast_content:
             sent_count = handle_broadcast(broadcast_content)
             send_email_reply(from_email, templates.notice_subject("broadcast_done"),
@@ -550,6 +689,10 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     else:
         handle_unknown(from_email, subject_clean)
 
+    # Only now: anything that raised above leaves the letter unread for the
+    # next cycle, which is the whole point.
+    _mark_seen(mail_conn, msg_num)
+
 # How long to wait for the mail server on any single operation. Mail services
 # stall now and then, and a check that gives up is cheap: the letters stay
 # unread and the next cycle collects them.
@@ -561,6 +704,28 @@ FAILURES_BEFORE_ALARM = 3
 
 # Failed checks since the last one that worked.
 _consecutive_failures = 0
+# When the mailbox was last read through without trouble, and what went wrong
+# the last time it did not. The panel shows both: a mail loop that has quietly
+# stopped working looks exactly like a mailbox nobody is writing to.
+_last_ok_at = None
+_last_error = ""
+
+# A letter that throws on every attempt would otherwise be retried for ever, now
+# that the read flag waits for success. Counted by Message-ID and kept in
+# memory: a restart gives it a fresh chance, which is what one wants after
+# fixing whatever it tripped over.
+MAX_ATTEMPTS = 3
+_attempts = {}
+
+
+def mail_health() -> dict:
+    """How the mail loop is doing, for the dashboard."""
+    return {
+        "configured": bool(config.IMAP_USER and config.IMAP_PASSWORD),
+        "last_ok_at": _last_ok_at,
+        "failures": _consecutive_failures,
+        "error": _last_error,
+    }
 
 
 def _disconnect(mail, graceful: bool):
@@ -592,7 +757,7 @@ def _disconnect(mail, graceful: bool):
 
 def check_mail():
     """Connects over IMAP, looks for unread letters and handles them."""
-    global _consecutive_failures
+    global _consecutive_failures, _last_ok_at, _last_error
 
     if not config.IMAP_USER or not config.IMAP_PASSWORD:
         logger.error("IMAP credentials are not configured; skipping the mail check.")
@@ -624,6 +789,7 @@ def check_mail():
         if messages:
             logger.info(f"New letters found to handle: {len(messages)}")
         for num in messages:
+            msg_id = None
             try:
                 status, data = mail.fetch(num, "(RFC822)")
                 if status != "OK" or not data:
@@ -632,6 +798,7 @@ def check_mail():
                 
                 raw_email = data[0][1]
                 msg = email.message_from_bytes(raw_email)
+                msg_id = msg.get("Message-ID") or None
 
                 from_header = msg.get("From", "")
                 # Decode the From header so the sender's name comes out right.
@@ -661,11 +828,27 @@ def check_mail():
                 body = get_email_body(msg)
 
                 process_message(num, from_email, subject, body, mail, sender_name)
-                
+                if msg_id:
+                    _attempts.pop(msg_id, None)
+
             except Exception as e:
-                logger.error(f"Error handling letter #{num}: {e}", exc_info=True)
+                if msg_id:
+                    tries = _attempts.get(msg_id, 0) + 1
+                    _attempts[msg_id] = tries
+                else:
+                    # Nothing to count by. Rather than risk retrying it for ever,
+                    # this one attempt is treated as the last.
+                    tries = MAX_ATTEMPTS
+                logger.error(f"Error handling letter #{num} (attempt {tries}): {e}", exc_info=True)
+                if tries >= MAX_ATTEMPTS:
+                    logger.error(f"Letter #{num} failed {tries} times and is being marked read "
+                                 f"so the loop can move on. Nothing was answered to it.")
+                    _mark_seen(mail, num)
+                    _attempts.pop(msg_id, None)
 
         reached_the_end = True
+        _last_ok_at = time.time()
+        _last_error = ""
         if _consecutive_failures:
             logger.info(f"The mailbox answers again, after {_consecutive_failures} "
                         f"failed check(s) in a row.")
@@ -674,6 +857,7 @@ def check_mail():
     except Exception as e:
         _consecutive_failures += 1
         detail = f"{type(e).__name__}: {e}".strip(": ")
+        _last_error = f"{phase}: {detail}"
         message = (f"The mail check failed while {phase}: {detail}. "
                    f"Failed checks in a row: {_consecutive_failures}.")
         # One stall costs a single cycle and nothing else: unread letters stay
