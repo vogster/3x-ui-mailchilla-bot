@@ -65,7 +65,7 @@ XuiClient.find_client_by_uuid = lambda self, u: next(
 XuiClient.login = lambda self: True
 
 import admin.app as appmod
-import settings as app_settings, email_bot
+import settings as app_settings, email_bot, tariffs
 
 config.SERVICE_NAME = demo.SERVICE_NAME
 config.IMAP_SERVER, config.IMAP_USER, config.IMAP_PASSWORD = "imap.example.com", "bot@example.com", "x"
@@ -78,6 +78,27 @@ config.CODEWORD = "AURORA"
 config.LIMIT_GB, config.EXPIRE_DAYS = 100, 90
 config.SETUP_DONE = {setup_done!r}
 app_settings._stored["SETUP_DONE"] = {setup_done!r}
+# Two tariffs rather than the one a first run seeds: the page is about the
+# difference between them, and a single row says nothing about that.
+tariffs._state = {{"tariffs": [], "codes": []}}
+def _demo_tariff(name, limit, days, inbounds, word=None, uses=None, note=""):
+    made = tariffs.save_tariff({{"name": name, "limit_gb": limit,
+                               "expire_days": days, "inbound_ids": inbounds}})
+    if word:
+        tariffs.save_code({{"word": word, "tariff_id": made["id"],
+                           "uses_left": uses, "note": note, "enabled": True}})
+    return made
+_standard = _demo_tariff("Standard", 100, 90, [1, 2], "AURORA")
+_family = _demo_tariff("Family", 500, 365, [1], "AURORA-FAMILY")
+_trial = _demo_tariff("Trial", 10, 7, [1])
+# A personal code on the trial tariff, so the page shows both shapes at once.
+tariffs.save_code({{"word": "K78QYYDNSZ", "tariff_id": _trial["id"],
+                   "uses_left": 1, "note": "Для Лены", "enabled": True}})
+# Somebody has come in through the open word, so the code's card has a list to
+# show rather than an empty state.
+for _who in ("anna.bright@example.com", "ben@example.com", "g.parry@example.com",
+             "m.vaughan@example.com", "someone-who-left@example.com"):
+    tariffs.spend("AURORA", _who)
 email_bot._last_ok_at = time.time() - 20
 # A handful of records so the log page is not empty.
 import logging
@@ -122,6 +143,7 @@ def copy_tree():
     shutil.copytree(ROOT, copy_dir, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns(".git", "venv", ".venv", "logs",
                                                   "settings.json", "email_texts.json",
+                                                  "tariffs.json",
                                                   ".env", "__pycache__"))
     return copy_dir
 

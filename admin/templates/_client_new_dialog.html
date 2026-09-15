@@ -5,7 +5,7 @@
     <form method="post" action="/clients/new" id="new-client-form">
         <div class="dlg-head">
             <div class="t">{{ t("New client") }}</div>
-            <div class="s">{{ t("The values come from the settings; they can be changed for this client") }}</div>
+            <div class="s">{{ t("The values come from the tariff; they can be changed for this client") }}</div>
         </div>
         <div class="dlg-body">
             <div class="dlg-cols">
@@ -16,6 +16,20 @@
                 <div>
                     <label for="nc-comment">{{ t("Name / comment") }}</label>
                     <input type="text" id="nc-comment" name="comment" placeholder="{{ t('Ivan Petrov') }}">
+                </div>
+                <div>
+                    <label for="nc-tariff">{{ t("Tariff") }} {{ fields.help(t("Picking one fills in the traffic, the term and the inbounds. They stay editable — this client is being made by hand, and the tariff is only a starting point.")) }}</label>
+                    <select id="nc-tariff" name="tariff_id">
+                        {% for tariff in tariffs %}
+                        <option value="{{ tariff.id }}"
+                                data-limit="{{ tariff.limit_gb }}"
+                                data-days="{{ tariff.expire_days }}"
+                                data-inbounds="{{ tariff.inbound_ids|join(',') }}"
+                                {% if tariff.id == new_defaults.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
+                        {% else %}
+                        <option value="">{{ t("no tariffs yet") }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div>
                     <label for="nc-limit">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited")) }}</label>
@@ -67,6 +81,25 @@
     </form>
 </dialog>
 <script>
+    // Choosing a tariff fills the fields in. It never locks them: an
+    // administrator making one client by hand is exactly the person who may
+    // want a different limit for them, and the tariff stops mattering the
+    // moment the client exists.
+    (function () {
+        var picker = document.getElementById("nc-tariff");
+        if (!picker) return;
+        picker.addEventListener("change", function () {
+            var option = picker.options[picker.selectedIndex];
+            if (!option || !option.value) return;
+            document.getElementById("nc-limit").value = option.dataset.limit;
+            document.getElementById("nc-days").value = option.dataset.days;
+            var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
+            document.querySelectorAll(".nc-inbound").forEach(function (box) {
+                box.checked = wanted.indexOf(box.value) !== -1;
+            });
+        });
+    })();
+
     // The form goes through fetch and the server answers JSON, so an error — a
     // duplicate address, a refusal from the panel — can be shown right here
     // without closing the dialog or losing what was typed. With no JS the form

@@ -12,6 +12,7 @@ import config
 import email_bot
 import i18n
 import templates as mail_templates
+import tariffs
 from admin.deps import templates, require_auth, is_authenticated
 from xui_client import XuiClient, get_shared_client
 
@@ -146,37 +147,79 @@ def clients_list(request: Request, q: str = ""):
         "online_known": online is not None,
         # Whether the last-online column has anything to stand on.
         "last_seen_known": last_online is not None,
+        # The tariffs a client could be on, for the filter. Taken from the
+        # tariffs themselves rather than from the rows, so a tariff nobody is
+        # on yet is still offered — and a group left behind by a deleted tariff
+        # still filters, since it is in the rows.
+        "tariff_names": sorted({t["name"] for t in tariffs.all_tariffs()}
+                               | {r["tariff"] for r in rows if r["tariff"]}),
     }
     context.update(new_dialog_context())
     return templates.TemplateResponse("clients.html", context)
+
+
+def tariff_choices() -> list:
+    """
+    The tariffs a hand-made client can be stamped from, shaped for the form.
+
+    Picking one fills the fields in and leaves them editable: a tariff is a
+    template here exactly as it is for a letter, and an administrator creating
+    one client by hand may well want a different limit for them.
+    """
+    return [
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "limit_gb": t["limit_gb"],
+            "expire_days": t["expire_days"],
+            "inbound_ids": t["inbound_ids"],
+        }
+        for t in tariffs.all_tariffs()
+    ]
+
+
+def default_tariff() -> dict:
+    """
+    What an untouched create form starts from: the first tariff, or nothing.
+
+    With no tariffs at all the form simply opens empty rather than refusing —
+    a client can still be made by hand, and the tariffs page says what is missing.
+    """
+    choices = tariff_choices()
+    return choices[0] if choices else {"id": "", "name": "", "limit_gb": 0,
+                                       "expire_days": 0, "inbound_ids": []}
 
 
 def new_dialog_context():
     """
     The context for the create-client dialog. Both the list and the dashboard
     need it, so it is assembled separately: the inbounds ticked according to the
-    settings, plus the default values.
+    tariff chosen, plus the default values.
     """
-    configured = set(config.XUI_INBOUND_IDS)
+    first = default_tariff()
+    configured = set(first["inbound_ids"])
     inbounds = get_shared_client().get_inbounds()
     for ib in inbounds:
         ib["selected"] = ib["id"] in configured
     return {
         "inbounds": inbounds,
+        "tariffs": tariff_choices(),
         "new_defaults": {
-            "limit_gb": config.LIMIT_GB,
-            "expire_days": config.EXPIRE_DAYS,
+            "tariff_id": first["id"],
+            "limit_gb": first["limit_gb"],
+            "expire_days": first["expire_days"],
             "flow": config.XUI_FLOW,
         },
     }
 
 
 def _new_client_context(request: Request, form: dict = None, error: str = ""):
-    """The context for the create form: the defaults come from the current settings."""
+    """The context for the create form: the defaults come from the first tariff."""
     form = form or {}
+    first = default_tariff()
     selected = form.get("inbound_ids")
     if selected is None:
-        selected = list(config.XUI_INBOUND_IDS)
+        selected = list(first["inbound_ids"])
 
     inbounds = get_shared_client().get_inbounds()
     for ib in inbounds:
@@ -186,12 +229,14 @@ def _new_client_context(request: Request, form: dict = None, error: str = ""):
         "request": request,
         "service_name": config.SERVICE_NAME,
         "inbounds": inbounds,
+        "tariffs": tariff_choices(),
         "error": error,
         "form": {
             "email": form.get("email", ""),
             "comment": form.get("comment", ""),
-            "limit_gb": form.get("limit_gb", config.LIMIT_GB),
-            "expire_days": form.get("expire_days", config.EXPIRE_DAYS),
+            "tariff_id": form.get("tariff_id", first["id"]),
+            "limit_gb": form.get("limit_gb", first["limit_gb"]),
+            "expire_days": form.get("expire_days", first["expire_days"]),
             "xui_flow": form.get("xui_flow", config.XUI_FLOW),
             "send_email": form.get("send_email", True),
         },
@@ -253,6 +298,7 @@ def client_new_submit(
     expire_days: str = Form(""),
     send_email: str = Form(""),
     xui_flow: str = Form(""),
+    tariff_id: str = Form(""),
     inbound_ids: list[int] = Form(default=[]),
 ):
     auth_redirect = require_auth(request)
@@ -266,6 +312,7 @@ def client_new_submit(
         "expire_days": (expire_days or "").strip(),
         "inbound_ids": inbound_ids,
         "xui_flow": (xui_flow or "").strip(),
+        "tariff_id": (tariff_id or "").strip(),
         "send_email": send_email == "on",
     }
 
@@ -308,9 +355,14 @@ def client_new_submit(
     if xui.find_client_by_email(client_email):
         return fail(i18n.t("A client with the address {email} is already in the panel.", email=client_email))
 
+    # The chosen tariff names the client's group. The numbers may well have been
+    # edited away from it by hand, and that is allowed: the group says which
+    # tariff this client belongs to, not that every figure still matches it.
+    chosen = tariffs.get(raw["tariff_id"]) if raw["tariff_id"] else None
     logger.info(f"Panel: creating client {client_email!r} (name {raw['comment']!r}), "
                 f"limit {total_gb} GB, {days} days, flow {raw['xui_flow']!r}, "
-                f"inbounds {raw['inbound_ids']}.")
+                f"inbounds {raw['inbound_ids']}"
+                + (f", tariff {chosen['name']!r}." if chosen else "."))
     created_uuid, _ = xui.add_client(
         email=client_email,
         client_uuid=str(uuid.uuid4()),
@@ -319,6 +371,7 @@ def client_new_submit(
         inbound_ids=raw["inbound_ids"],
         comment=raw["comment"],
         flow=raw["xui_flow"],
+        group=chosen["name"] if chosen else "",
     )
 
     client_obj = xui.find_client_by_email(client_email)
@@ -533,6 +586,7 @@ def client_edit_form(request: Request, client_uuid: str, error: str = ""):
             "service_name": config.SERVICE_NAME,
             "client": row,
             "inbounds": inbounds,
+            "tariffs": tariff_choices(),
             "limit_gb": limit_gb_val,
             "days_left": days_left,
             "error": error,
@@ -549,6 +603,7 @@ def client_edit_submit(
     enable: str = Form(""),
     comment: str = Form(""),
     keep_comment: str = Form(""),
+    tariff_id: str = Form(""),
     inbound_ids: list[int] = Form(default=[]),
 ):
     auth_redirect = require_auth(request)
@@ -587,9 +642,14 @@ def client_edit_submit(
     if keep_comment != "on":
         new_comment = (comment or "").strip()
 
+    # An empty tariff_id is "leave it as it is" — the picker's first option —
+    # rather than "take the client out of every group", which nothing on this
+    # form asks for.
+    moved = tariffs.get(tariff_id) if tariff_id else None
     logger.info(
         f"Panel: editing client {client_obj.get('email')!r} — limit={total_gb}, "
-        f"days={days}, enabled={new_enable}, name={new_comment!r}."
+        f"days={days}, enabled={new_enable}, name={new_comment!r}"
+        + (f", moved to the {moved['name']!r} tariff." if moved else ".")
     )
     ok = xui.update_client(
         client_uuid,
@@ -597,6 +657,7 @@ def client_edit_submit(
         expire_days=days,
         enable=new_enable,
         new_comment=new_comment,
+        group=moved["name"] if moved else None,
         client_obj=client_obj,
     )
     if not ok:

@@ -1,0 +1,88 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{% if was %}{{ was }}{% else %}{{ t("New code") }}{% endif %}{% endblock %}
+{% block nav_tariffs %}active{% endblock %}
+{% block content %}
+<a href="/tariffs?tab=codes" class="back">← {{ t("Back to the code words") }}</a>
+
+{% if error %}
+<div class="flash error" style="margin-top: 14px;">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/tariffs/codes/save">
+<input type="hidden" name="was" value="{{ was }}">
+
+<div class="panel" style="margin-top: 14px;">
+    <div class="panel-head">
+        <h2>{% if was %}{{ t("The code") }}{% else %}{{ t("New code") }}{% endif %}</h2>
+    </div>
+    <div style="padding: 24px;" class="form-grid">
+        <div>
+            <label for="word">{{ t("The word") }} {{ fields.help(t("What has to be in the letter. Make it something memorable if you are handing it out openly, or press the button for one nobody could guess. It is matched as a whole word — START will not be found inside RESTART — and it must not repeat another code's.")) }}</label>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="word" name="word" value="{{ code.word }}" autocomplete="off" required>
+                <button type="button" class="btn small" id="generate">{{ t("Generate") }}</button>
+            </div>
+        </div>
+        <div>
+            <label for="tariff_id">{{ t("Opens the tariff") }} {{ fields.help(t("What somebody writing this word gets: its traffic, its term, its inbounds.")) }}</label>
+            <select id="tariff_id" name="tariff_id">
+                {% for tariff in tariff_options %}
+                <option value="{{ tariff.id }}" {% if tariff.id == code.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="uses_left">{{ t("Activations left") }} {{ fields.help(t("Empty means no limit: the word you hand out openly, good for as many people as write it. 1 makes it a personal invitation, spent by whoever uses it first. Any other number works that many times.")) }}</label>
+            <input type="number" id="uses_left" name="uses_left" min="0" step="1"
+                   value="{% if code.uses_left is not none %}{{ code.uses_left }}{% endif %}"
+                   placeholder="{{ t('empty = no limit') }}">
+        </div>
+        <div>
+            <label for="note">{{ t("Note") }} {{ fields.help(t("For you alone — it is never sent anywhere. Without it a list of generated codes is a row of strings that look alike.")) }}</label>
+            <input type="text" id="note" name="note" value="{{ code.note }}" autocomplete="off">
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="enabled" name="enabled" {% if code.enabled is not defined or code.enabled %}checked{% endif %}>
+            <label for="enabled">{{ t("The code works") }}</label>
+        </div>
+    </div>
+</div>
+
+{% if code.used_by %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Came in through it") }}</h2></div>
+    <div style="padding: 16px 24px 22px 24px;">
+        {% for who in code.used_by %}
+        <div class="mono">{{ who }}</div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div style="display:flex; gap:10px; align-items:center; margin-top: 20px;">
+    <button type="submit" class="btn primary">{{ t("Save") }}</button>
+    <a href="/tariffs?tab=codes" class="btn">{{ t("Cancel") }}</a>
+</div>
+</form>
+
+<script>
+    // A fresh word without a round trip: the same alphabet the server uses, and
+    // the server checks it is free when the form comes back anyway.
+    (function () {
+        var button = document.getElementById("generate");
+        var field = document.getElementById("word");
+        if (!button || !field) return;
+        var ALPHABET = {{ alphabet|tojson }};
+        var LENGTH = {{ length }};
+        button.addEventListener("click", function () {
+            var out = "";
+            var bytes = new Uint32Array(LENGTH);
+            (window.crypto || window.msCrypto).getRandomValues(bytes);
+            for (var i = 0; i < LENGTH; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+            field.value = out;
+            field.focus();
+        });
+    })();
+</script>
+{% endblock %}

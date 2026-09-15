@@ -40,7 +40,7 @@ BACKUP_DIR="/opt/mailchilla-backups"
 UI_LANG="$INSTALL_LANG"
 
 ENV_FILE="$INSTALL_DIR/.env"
-STATE_FILES=(".env" "settings.json" "email_texts.json")
+STATE_FILES=(".env" "settings.json" "email_texts.json" "tariffs.json")
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'

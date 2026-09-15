@@ -1,9 +1,11 @@
 # ── The installation's own state ───────────────────────────────────────
 # Written by the panel at runtime. These belong to one installation, not to
 # the repository: settings.json holds the mailbox passwords and the Gotify
-# token, and email_texts.json holds whatever the letters were rewritten to.
+# token, email_texts.json holds whatever the letters were rewritten to, and
+# tariffs.json holds the tariffs with the words that open them.
 settings.json
 email_texts.json
+tariffs.json
 *.json.tmp
 
 # Logs: the rotating file and its backups.

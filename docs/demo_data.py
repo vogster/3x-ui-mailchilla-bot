@@ -125,5 +125,10 @@ def clients():
             # Shadowsocks, so the client card has more than a single chip to
             # show and the leftover-link branch gets exercised too.
             "inboundIds": [1, 2] if i % 3 == 1 else [1],
+            # The client group, which Mailchilla names after the tariff. A
+            # couple of clients carry none: somebody registered before tariffs
+            # existed, or added by hand in 3x-ui, and the panel says so rather
+            # than inventing one.
+            "group": "" if i % 7 == 0 else ("Family" if i % 3 == 0 else "Standard"),
         })
     return out

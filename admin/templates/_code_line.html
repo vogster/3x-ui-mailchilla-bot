@@ -1,0 +1,33 @@
+{# One code, as a row. The word opens the code's card, where every action on
+   it lives - switching it off, editing it, removing it. Repeating those here
+   made a line of five links out of what is mostly a fact.
+
+   Included from both tabs of the tariffs page, so it says which tariff it
+   opens only where that is not already obvious - under a tariff the name
+   would be the same word three times over.
+   Expects: code (a row from routes_tariffs._code_row) and, optionally,
+   tariff - the tariff whose block it is being drawn inside. #}
+<div class="code-line">
+    <a href="/tariffs/codes/{{ code.word }}" class="word {% if code.state != 'live' %}done{% endif %}"
+       title="{{ t('Who came in through it') }}">{{ code.word }}</a>
+
+    {% if not tariff %}
+    <span class="muted">{{ code.tariff_name }}</span>
+    {% endif %}
+
+    {% if code.note %}<span class="note">{{ code.note }}</span>{% endif %}
+
+    {% if code.state == 'off' %}
+    <span class="muted">{{ t("switched off") }}</span>
+    {% elif code.state == 'spent' %}
+    <span class="muted">{{ t("used up") }}{% if code.used %} · {{ code.used }}{% endif %}</span>
+    {% elif code.unlimited %}
+    <span class="muted">{{ t("no limit on activations") }}{% if code.used_count %} · {{ t("came in: {n}", n=code.used_count) }}{% endif %}</span>
+    {% else %}
+    <span class="muted">{{ t("activations left: {n}", n=code.uses_left) }}{% if code.used_count %} · {{ t("came in: {n}", n=code.used_count) }}{% endif %}</span>
+    {% endif %}
+
+    <span class="right">
+        <span class="muted">{{ code.created }}</span>
+    </span>
+</div>

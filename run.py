@@ -10,6 +10,7 @@ import threading
 import logging
 
 import config
+import tariffs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +35,15 @@ def run_bot_loop():
         logger.error("Connection to 3x-ui: FAILED. The bot is running, but requests to the panel may fail.")
 
     logger.info(f"Bot started. Mail poll interval: {config.POLL_INTERVAL_SECONDS} seconds.")
-    logger.info(f"Code word for registration: {config.CODEWORD}")
+    known = tariffs.all_tariffs()
+    if known:
+        described = []
+        for tariff in known:
+            words = [c["word"] for c in tariffs.codes_for(tariff["id"]) if c["enabled"]]
+            described.append(f"{tariff['name']} ({', '.join(words) if words else 'no word'})")
+        logger.info(f"Tariffs: {len(known)} — " + "; ".join(described))
+    else:
+        logger.error("No tariffs are set up; registration will be refused until one exists.")
 
     while not _stop_event.is_set():
         try:
@@ -53,6 +62,8 @@ def main():
     import email_texts
     settings.load()
     email_texts.load()
+    # After the settings, since a first run builds the opening tariff from them.
+    tariffs.load()
 
     # Log collection into the buffer and file starts before the bot, so that
     # nothing is lost

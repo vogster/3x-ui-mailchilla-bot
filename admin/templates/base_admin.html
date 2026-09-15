@@ -1069,6 +1069,9 @@
             <a href="/clients" class="{% block nav_clients %}{% endblock %}" title="{{ t("Clients") }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 13.5c0-2.2 2-3.6 4.5-3.6s4.5 1.4 4.5 3.6"/><path d="M11 3.2a2.4 2.4 0 0 1 0 4.6"/><path d="M12.4 9.9c1.4.4 2.4 1.4 2.4 3"/></svg><span class="lbl">{{ t("Clients") }}</span>
             </a>
+            <a href="/tariffs" class="{% block nav_tariffs %}{% endblock %}" title="{{ t("Tariffs") }}">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.8 14.2 7.4a1.4 1.4 0 0 1 0 2l-4.8 4.8a1.4 1.4 0 0 1-2 0L1.8 8.6V3.2a1.4 1.4 0 0 1 1.4-1.4z"/><circle cx="5.2" cy="5.2" r="1.1"/></svg><span class="lbl">{{ t("Tariffs") }}</span>
+            </a>
             <a href="/broadcast" class="{% block nav_broadcast %}{% endblock %}" title="{{ t("Broadcast") }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.6"/><path d="m2.4 4.6 5.6 4 5.6-4"/></svg><span class="lbl">{{ t("Broadcast") }}</span>
             </a>
@@ -1437,6 +1440,55 @@
         });
     })();
 </script>
+    <script>
+        // The kebab menu on a table row, shared by every page that has one:
+        // closes on a click elsewhere and on Esc. The body is position:fixed,
+        // or the panel's overflow:hidden would clip it, so its coordinates are
+        // worked out when it opens.
+        //
+        // It lives here rather than beside one table because the clients list
+        // and the tariffs page both use it, and two copies of a positioning
+        // routine drift apart.
+        (function () {
+            var menus = Array.prototype.slice.call(document.querySelectorAll("details.rowmenu"));
+            if (!menus.length) return;
+
+            function closeAll(except) {
+                menus.forEach(function (d) { if (d !== except) d.open = false; });
+            }
+
+            menus.forEach(function (d) {
+                var body = d.querySelector(".rowmenu-body");
+                if (!body) return;
+                d.addEventListener("toggle", function () {
+                    if (!d.open) {
+                        body.classList.remove("placed");
+                        return;
+                    }
+                    closeAll(d);
+                    var rect = d.querySelector("summary").getBoundingClientRect();
+                    // Anchor to the button's right edge through right rather than
+                    // left minus width: at the moment of opening the width is still
+                    // zero, and the menu used to slide off the screen.
+                    body.style.left = "auto";
+                    body.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
+                    var height = body.offsetHeight;
+                    var below = rect.bottom + 6;
+                    body.style.top = (below + height > window.innerHeight ? Math.max(8, rect.top - height - 6) : below) + "px";
+                    // The coordinates are in — only now is it shown.
+                    body.classList.add("placed");
+                });
+            });
+
+            document.addEventListener("click", function (e) {
+                menus.forEach(function (d) { if (!d.contains(e.target)) d.open = false; });
+            });
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "Escape") closeAll(null);
+            });
+            window.addEventListener("scroll", function () { closeAll(null); }, true);
+        })();
+    </script>
     <script>
         // The toast, shared by the whole panel.
         (function () {

@@ -28,6 +28,7 @@ The project started with a simple need: handing out subscriptions to people you 
 - [Features](#-features)
 - [Quick start](#-quick-start)
 - [First run](#-first-run)
+- [Tariffs](#-tariffs)
 - [Settings](#-settings)
 - [Reaching the panel](#-reaching-the-panel)
 - [Managing it](#-managing-it)
@@ -57,6 +58,7 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Client list](docs/screenshots/clients.png)
 
+- Tariffs: traffic, term and inbounds, each with its own code word. As many as you like, and a client made by hand can be stamped from one
 - A client list with live search, sorting and filters (status, mail, connection, period, traffic)
 - Who is connected right now shows as a dot beside the address - green breathes, red sits still - on the list, on a client's own page and in the broadcast's recipient list. It refreshes itself every twenty seconds without disturbing anything you are in the middle of
 - **Last online**, as its own column and as a line on the card: minutes and hours while it is fresh, a date once it is past a week, a dash for somebody who has never connected. The exact moment is in the tooltip, and the column sorts, so the people who have stopped using the thing are two clicks away
@@ -152,7 +154,7 @@ python run.py
 
 One command brings up both the bot and the panel. The panel is always raised - there is nowhere else to configure the project. To run the bot on its own: `python email_bot.py`.
 
-`.env` holds only what is needed before the panel can come up: access to 3x-ui, the panel's own sign-in, its address and the logging settings. Everything else - the mailbox, the language, the code word, limits, inbounds, Gotify - is set in the panel after the first sign-in and kept in `settings.json`.
+`.env` holds only what is needed before the panel can come up: access to 3x-ui, the panel's own sign-in, its address and the logging settings. Everything else - the mailbox, the language, Gotify - is set in the panel after the first sign-in and kept in `settings.json`, and what a client gets lives in tariffs beside it.
 
 ---
 
@@ -162,9 +164,49 @@ A fresh copy knows nothing about your mailbox or your inbounds. After the first 
 
 ![Setup wizard](docs/screenshots/setup.png)
 
-The wizard goes step by step: service, mail, inbounds, registration rules, then the optional notifications and app buttons. Every step saves at once - a closed tab loses nothing. The mail step has a working connection check.
+The wizard goes step by step: service, mail, inbounds and the first tariff, then the optional notifications and app buttons. Every step saves at once - a closed tab loses nothing. The mail step has a working connection check.
 
 "I will do it myself" dismisses the banner. The wizard is the same settings fields, laid out in order.
+
+---
+
+## 🎟️ Tariffs
+
+A tariff is what a client gets: traffic, term and the inbounds they are added to. Each has its own code word, and a letter carrying that word registers the sender on that tariff. There can be as many tariffs as you like - a generous one for the family, a small one for a trial, one with no word at all that can only be reached another way.
+
+| Field | What it means |
+|---|---|
+| Name | yours to read; it names the tariff in the panel and in the log |
+| Code word | the word a letter must carry. Unique across tariffs, matched as a whole word |
+| Traffic limit | in GB; 0 means unlimited |
+| Subscription length | in days; 0 means it never expires |
+| Inbounds | the client is added to each of them, in order |
+
+Every tariff and every code has a card of its own: a tariff's shows who is on it, a code's shows everybody who came in through that word - each a click away from their own client card.
+
+**Who is on which tariff is kept in 3x-ui itself**, in the client's group, named after the tariff. Nothing has to be kept in step: the 3x-ui panel shows the same grouping, and a group changed there by hand is simply the truth. The client list shows the tariff beside the name and can filter by it, including "without one" - which is what anybody registered before tariffs existed will be. Renaming a tariff renames the group and carries its clients across, which is why two tariffs may not share a name.
+
+**A tariff is read once, when the client is created.** From that moment the values live on the client in 3x-ui, so editing a tariff changes nothing for anybody already registered - it describes the next client, not the last one.
+
+Two details worth knowing about the word. It is matched whole, so `START` is not found inside `RESTART`; and it is looked for only in the part of a letter its sender actually typed, so a reply quoting the welcome letter does not count as a fresh registration. If one letter carries the words of two tariffs, the bot writes back and asks which is meant rather than guessing.
+
+**Code words are a thing of their own**, on their own tab beside the tariffs. A code is a word, the tariff it opens, how many activations are left in it, a note for you, and a switch:
+
+| Activations | What it is |
+|---|---|
+| empty | the word you hand out openly - works for everybody who writes it |
+| 1 | a personal invitation - spent by whoever uses it first |
+| any number | works that many times |
+
+That number is the whole difference between the two, which is why there is one form for both. Press **Generate** for a word nobody could guess - ten characters with no `0`/`O` or `1`/`I` in them, since somebody will be typing it off a screen - or type a memorable one yourself.
+
+A tariff can have several words: a seasonal one beside the permanent one, or one per group of people. Any of them can be switched off on its own the moment it leaks, without touching the tariff or the other words. Switching a code off keeps the record of who came in through it; removing it from the list throws that away.
+
+If an address that is already registered uses a code, the code is not spent: they simply get their link again, and a personal invitation stays for the person it was meant for.
+
+Somebody already registered who writes another tariff's word simply gets their subscription link again. Moving a client between tariffs is the administrator's decision, not something a more generous word can do for them.
+
+Updating from 0.1.x needs nothing: the old code word, limit, term and inbounds become a tariff called "Basic" on the first start, and everybody registered before carries on untouched.
 
 ---
 
@@ -178,14 +220,14 @@ Everything that changes during normal use is set in the panel and applies on the
 |---|---|
 | **General** | interface language, service name, subscription base address, administrator address |
 | **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, connection check |
-| **Registration** | inbounds for new clients, traffic limit, expiry, code word, flow |
+| **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, notification text |
 | **Letters** | the language letters go out in, and every text of every letter |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
 
-Settings are kept in `settings.json` and the letter texts in `email_texts.json`, both beside the project. The mailbox is picked up on the next polling cycle.
+Settings are kept in `settings.json`, the letter texts in `email_texts.json` and the tariffs in `tariffs.json`, all three beside the project. The mailbox is picked up on the next polling cycle.
 
 **Secrets.** The mailbox passwords and the Gotify token are edited in the panel. Passwords are shown as dots and nothing else, the token keeps a few characters at either end so you can tell one from another, and either opens with the eye button. The real value never reaches the page markup, it is requested separately. `settings.json` therefore holds secrets: the file is in `.gitignore`, and it should not carry generous permissions.
 
@@ -256,7 +298,7 @@ WantedBy=multi-user.target
 Two things that are easy to trip over:
 
 - **Do not use `EnvironmentFile` for `.env`.** The application reads it itself through python-dotenv, and systemd parses such files by its own rules - two parsers on one file will disagree.
-- **The user needs write access** to the project directory: `settings.json`, `email_texts.json` and `logs/` are written there.
+- **The user needs write access** to the project directory: `settings.json`, `email_texts.json`, `tariffs.json` and `logs/` are written there.
 
 </details>
 
@@ -270,11 +312,11 @@ mailchilla update
 
 Versions are tags, not the tip of a branch: the command asks GitHub for the newest `vX.Y.Z`, shows what changed from `CHANGELOG.md` and waits for a yes.
 
-Before touching anything it copies `.env`, `settings.json` and `email_texts.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them.
+Before touching anything it copies `.env`, `settings.json`, `email_texts.json` and `tariffs.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them.
 
 Files edited on the server — a template, say — are put aside with `git stash` rather than blocking the update; the command tells you how to get them back.
 
-New settings and new letter texts need no migration: a key absent from `settings.json` falls back to the default in `config.py`, and `email_texts.json` stores only what actually differs from the shipped text.
+New settings and new letter texts need no migration: a key absent from `settings.json` falls back to the default in `config.py`, and `email_texts.json` stores only what actually differs from the shipped text. Tariffs need none either: an installation without `tariffs.json` gets one built out of the code word and limits it already had.
 
 For a manual installation the old route still works: `git pull` and `systemctl restart`.
 
@@ -296,6 +338,7 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `i18n.py` | the interface translator: catalogue lookup and the two language settings |
 | `lang/` | the interface catalogues, one module per language |
 | `settings.py` | settings layered over `.env` |
+| `tariffs.py` | the tariffs and the code words that open them |
 | `config.py` | environment variables |
 | `applog.py` | log collection into a buffer and a file |
 | `admin/` | the FastAPI web panel |

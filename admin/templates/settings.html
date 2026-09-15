@@ -198,71 +198,8 @@
 
   <div class="tab-panel" data-panel="registration" hidden>
     <div class="panel">
-        <div class="panel-head">
-            <h2>{{ t("Inbounds for new clients") }} {{ fields.help(t("A new client is added to every ticked inbound. Clients already registered are unaffected.")) }}</h2>
-            <span class="muted">
-                {% if state.XUI_INBOUND_IDS.value %}{{ t("chosen:") }} {{ state.XUI_INBOUND_IDS.value|length }}{% else %}{{ t("none chosen") }}{% endif %}
-            </span>
-        </div>
-        <div style="padding: 8px 20px 20px 20px;">
-            {% if inbounds %}
-            <input type="hidden" name="inbounds_present" value="1">
-            <div class="tscroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"></th>
-                            <th>{{ t("Name") }}</th>
-                            <th>{{ t("Protocol") }}</th>
-                            <th>{{ t("Port") }}</th>
-                            <th>{{ t("Clients [inbound table]") }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for ib in inbounds %}
-                        <tr>
-                            <td>
-                                <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
-                                       id="ib{{ ib.id }}" {% if ib.selected %}checked{% endif %}>
-                            </td>
-                            <td>
-                                <label for="ib{{ ib.id }}" style="cursor: pointer;">{{ ib.remark }}</label>
-                                {% if not ib.enable %}
-                                <span class="badge off" style="margin-left: 8px;">{{ t("off") }}</span>
-                                {% endif %}
-                                <div class="muted mono">id {{ ib.id }}</div>
-                            </td>
-                            <td class="mono">{{ ib.protocol }}</td>
-                            <td class="mono">{{ ib.port }}</td>
-                            <td class="mono">{{ ib.clients }}</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="muted">{{ t("The list is empty — the 3x-ui panel is unreachable. The inbound selection stays as it is until the connection comes back.") }}</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="panel" style="margin-top: 20px;">
-        <div class="panel-head"><h2>{{ t("Defaults for registration") }}</h2></div>
+        <div class="panel-head"><h2>{{ t("How a client is created") }}</h2></div>
         <div style="padding: 24px;" class="form-grid">
-            <div>
-                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
-                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
-                       value="{{ state.LIMIT_GB.value }}">
-            </div>
-            <div>
-                <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
-                <input type="number" id="expire_days" name="expire_days" min="0" step="1"
-                       value="{{ state.EXPIRE_DAYS.value }}">
-            </div>
-            <div>
-                <label for="codeword">{{ t("Code word for registration") }} {{ fields.help(t("A letter with this word in the subject or the body registers a new client.")) }}</label>
-                <input type="text" id="codeword" name="codeword" value="{{ state.CODEWORD.value }}">
-            </div>
             <div>
                 <label for="xui_flow">flow {{ fields.help(t("Applied to new clients. An empty value is fine. The panel applies flow only to inbounds whose transport supports it (vless raw) and zeroes it out in hysteria and XHTTP, so a client without such inbounds keeps an empty field, and that is normal.")) }}</label>
                 <input type="text" id="xui_flow" name="xui_flow" list="flow-options"
@@ -277,8 +214,11 @@
                 <label for="remark_include_name">{{ t("Write the sender's name into the client's comment") }}</label>
             </div>
         </div>
+        <p class="muted" style="padding: 0 24px 22px 24px; margin: 0;">
+            {{ t("Traffic, term, inbounds and the code word belong to a tariff now.") }}
+            <a href="/tariffs">{{ t("Open the tariffs") }}</a>
+        </p>
     </div>
-
   </div>
 
   <div class="tab-panel" data-panel="apps" hidden>

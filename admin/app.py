@@ -14,6 +14,7 @@ import email_bot
 import email_texts
 import i18n
 import settings as app_settings
+import tariffs
 import updater
 from admin.deps import (
     templates,
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 # Lay settings.json over .env before anything reads config.
 app_settings.load()
 email_texts.load()
+# After the settings: a first run builds the opening tariff out of them.
+tariffs.load()
 applog.install()
 # Idempotent, like the two above: the panel may be imported on its own, without
 # run.py having started anything.
@@ -144,12 +147,14 @@ def logout(request: Request):
 # The routes are mounted from separate modules
 # ---------------------------------------------------------------------------
 from admin.routes_clients import router as clients_router  # noqa: E402
+from admin.routes_tariffs import router as tariffs_router  # noqa: E402
 from admin.routes_broadcast import router as broadcast_router  # noqa: E402
 from admin.routes_settings import router as settings_router  # noqa: E402
 from admin.routes_logs import router as logs_router  # noqa: E402
 from admin.routes_setup import router as setup_router  # noqa: E402
 
 app.include_router(clients_router)
+app.include_router(tariffs_router)
 app.include_router(broadcast_router)
 app.include_router(settings_router)
 app.include_router(logs_router)
@@ -357,14 +362,17 @@ def dashboard(request: Request):
     near_limit.sort(key=lambda r: r["percent"], reverse=True)
     near_limit = near_limit[:8]
 
-    # Inbounds: how many clients are in each, and whether it is in the set used
-    # for registrations.
-    configured = set(config.XUI_INBOUND_IDS)
+    # Inbounds: how many clients are in each, and whether any tariff hands it
+    # out. An inbound no tariff uses is not a fault — it may belong to somebody
+    # else entirely — but one a tariff names and 3x-ui does not have is.
+    from admin.routes_clients import default_tariff, tariff_choices
+    configured = {i for t in tariffs.all_tariffs() for i in t["inbound_ids"]}
+    first = default_tariff()
     inbounds = xui.get_inbounds()
     for ib in inbounds:
         ib["configured"] = ib["id"] in configured
-        # the create dialog uses the selected field
-        ib["selected"] = ib["configured"]
+        # the create dialog starts from the first tariff
+        ib["selected"] = ib["id"] in set(first["inbound_ids"])
     missing_inbounds = sorted(configured - {ib["id"] for ib in inbounds})
 
     # The machine behind the panel. None when it does not answer — the block
@@ -395,9 +403,11 @@ def dashboard(request: Request):
             "missing_inbounds": missing_inbounds,
             "problems": problems,
             "problems_total": problems_total,
+            "tariffs": tariff_choices(),
             "new_defaults": {
-                "limit_gb": config.LIMIT_GB,
-                "expire_days": config.EXPIRE_DAYS,
+                "tariff_id": first["id"],
+                "limit_gb": first["limit_gb"],
+                "expire_days": first["expire_days"],
                 "flow": config.XUI_FLOW,
             },
         },

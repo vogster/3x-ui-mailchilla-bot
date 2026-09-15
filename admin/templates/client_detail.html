@@ -206,6 +206,10 @@
                     </tr>
                     <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
                     <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr>
+                        <td class="muted">{{ t("Tariff") }}</td>
+                        <td class="mono">{% if client.tariff %}{{ client.tariff }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</td>
+                    </tr>
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
 

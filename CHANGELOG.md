@@ -8,6 +8,63 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [Unreleased]
+
+### Added
+
+- **Tariffs.** What a new client gets — traffic, term, inbounds — is a tariff
+  now, and each tariff has its own code word. There can be as many as you like:
+  a generous one for the family, a small one for a trial, a closed one with no
+  word at all. The Tariffs page creates and edits them, and the create-client
+  dialog offers them in a list — pick one and the fields fill themselves in,
+  still editable.
+- A tariff is read once, when a client is created. Editing one therefore
+  changes nothing for anybody already registered, and the page says so rather
+  than leaving you to wonder.
+- **Code words are their own thing**, on a tab of their own beside the tariffs.
+  A code is a word, the tariff it opens, how many activations are left in it,
+  a note and a switch. Leave the activations empty and it is the word you hand
+  out openly; put 1 there and it is a personal invitation, spent by whoever
+  uses it. There is no second kind of object and no second form: the number is
+  the whole difference.
+- A tariff can therefore have several words — a seasonal one beside the
+  permanent one — and any of them can be switched off on its own the moment it
+  leaks, without touching the tariff or the others.
+- Switching a code off keeps the record of who came in through it; removing it
+  throws that away, and the confirmation says so.
+- **A card for every tariff and every code.** A tariff's card shows who is on
+  it, read from 3x-ui, plus its codes and what it hands out. A code's card
+  shows everybody who came in through that word, each a click away from their
+  own card; somebody deleted from 3x-ui since is still listed by address,
+  because it happened.
+- **Which tariff a client is on is kept in 3x-ui**, in the client's own group,
+  named after the tariff. Nothing of ours has to be kept in step with it: the
+  panel shows it, `clients/list` hands it back with everything else, and a
+  group changed in 3x-ui by hand is simply the truth. The client list shows it
+  beside the name and filters by it — including "without one", which is what
+  anybody registered before tariffs existed will be.
+- Renaming a tariff renames its group, carrying every client across.
+- Two tariffs may no longer share a name, since the name is the group.
+- A client's card can move them to a tariff: pick one and the limit, the term
+  (counted from today) and the inbounds fill themselves in, still editable, and
+  nothing is saved until you press Save.
+
+### Changed
+
+- The single `CODEWORD` is gone from the settings, along with the traffic
+  limit, the term and the inbound list. On the first start after the update
+  they become a tariff called "Basic" with the same word, so nothing changes
+  for anybody already registered and nobody has to do anything. The old keys
+  are left in `settings.json` untouched, so a rollback to 0.1.x finds them.
+- A code word is now matched as a whole word, and only in the part of a letter
+  its sender actually typed. A reply quoting the welcome letter used to count
+  as a fresh registration, and a word could be found inside a longer one —
+  harmless with one word, a wrong subscription with several.
+- A letter carrying the words of two different tariffs is no longer guessed at:
+  the bot writes back asking which one is meant.
+- The first-run wizard asks for the first tariff instead of "the rules for new
+  clients".
+
 ## [0.1.5] - 2026-09-15
 
 ### Added

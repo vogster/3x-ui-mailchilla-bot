@@ -36,9 +36,17 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 # Set in the web panel (General tab); it survives in .env only as a fallback
 # for installations that run without the panel.
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
-CODEWORD = os.getenv("CODEWORD", "START_VPN").strip()
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "15"))
 
+# --- The seed of the first tariff ---
+# These three described what every new client got, back when there was one code
+# word and one set of limits. They belong to a tariff now (tariffs.json, the
+# Tariffs page), and nothing reads them after the first run: tariffs.load()
+# builds the opening tariff out of them when no tariffs.json exists yet, which
+# is how an installation from before tariffs keeps working without being
+# touched. They stay in settings.MANAGED_KEYS for the same reason — a copy
+# rolled back to 0.1.x finds them where it left them.
+CODEWORD = os.getenv("CODEWORD", "START_VPN").strip()
 LIMIT_GB = int(os.getenv("LIMIT_GB", "0"))
 EXPIRE_DAYS = int(os.getenv("EXPIRE_DAYS", "30"))
 SERVICE_NAME = os.getenv("SERVICE_NAME", APP_NAME).strip() or APP_NAME

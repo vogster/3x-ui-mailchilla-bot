@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 import config
 import i18n
 import settings
+import tariffs
 from admin.deps import templates, require_auth, setup_status
 from xui_client import get_shared_client
 
@@ -37,15 +38,17 @@ FIELD_KEYS = {
     "smtp_port": "SMTP_PORT",
     "smtp_user": "SMTP_USER",
     "smtp_password": "SMTP_PASSWORD",
-    "codeword": "CODEWORD",
-    "limit_gb": "LIMIT_GB",
-    "expire_days": "EXPIRE_DAYS",
     "xui_flow": "XUI_FLOW",
     "gotify_url": "GOTIFY_URL",
     "gotify_token": "GOTIFY_TOKEN",
     "happ_url": "HAPP_URL",
     "incy_url": "INCY_URL",
 }
+
+# The fields of the opening tariff. They travel in the same step as the rest,
+# but land in tariffs.json rather than in the settings: what a client gets
+# belongs to a tariff, and on a first run there is exactly one.
+TARIFF_FIELDS = ("codeword", "limit_gb", "expire_days")
 
 
 def _safe_path(value: str) -> str:
@@ -76,6 +79,18 @@ def _safe_back(request: Request) -> str:
     return "/" if path.startswith("/setup") else path
 
 
+def _first_tariff() -> dict:
+    """
+    The tariff the wizard fills in — the one tariffs.load() seeded, or a blank
+    one when somebody deleted every tariff and came back to the wizard.
+    """
+    known = tariffs.all_tariffs()
+    if known:
+        return known[0]
+    return {"id": "", "name": i18n.t("Basic [tariff]"), "limit_gb": config.LIMIT_GB,
+            "expire_days": config.EXPIRE_DAYS, "inbound_ids": []}
+
+
 @router.get("/setup", response_class=HTMLResponse)
 def setup_page(request: Request, back: str = "/"):
     auth_redirect = require_auth(request)
@@ -83,17 +98,21 @@ def setup_page(request: Request, back: str = "/"):
         return auth_redirect
 
     state = settings.describe()
-    selected = list(state["XUI_INBOUND_IDS"]["value"])
+    first = _first_tariff()
+    selected = list(first["inbound_ids"])
     inbounds = get_shared_client().get_inbounds()
     for inbound in inbounds:
         inbound["selected"] = inbound["id"] in selected
 
+    words = [c["word"] for c in tariffs.codes_for(first["id"])]
     return templates.TemplateResponse("setup.html", {
         "request": request,
         "service_name": config.SERVICE_NAME,
         "back": _safe_path(back),
         "unchanged_marker": settings.UNCHANGED,
         "state": state,
+        "tariff": first,
+        "tariff_word": words[0] if words else "",
         "inbounds": inbounds,
         "panel_unavailable": not inbounds,
         "status": setup_status(),
@@ -124,13 +143,51 @@ async def setup_save(request: Request):
             continue
         values[key] = value
 
-    # The inbound checkboxes exist only when 3x-ui answered with a list.
-    if form.get("inbounds_present"):
+    # The step that describes what a client gets writes the opening tariff, not
+    # the settings. The inbound checkboxes exist only when 3x-ui answered with a
+    # list, and the word, the limit and the term travel with them.
+    touches_tariff = form.get("inbounds_present") or any(f in form for f in TARIFF_FIELDS)
+    if touches_tariff:
+        first = _first_tariff()
+        values_tariff = dict(first)
+        if form.get("inbounds_present"):
+            try:
+                values_tariff["inbound_ids"] = [int(v) for v in form.getlist("inbound_ids")]
+            except ValueError:
+                return JSONResponse({"ok": False, "error": i18n.t("The list of inbounds is not valid")},
+                                    status_code=400)
+        if "limit_gb" in form:
+            values_tariff["limit_gb"] = form["limit_gb"] or 0
+        if "expire_days" in form:
+            values_tariff["expire_days"] = form["expire_days"] or 0
+        was_named = first.get("name", "")
         try:
-            values["XUI_INBOUND_IDS"] = [int(v) for v in form.getlist("inbound_ids")]
-        except ValueError:
-            return JSONResponse({"ok": False, "error": i18n.t("The list of inbounds is not valid")},
-                                status_code=400)
+            saved = tariffs.save_tariff(values_tariff)
+            if was_named and was_named != saved["name"]:
+                get_shared_client().rename_group(was_named, saved["name"])
+            # The word travels in the same step, but it is a code of its own:
+            # the wizard is setting up the one way in that a fresh installation
+            # needs, and more can be added later on the Tariffs page.
+            if "codeword" in form:
+                word = str(form["codeword"] or "").strip()
+                existing = tariffs.codes_for(saved["id"])
+                if word:
+                    tariffs.save_code({
+                        "word": word,
+                        "tariff_id": saved["id"],
+                        # The wizard's word is the public one: no limit on it.
+                        "uses_left": None,
+                        "note": existing[0]["note"] if existing else "",
+                        "enabled": True,
+                    }, was=existing[0]["word"] if existing else None)
+                elif existing:
+                    tariffs.delete_code(existing[0]["word"])
+        except (ValueError, TypeError) as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        except OSError as e:
+            logger.error(f"Wizard: could not write tariffs.json: {e}")
+            return JSONResponse({"ok": False, "error": i18n.t("Could not write the settings file: {error}", error=e)},
+                                status_code=500)
 
     if not values:
         return JSONResponse({"ok": True})

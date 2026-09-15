@@ -16,6 +16,20 @@
 <div class="panel">
     <div style="padding: 24px;">
         <form method="post" action="/clients/{{ client.uuid }}/edit" class="form-grid">
+            {% if tariffs %}
+            <div>
+                <label for="apply_tariff">{{ t("Move to a tariff") }} {{ fields.help(t("Fills the three fields below with the tariff's values — the traffic limit, a fresh term counted from today, and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.")) }}</label>
+                <select id="apply_tariff" name="tariff_id">
+                    <option value="">{{ t("leave as it is") }}</option>
+                    {% for tariff in tariffs %}
+                    <option value="{{ tariff.id }}"
+                            data-limit="{{ tariff.limit_gb }}"
+                            data-days="{{ tariff.expire_days }}"
+                            data-inbounds="{{ tariff.inbound_ids|join(',') }}">{{ tariff.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div>
                 <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited. The current value is prefilled; leave it as it is to change nothing.")) }}</label>
                 <input type="number" id="limit_gb" name="limit_gb" min="0" step="1" value="{{ limit_gb }}">
@@ -84,4 +98,27 @@
         </form>
     </div>
 </div>
+<script>
+    // Choosing a tariff stamps its values onto the form and stops there: the
+    // administrator sees what is about to happen and presses Save, or does not.
+    // The term is deliberately counted from today — the field below is "days
+    // from now", and a tariff saying 365 means a year starting now.
+    //
+    // The picker is also the form's own field: saving moves the client into
+    // that tariff's group in 3x-ui, which is where "who is on what" lives.
+    (function () {
+        var picker = document.getElementById("apply_tariff");
+        if (!picker) return;
+        picker.addEventListener("change", function () {
+            var option = picker.options[picker.selectedIndex];
+            if (!option || !option.value) return;
+            document.getElementById("limit_gb").value = option.dataset.limit;
+            document.getElementById("expire_days").value = option.dataset.days;
+            var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
+            document.querySelectorAll('input[name="inbound_ids"]').forEach(function (box) {
+                box.checked = wanted.indexOf(box.value) !== -1;
+            });
+        });
+    })();
+</script>
 {% endblock %}

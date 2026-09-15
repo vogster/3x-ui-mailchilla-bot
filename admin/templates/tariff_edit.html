@@ -1,0 +1,90 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{% if tariff.id %}{{ tariff.name }}{% else %}{{ t("New tariff") }}{% endif %}{% endblock %}
+{% block nav_tariffs %}active{% endblock %}
+{% block content %}
+<a href="/tariffs" class="back">← {{ t("Back to the tariffs") }}</a>
+
+{% if error %}
+<div class="flash error" style="margin-top: 14px;">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/tariffs/save">
+<input type="hidden" name="tariff_id" value="{{ tariff.id }}">
+
+<div class="panel" style="margin-top: 14px;">
+    <div class="panel-head">
+        <h2>{% if tariff.id %}{{ t("The tariff") }}{% else %}{{ t("New tariff") }}{% endif %}</h2>
+    </div>
+    <div style="padding: 24px;" class="form-grid">
+        <div>
+            <label for="name">{{ t("Name") }} {{ fields.help(t("Yours to read, not the client's — it names the tariff in the panel and in the log.")) }}</label>
+            <input type="text" id="name" name="name" value="{{ tariff.name }}" required>
+        </div>
+        <div>
+            <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
+            <input type="number" id="limit_gb" name="limit_gb" min="0" step="1" value="{{ tariff.limit_gb }}">
+        </div>
+        <div>
+            <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
+            <input type="number" id="expire_days" name="expire_days" min="0" step="1" value="{{ tariff.expire_days }}">
+        </div>
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Inbounds for new clients") }} {{ fields.help(t("A new client on this tariff is added to every ticked inbound. Clients already registered are unaffected.")) }}</h2>
+    </div>
+    <div style="padding: 8px 20px 20px 20px;">
+        {% if inbounds %}
+        <input type="hidden" name="inbounds_present" value="1">
+        <div class="tscroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th>{{ t("Name") }}</th>
+                        <th>{{ t("Protocol") }}</th>
+                        <th>{{ t("Port") }}</th>
+                        <th>{{ t("Clients [inbound table]") }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ib in inbounds %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
+                                   id="ib{{ ib.id }}" {% if ib.selected %}checked{% endif %}>
+                        </td>
+                        <td>
+                            <label for="ib{{ ib.id }}" style="cursor: pointer;">{{ ib.remark }}</label>
+                            {% if not ib.enable %}
+                            <span class="badge off" style="margin-left: 8px;">{{ t("off") }}</span>
+                            {% endif %}
+                            <div class="muted mono">id {{ ib.id }}</div>
+                        </td>
+                        <td class="mono">{{ ib.protocol }}</td>
+                        <td class="mono">{{ ib.port }}</td>
+                        <td class="mono">{{ ib.clients }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted">{{ t("The list is empty — the 3x-ui panel is unreachable. The inbound selection stays as it is until the connection comes back.") }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<div style="display:flex; gap:10px; align-items:center; margin-top: 20px;">
+    <button type="submit" class="btn primary">{{ t("Save") }}</button>
+    <a href="/tariffs" class="btn">{{ t("Cancel") }}</a>
+    <span class="muted" style="margin-left:auto;">
+        {{ t("Applies to clients registered from now on.") }}
+        {% if tariff.id %}<a href="/tariffs/codes/new?tariff={{ tariff.id }}">{{ t("Add a code") }}</a>{% endif %}
+    </span>
+</div>
+</form>
+{% endblock %}

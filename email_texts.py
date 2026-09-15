@@ -147,6 +147,10 @@ GROUPS = [
              "Substitution: {subject}. Every line is a paragraph."),
             ("notice.unknown_bullets", "Command not understood — list", TEXT,
              "Every line is an item of the list."),
+            ("notice.ambiguous_subject", "Several code words — subject", LINE, ""),
+            ("notice.ambiguous_text", "Several code words — text", TEXT,
+             "Sent when one letter carries the words of several tariffs, so that "
+             "nothing is guessed. Substitution: {words}. Every line is a paragraph."),
             ("notice.not_registered_subject", "No subscription — subject", LINE, ""),
             ("notice.not_registered_text", "No subscription — text", TEXT, "Substitution: {service}"),
             ("notice.status_error_subject", "Status error — subject", LINE, ""),
@@ -246,6 +250,11 @@ DEFAULTS_BY_LANG = {
             "the code word — to register a subscription\n"
             "/status — how much traffic is left and when it ends\n"
             "/help — the instructions for setting up an app",
+        "notice.ambiguous_subject": "Which subscription did you mean?",
+        "notice.ambiguous_text":
+            "Your letter carries more than one code word: {words}.\n"
+            "Each opens a different subscription, so we would rather ask than guess. "
+            "Write again with the one you want and nothing else.",
         "notice.not_registered_subject": "You are not registered yet",
         "notice.not_registered_text":
             "We could not find your subscription with {service}.\n"
@@ -346,6 +355,11 @@ DEFAULTS_BY_LANG = {
             "кодовое слово — чтобы зарегистрировать подписку\n"
             "/status — узнать остаток трафика и срок действия\n"
             "/help — получить инструкцию по настройке приложений",
+        "notice.ambiguous_subject": "Какая подписка нужна?",
+        "notice.ambiguous_text":
+            "В вашем письме несколько кодовых слов: {words}.\n"
+            "Каждое открывает свою подписку, поэтому мы лучше переспросим, чем угадаем. "
+            "Отправьте письмо ещё раз, оставив в нём только нужное слово.",
         "notice.not_registered_subject": "Вы ещё не зарегистрированы",
         "notice.not_registered_text":
             "Мы не нашли вашу подписку в сервисе {service}.\n"

@@ -2,6 +2,13 @@
 {% block title %}{{ t("Clients") }}{% endblock %}
 {% block nav_clients %}active{% endblock %}
 {% block content %}
+<style>
+    .tariff-chip {
+        display: inline-block; font-size: 11px; line-height: 1.5;
+        padding: 1px 7px; border-radius: 5px; color: var(--fg-2);
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+</style>
 <div class="panel">
     <div class="panel-head">
         <h2>{{ t("Clients") }} <span class="muted" style="font-weight:400;" id="client-count">({{ total }})</span></h2>
@@ -60,6 +67,22 @@
             <span class="sep">—</span>
             <input type="date" id="f-to" title="{{ t('to') }}">
         </div>
+        {% if tariff_names %}
+        <div class="filter-group">
+            <span class="lbl">{{ t("Tariff") }}</span>
+            {# The option values are labels rather than the names themselves:
+               "no tariff at all" has to be a choice of its own, and an empty
+               value already means "any". The name travels in a data attribute,
+               so no tariff name can ever collide with a sentinel. #}
+            <select id="f-tariff">
+                <option value="">{{ t("All") }}</option>
+                {% for name in tariff_names %}
+                <option value="one" data-name="{{ name }}">{{ name }}</option>
+                {% endfor %}
+                <option value="none">{{ t("without one") }}</option>
+            </select>
+        </div>
+        {% endif %}
         <div class="filter-group">
             <span class="lbl">{{ t("Traffic, GB") }}</span>
             <input type="number" id="f-gb-min" min="0" step="1" placeholder="{{ t('from') }}">
@@ -91,6 +114,7 @@
                     data-traffic="{{ c.used_bytes }}"
                     data-created="{{ c.created_ms }}"
                     data-lastseen="{{ c.last_seen_ms }}"
+                    data-tariff="{{ c.tariff }}"
                     data-enabled="{{ 1 if c.enable else 0 }}"
                     data-hasmail="{{ 1 if c.bare_email else 0 }}"
                     data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
@@ -110,6 +134,12 @@
                             </div>
                             {% if c.comment and c.comment != c.remark %}
                             <div class="muted">{{ c.comment }}</div>
+                            {% endif %}
+                            {# A chip rather than another muted line: for a
+                               client with no name the tariff would otherwise
+                               sit where the name goes and read as one. #}
+                            {% if c.tariff %}
+                            <div style="margin-top:3px;"><span class="tariff-chip">{{ c.tariff }}</span></div>
                             {% endif %}
                         </a>
                     </td>
@@ -173,11 +203,12 @@
     // visits: sorting only changes the order, while a filter hides clients, and
     // coming back to wonder where half the list went is unpleasant.
     var clientFilters = (function () {
-        var state = { status: "", mail: "", online: "", from: null, to: null, gbMin: null, gbMax: null };
+        var state = { status: "", mail: "", online: "", tariff: null, from: null, to: null, gbMin: null, gbMax: null };
         var listeners = [];
 
         function active() {
             return state.status !== "" || state.mail !== "" || state.online !== "" ||
+                   state.tariff !== null ||
                    state.from !== null || state.to !== null ||
                    state.gbMin !== null || state.gbMax !== null;
         }
@@ -186,6 +217,9 @@
             if (state.status !== "" && row.dataset.enabled !== state.status) return false;
             if (state.mail !== "" && row.dataset.hasmail !== state.mail) return false;
             if (state.online !== "" && row.dataset.online !== state.online) return false;
+            // null means "any"; a string — including the empty one, which is
+            // "no tariff at all" — is what the row has to carry.
+            if (state.tariff !== null && (row.dataset.tariff || "") !== state.tariff) return false;
             var created = Number(row.dataset.created);
             if (state.from !== null && created < state.from) return false;
             if (state.to !== null && created > state.to) return false;
@@ -299,6 +333,16 @@
             });
         });
 
+        var tariff = document.getElementById("f-tariff");
+        if (tariff) {
+            tariff.addEventListener("change", function () {
+                var option = tariff.options[tariff.selectedIndex];
+                s.tariff = option.value === "" ? null
+                         : (option.value === "none" ? "" : option.dataset.name);
+                changed();
+            });
+        }
+
         var from = document.getElementById("f-from");
         var to = document.getElementById("f-to");
         var gbMin = document.getElementById("f-gb-min");
@@ -340,7 +384,8 @@
                     });
                     s[group.dataset.filter] = "";
                 });
-                [from, to, gbMin, gbMax].forEach(function (el) { if (el) el.value = ""; });
+                [from, to, gbMin, gbMax, tariff].forEach(function (el) { if (el) el.value = ""; });
+                s.tariff = null;
                 s.from = s.to = s.gbMin = s.gbMax = null;
                 changed();
             });
@@ -472,47 +517,6 @@
             var saved = (localStorage.getItem(KEY) || "").split(":");
             if (saved.length === 2) apply(saved[0], saved[1]);
         } catch (e) {}
-    })();
-
-    // The row kebab menu: closes on a click elsewhere and on Esc. The menu is
-    // position:fixed, or the panel's overflow:hidden would clip it; the
-    // coordinates are set when it opens.
-    (function () {
-        var menus = Array.prototype.slice.call(document.querySelectorAll("details.rowmenu"));
-
-        function closeAll(except) {
-            menus.forEach(function (d) { if (d !== except) d.open = false; });
-        }
-
-        menus.forEach(function (d) {
-            var body = d.querySelector(".rowmenu-body");
-            d.addEventListener("toggle", function () {
-                if (!d.open) {
-                    body.classList.remove("placed");
-                    return;
-                }
-                closeAll(d);
-                var rect = d.querySelector("summary").getBoundingClientRect();
-                // Anchor to the button's right edge through right rather than
-                // left minus width: at the moment of opening the width is still
-                // zero, and the menu used to slide off the screen.
-                body.style.left = "auto";
-                body.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
-                var height = body.offsetHeight;
-                var below = rect.bottom + 6;
-                body.style.top = (below + height > window.innerHeight ? Math.max(8, rect.top - height - 6) : below) + "px";
-                // The coordinates are in — only now is it shown.
-                body.classList.add("placed");
-            });
-        });
-
-        document.addEventListener("click", function (e) {
-            menus.forEach(function (d) { if (!d.contains(e.target)) d.open = false; });
-        });
-        document.addEventListener("keydown", function (e) {
-            if (e.key === "Escape") closeAll(null);
-        });
-        window.addEventListener("scroll", function () { closeAll(null); }, true);
     })();
 </script>
 {% include "_client_new_dialog.html" %}

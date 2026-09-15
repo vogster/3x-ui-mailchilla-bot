@@ -1,0 +1,110 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ tariff.name }}{% endblock %}
+{% block nav_tariffs %}active{% endblock %}
+{% block content %}
+<a href="/tariffs" class="back">← {{ t("Back to the tariffs") }}</a>
+
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
+    <div>
+        <h1 style="margin: 0 0 6px 0;">{{ tariff.name }}</h1>
+        <p class="muted" style="margin: 0;">
+            {% if codes %}{{ t("Code words") }}: {{ codes|length }}{% else %}{{ t("no working code — nobody can register on it by mail") }}{% endif %}
+        </p>
+    </div>
+    <div style="display:flex; gap:9px; align-items:center; flex-wrap:wrap;">
+        <a href="/tariffs/codes/new?tariff={{ tariff.id }}" class="btn">{{ t("Add a code") }}</a>
+        <a href="/tariffs/{{ tariff.id }}/edit" class="btn primary">{{ t("Edit") }}</a>
+    </div>
+</div>
+
+<div class="cards">
+    <div class="card">
+        <div class="label">{{ t("Traffic") }}</div>
+        <div class="value">{% if tariff.limit_gb %}{{ tariff.limit_gb }} <span class="muted" style="font-size:14px;">{{ t("GB") }}</span>{% else %}∞{% endif %}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Subscription length, days") }}</div>
+        <div class="value">{% if tariff.expire_days %}{{ tariff.expire_days }}{% else %}∞{% endif %}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Clients on it") }}</div>
+        <div class="value">{{ clients|length }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Came in through it") }}</div>
+        <div class="value">{{ codes|sum(attribute='used_count') }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Clients on it") }} {{ fields.help(t("Read from 3x-ui, where the client's group is named after the tariff. Somebody moved between tariffs by hand in 3x-ui appears here too — the panel that owns the client is the one that decides.")) }}</h2>
+    </div>
+    <div style="padding: 4px 0 0 0;">
+        {% set rows = clients %}
+        {% set empty_text = t("Nobody is on this tariff yet.") %}
+        {% include "_client_rows.html" %}
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Code words") }}</h2>
+        <a href="/tariffs/codes/new?tariff={{ tariff.id }}" class="btn small" style="margin-left:auto;">{{ t("Add a code") }}</a>
+    </div>
+    <div style="padding: 4px 20px 16px 20px;">
+        {% for code in codes %}
+        {% include "_code_line.html" %}
+        {% else %}
+        <div class="empty">{{ t("No code words yet — nobody can register by mail.") }}</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head"><h2>{{ t("Inbounds for new clients") }}</h2></div>
+    <div style="padding: 16px 20px 20px 20px;">
+        <div class="chips">
+            {% for ib in inbounds %}
+            <span class="chip {% if not ib.known %}gone{% endif %}">
+                {{ ib.name }}{% if not ib.known %} · {{ t("gone from the panel") }}{% endif %}
+            </span>
+            {% else %}
+            <span class="muted">{{ t("No inbounds are ticked — registration on this tariff will fail.") }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<p class="muted" style="margin-top: 14px;">
+    {{ t("A tariff is read once, when a client is created: what it says then is written onto the client in 3x-ui. Editing a tariff therefore changes nothing for anybody already registered.") }}
+</p>
+
+<style>
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+        font-size: 12px; padding: 3px 9px; border-radius: 6px;
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+    .chip.gone { color: #f87171; border-color: #f87171; }
+    .word {
+        font-family: var(--mono); font-size: 13px; letter-spacing: .03em;
+        padding: 2px 8px; border-radius: 6px;
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+    /* A code is a link now, but it must keep looking like a code: the
+       browser's own link colour beside a monospace word reads as a mistake. */
+    a.word { color: var(--fg); text-decoration: none; }
+    a.word:hover { border-color: var(--fg-3); }
+    .word.done { color: var(--fg-3); text-decoration: line-through; }
+    a.word.done { color: var(--fg-3); }
+    .code-line {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px;
+    }
+    .code-line:last-child { border-bottom: none; }
+    .code-line .note { color: var(--fg-2); }
+    .code-line .right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+</style>
+{% endblock %}

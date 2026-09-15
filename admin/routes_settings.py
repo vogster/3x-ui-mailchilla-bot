@@ -1,4 +1,11 @@
-"""The settings page: ticking inbounds and the defaults used on registration."""
+"""
+The settings page: the mailbox, the panel itself, notifications and the letters.
+
+What a new client gets — traffic, term, inbounds, the word that opens it — used
+to live here too. It belongs to a tariff now, on its own page; the keys stay in
+settings.MANAGED_KEYS so that an installation rolled back to 0.1.x finds them
+where it left them, but nothing reads them any more.
+"""
 import logging
 import smtplib
 import socket
@@ -78,19 +85,6 @@ def _text_groups():
 
 def _build_context(request: Request, error: str = "", saved: str = ""):
     state = settings.describe()
-    selected = list(state["XUI_INBOUND_IDS"]["value"])
-
-    inbounds = get_shared_client().get_inbounds()
-    known_ids = {ib["id"] for ib in inbounds}
-
-    for ib in inbounds:
-        ib["selected"] = ib["id"] in selected
-
-    # ids that are ticked but absent from the panel. This is exactly how
-    # registration used to break in silence: the panel adds the client down the
-    # list and stops at the first id that does not exist, never reaching the rest.
-    missing = [i for i in selected if i not in known_ids]
-
     return {
         "request": request,
         "service_name": config.SERVICE_NAME,
@@ -99,9 +93,6 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "mail_lang": i18n.mail_lang(),
         "mail_lang_options": i18n.options(i18n.mail_lang()),
         "test_email": _default_test_email(),
-        "inbounds": inbounds,
-        "missing_inbounds": missing,
-        "panel_unavailable": not inbounds,
         "state": state,
         "error": error,
         "saved": saved,
@@ -132,12 +123,7 @@ def settings_submit(
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
     poll_interval_seconds: str = Form("15"),
-    inbound_ids: list[int] = Form(default=[]),
-    inbounds_present: str = Form(""),
     update_check_enabled: str = Form(""),
-    limit_gb: str = Form(""),
-    expire_days: str = Form(""),
-    codeword: str = Form(""),
     xui_flow: str = Form(""),
     remark_include_name: str = Form(""),
     gotify_url: str = Form(""),
@@ -165,9 +151,6 @@ def settings_submit(
         "SMTP_USER": smtp_user,
         "SMTP_PASSWORD": smtp_password,
         "POLL_INTERVAL_SECONDS": poll_interval_seconds,
-        "LIMIT_GB": limit_gb,
-        "EXPIRE_DAYS": expire_days,
-        "CODEWORD": codeword,
         "XUI_FLOW": xui_flow,
         "GOTIFY_URL": gotify_url,
         "GOTIFY_TOKEN": gotify_token,
@@ -182,12 +165,6 @@ def settings_submit(
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:
         values["PANEL_LANG"] = panel_lang
-    # The inbound checkboxes are drawn only when 3x-ui answered with a list. With
-    # the panel unreachable the form would arrive with an empty list and wipe the
-    # selection, so the key is touched only when the marker is present.
-    if inbounds_present:
-        values["XUI_INBOUND_IDS"] = inbound_ids
-
     try:
         settings.save(values)
     except (ValueError, TypeError) as e:

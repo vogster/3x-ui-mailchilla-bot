@@ -25,6 +25,20 @@
                        placeholder="{{ t('Ivan Petrov') }}">
             </div>
             <div>
+                <label for="tariff_id">{{ t("Tariff") }} {{ fields.help(t("Picking one fills in the traffic, the term and the inbounds. They stay editable — this client is being made by hand, and the tariff is only a starting point.")) }}</label>
+                <select id="tariff_id" name="tariff_id">
+                    {% for tariff in tariffs %}
+                    <option value="{{ tariff.id }}"
+                            data-limit="{{ tariff.limit_gb }}"
+                            data-days="{{ tariff.expire_days }}"
+                            data-inbounds="{{ tariff.inbound_ids|join(',') }}"
+                            {% if tariff.id == form.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
+                    {% else %}
+                    <option value="">{{ t("no tariffs yet") }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
                 <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
                 <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
                        value="{{ form.limit_gb }}">
@@ -77,4 +91,22 @@
         </form>
     </div>
 </div>
+<script>
+    // Same as in the quick dialog: a tariff fills the fields in and leaves them
+    // editable.
+    (function () {
+        var picker = document.getElementById("tariff_id");
+        if (!picker) return;
+        picker.addEventListener("change", function () {
+            var option = picker.options[picker.selectedIndex];
+            if (!option || !option.value) return;
+            document.getElementById("limit_gb").value = option.dataset.limit;
+            document.getElementById("expire_days").value = option.dataset.days;
+            var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
+            document.querySelectorAll('input[name="inbound_ids"]').forEach(function (box) {
+                box.checked = wanted.indexOf(box.value) !== -1;
+            });
+        });
+    })();
+</script>
 {% endblock %}

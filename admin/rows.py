@@ -127,6 +127,11 @@ def _client_row(client_obj: dict, online: set = None, last_online: dict = None) 
         "created_ms": created_ms,
         "created": _fmt_date(created_ms),
         "comment": (client_obj.get("comment") or "").strip(),
+        # Which tariff the client is on, as 3x-ui itself holds it: the group is
+        # named after the tariff, and clients/list hands it back with the rest.
+        # Empty for anyone registered before tariffs existed, or added by hand
+        # in 3x-ui — which is a fact about them, not a gap to fill in.
+        "tariff": (client_obj.get("group") or "").strip(),
         "bare_email": bare_email,
         "enable": client_obj.get("enable") is True,
         "online": is_online,

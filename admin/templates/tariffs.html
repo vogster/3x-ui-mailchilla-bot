@@ -1,0 +1,222 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ t("Tariffs") }}{% endblock %}
+{% block nav_tariffs %}active{% endblock %}
+{% block content %}
+<style>
+    .tariff { border-bottom: 1px solid var(--line-soft); padding: 13px 20px 15px 20px; }
+    .tariff:last-child { border-bottom: none; }
+    /* Centred, not baseline-aligned: the kebab is taller than the name, and on
+       a baseline the name floated well above the figures under it. */
+    .tariff-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .tariff-head h3 { margin: 0; font-size: 16px; }
+    /* Not ".actions": base_admin already has a class by that name — a grid of
+       action cards with a 26px bottom margin — and borrowing it was what left
+       the tariff's name floating well above its own figures. */
+    .tariff-head .tariff-actions { margin-left: auto; display: flex; gap: 8px; }
+    .tariff-facts {
+        display: flex; gap: 22px; flex-wrap: wrap;
+        margin-top: 6px; font-size: 13px; color: var(--fg-2);
+    }
+    .tariff-facts .mono { color: var(--fg); }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .chip {
+        font-size: 12px; padding: 3px 9px; border-radius: 6px;
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+    .chip.gone { color: #f87171; border-color: #f87171; }
+
+    /* A code, as it appears under its tariff and in the table of all codes. */
+    .word {
+        font-family: var(--mono); font-size: 13px; letter-spacing: .03em;
+        padding: 2px 8px; border-radius: 6px;
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+    /* A code is a link now, but it must keep looking like a code: the
+       browser's own link colour beside a monospace word reads as a mistake. */
+    a.word { color: var(--fg); text-decoration: none; }
+    a.word:hover { border-color: var(--fg-3); }
+    .word.done { color: var(--fg-3); text-decoration: line-through; }
+    a.word.done { color: var(--fg-3); }
+    .tariff-head h3 a { color: inherit; text-decoration: none; }
+    .tariff-head h3 a:hover { text-decoration: underline; }
+    .code-line {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px;
+    }
+    .code-line:last-child { border-bottom: none; }
+    .code-line .note { color: var(--fg-2); }
+    .code-line .right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .codes-block { margin-top: 14px; }
+    .codes-block .lbl { font-size: 12px; color: var(--fg-3); }
+
+    .issued {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        margin: 14px 20px 18px 20px;
+    }
+    .issued .code {
+        font-family: var(--mono); font-size: 20px; letter-spacing: .12em;
+        padding: 8px 14px; border-radius: 8px;
+        background: var(--surface-2); border: 1px solid var(--line);
+    }
+</style>
+
+<div class="tabs">
+    <button type="button" class="active" data-tab="tariffs">{{ t("Tariffs") }}</button>
+    <button type="button" data-tab="codes">{{ t("Code words") }}</button>
+</div>
+
+{% if issued %}
+<div class="panel" style="margin-bottom: 18px;">
+    <div class="flash ok" style="margin: 14px 20px 0 20px;">
+        {{ t("The code is ready. Give it to whoever it is for — they write it to the bot, and it opens the tariff it belongs to.") }}
+    </div>
+    <div class="issued">
+        <span class="code" id="issued-code">{{ issued }}</span>
+        <button type="button" class="btn small" id="copy-issued">{{ t("Copy") }}</button>
+    </div>
+</div>
+{% endif %}
+{% if error %}
+<div class="flash error" style="margin-bottom: 18px;">{{ error }}</div>
+{% endif %}
+{% if saved %}
+<div class="flash ok" style="margin-bottom: 18px;">{{ t("Tariff {name} saved", name=saved) }}</div>
+{% endif %}
+
+<div class="tab-panel" data-panel="tariffs">
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Tariffs") }} <span class="muted" style="font-weight:400;">({{ tariffs|length }})</span></h2>
+        <a href="/tariffs/new" class="btn small primary" style="margin-left:auto;">{{ t("Create") }}</a>
+    </div>
+
+    {% if tariffs %}
+    {% for tariff in tariffs %}
+    <div class="tariff">
+        <div class="tariff-head">
+            <h3><a href="/tariffs/{{ tariff.id }}">{{ tariff.name }}</a></h3>
+            {% if not tariff.live_codes %}
+            <span class="muted">{{ t("no working code — nobody can register on it by mail") }}</span>
+            {% endif %}
+            <div class="tariff-actions">
+                <details class="rowmenu">
+                    <summary title="{{ t('Actions') }}">&#8942;</summary>
+                    <div class="rowmenu-body">
+                        <a href="/tariffs/{{ tariff.id }}">{{ t("Open the card") }}</a>
+                        <a href="/tariffs/codes/new?tariff={{ tariff.id }}">{{ t("Add a code") }}</a>
+                        <a href="/tariffs/{{ tariff.id }}/edit">{{ t("Edit") }}</a>
+                        <hr>
+                        <form method="post" action="/tariffs/{{ tariff.id }}/delete"
+                              onsubmit="return confirm({{ t("Delete the tariff {name}? Its codes go with it. The clients already created from it keep everything they have — a tariff only describes the next client.", name=tariff.name)|tojson }});">
+                            <button type="submit" class="danger">{{ t("Delete") }}</button>
+                        </form>
+                    </div>
+                </details>
+            </div>
+        </div>
+        <div class="tariff-facts">
+            <span>{{ t("Traffic") }}:
+                <span class="mono">{% if tariff.limit_gb %}{{ tariff.limit_gb }} {{ t("GB") }}{% else %}{{ t("no limit") }}{% endif %}</span></span>
+            <span>{{ t("Subscription length, days") }}:
+                <span class="mono">{% if tariff.expire_days %}{{ tariff.expire_days }}{% else %}{{ t("No expiry") }}{% endif %}</span></span>
+            <span>{{ t("Came in through it") }}: <span class="mono">{{ tariff.arrived }}</span></span>
+        </div>
+        <div class="chips">
+            {% for ib in tariff.inbounds %}
+            <span class="chip {% if not ib.known %}gone{% endif %}">
+                {{ ib.name }}{% if not ib.known %} · {{ t("gone from the panel") }}{% endif %}
+            </span>
+            {% else %}
+            <span class="muted">{{ t("No inbounds are ticked — registration on this tariff will fail.") }}</span>
+            {% endfor %}
+        </div>
+
+        {% if tariff.codes %}
+        <div class="codes-block">
+            <div class="lbl">{{ t("Code words") }}</div>
+            {% for code in tariff.codes %}
+            {% include "_code_line.html" %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">
+        {{ t("There are no tariffs yet. Until one exists, a letter with a code word cannot register anybody.") }}
+    </div>
+    {% endif %}
+</div>
+
+<p class="muted" style="margin-top: 14px;">
+    {{ t("A tariff is read once, when a client is created: what it says then is written onto the client in 3x-ui. Editing a tariff therefore changes nothing for anybody already registered.") }}
+</p>
+</div>
+
+<div class="tab-panel" data-panel="codes" hidden>
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Code words") }} <span class="muted" style="font-weight:400;">({{ codes|length }})</span></h2>
+        {% if tariff_options %}
+        <a href="/tariffs/codes/new" class="btn small primary" style="margin-left:auto;">{{ t("Create") }}</a>
+        {% endif %}
+    </div>
+    {% if codes %}
+    <div style="padding: 4px 20px 16px 20px;">
+        {% for code in codes %}
+        {% include "_code_line.html" %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">{{ t("No code words yet — nobody can register by mail.") }}</div>
+    {% endif %}
+</div>
+
+<p class="muted" style="margin-top: 14px;">
+    {{ t("A code opens one tariff. With no limit on its activations it is the word you hand out openly; with one activation it is a personal invitation, spent by whoever uses it. Putting a code out stops it working and keeps the record of who came in through it.") }}
+</p>
+</div>
+
+<script>
+    // Two views of the same thing: the tariffs with their codes underneath, and
+    // every code in one list. The choice is remembered, and a redirect can ask
+    // for one — landing on the tariffs tab after saving a code would hide the
+    // very thing that was just saved.
+    (function () {
+        var buttons = document.querySelectorAll(".tabs button");
+        var panels = document.querySelectorAll(".tab-panel");
+        var KEY = "tariffs-tab";
+
+        function show(name) {
+            buttons.forEach(function (b) { b.classList.toggle("active", b.dataset.tab === name); });
+            panels.forEach(function (p) { p.hidden = p.dataset.panel !== name; });
+            try { localStorage.setItem(KEY, name); } catch (e) {}
+        }
+
+        buttons.forEach(function (b) {
+            b.addEventListener("click", function () { show(b.dataset.tab); });
+        });
+
+        var asked = {{ (tab or "")|tojson }};
+        if (asked && document.querySelector('.tab-panel[data-panel="' + asked + '"]')) {
+            show(asked);
+        } else {
+            try {
+                var saved = localStorage.getItem(KEY);
+                if (saved && document.querySelector('.tab-panel[data-panel="' + saved + '"]')) show(saved);
+            } catch (e) {}
+        }
+
+        var copy = document.getElementById("copy-issued");
+        if (copy) {
+            copy.addEventListener("click", function () {
+                var text = document.getElementById("issued-code").textContent.trim();
+                navigator.clipboard.writeText(text).then(function () {
+                    window.showToast({{ t("Copied")|tojson }});
+                }, function () { /* a browser that refuses: the code is on screen anyway */ });
+            });
+        }
+    })();
+</script>
+{% endblock %}

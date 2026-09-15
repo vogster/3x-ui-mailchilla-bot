@@ -117,12 +117,16 @@ class XuiClient:
             raise
 
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
-                   inbound_ids: list = None, comment: str = "", flow: str = None):
+                   inbound_ids: list = None, comment: str = "", flow: str = None,
+                   group: str = ""):
         """
         Adds a new client to every inbound listed.
         :param email: the client's unique email/identifier (a limited character
                       set: the panel refuses angle brackets and spaces)
         :param comment: a free-form comment — the sender's name goes here
+        :param group: the client group, which this project uses for the tariff
+                      name. 3x-ui creates the group on first use, so there is
+                      nothing to set up beforehand and this stays one request.
         :param flow: the flow value (taken from the settings when not given)
         :param client_uuid: the client UUID (a new one is generated when absent)
         :param limit_gb: traffic limit in GB (taken from the config when absent)
@@ -177,7 +181,11 @@ class XuiClient:
                 "subId": "",
                 "limitIp": 0,
                 "enable": True,
-                "flow": flow
+                "flow": flow,
+                # Where the client belongs, kept in 3x-ui itself rather than in
+                # a file of ours: the panel shows it, an edit made there is the
+                # truth, and clients/list hands it back with everything else.
+                "group": group or ""
             },
             "inboundIds": inbound_ids
         }
@@ -188,7 +196,8 @@ class XuiClient:
             if response.status_code == 200:
                 resp_json = response.json()
                 if resp_json.get("success"):
-                    logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}")
+                    logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}"
+                                + (f", group {group!r}" if group else ""))
                     return client_uuid, inbound_ids
                 else:
                     logger.error(f"Could not add client {email}: {resp_json.get('msg')}")
@@ -359,6 +368,40 @@ class XuiClient:
         except Exception as e:
             logger.debug(f"Exception while fetching the online list: {e}")
             return None
+
+    def rename_group(self, old_name: str, new_name: str) -> bool:
+        """
+        Renames a client group, carrying every member across.
+
+        This project names a group after the tariff it stands for, so renaming
+        a tariff has to rename the group too — otherwise the clients created
+        before the rename stay in a group named after something that no longer
+        exists.
+        """
+        old_name = str(old_name or "").strip()
+        new_name = str(new_name or "").strip()
+        if not old_name or not new_name or old_name == new_name:
+            return True
+        try:
+            response = self._request("POST", "/panel/api/clients/groups/rename",
+                                     json={"oldName": old_name, "newName": new_name})
+            if response.status_code != 200:
+                logger.error(f"Unexpected status while renaming the group {old_name!r}: "
+                             f"{response.status_code}")
+                return False
+            resp_json = response.json()
+            if not resp_json.get("success"):
+                # An empty group — a tariff nobody has registered on yet — is
+                # not a row in the panel at all, so there is nothing to rename
+                # and nothing to worry about.
+                logger.info(f"The panel did not rename the group {old_name!r}: "
+                            f"{resp_json.get('msg')}. Nobody is in it yet, most likely.")
+                return False
+            logger.info(f"Group {old_name!r} renamed to {new_name!r}.")
+            return True
+        except Exception as e:
+            logger.error(f"Exception while renaming the group {old_name!r}: {e}")
+            return False
 
     def get_last_online(self) -> dict or None:
         """
@@ -551,7 +594,7 @@ class XuiClient:
     def update_client(self, client_uuid: str, total_gb: int = None,
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
-                      client_obj: dict = None) -> bool:
+                      group: str = None, client_obj: dict = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -561,6 +604,7 @@ class XuiClient:
         :param total_gb: new traffic limit in GB (None leaves it; 0 is unlimited)
         :param expire_days: new length in days from now (None leaves it; 0 never expires)
         :param enable: True/False to switch on or off (None leaves it)
+        :param group: the client group — this project's tariff name (None leaves it)
         :param new_remark: a new value for the client's email field (None leaves it)
         :param new_comment: a new comment/name (None leaves it)
         :param client_obj: a client object already fetched — lets the caller avoid
@@ -603,6 +647,11 @@ class XuiClient:
                 payload["expiryTime"] = 0
         if enable is not None:
             payload["enable"] = bool(enable)
+        if group is not None:
+            # Moving a client to another tariff, or out of every group with "".
+            # Everything else about the group is the panel's own business: it
+            # makes one on first use and forgets an empty one on its own.
+            payload["group"] = group
 
         endpoint = f"/panel/api/clients/update/{quote(str(current_remark), safe='')}"
 

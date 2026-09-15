@@ -1,0 +1,135 @@
+{% extends "base_admin.html" %}
+{% import "_fields.html" as fields %}
+{% block title %}{{ code.word }}{% endblock %}
+{% block nav_tariffs %}active{% endblock %}
+{% block content %}
+<a href="/tariffs?tab=codes" class="back">← {{ t("Back to the code words") }}</a>
+
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
+    <div>
+        <h1 style="margin: 0 0 6px 0;" class="mono">{{ code.word }}</h1>
+        <p class="muted" style="margin: 0;">
+            {% if tariff %}<a href="/tariffs/{{ tariff.id }}" class="plain">{{ tariff.name }}</a>{% endif %}
+            {% if code.note %} · {{ code.note }}{% endif %}
+        </p>
+    </div>
+    <div style="display:flex; gap:9px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn" id="copy-word">{{ t("Copy") }}</button>
+        {% if code.enabled %}
+        <form method="post" action="/tariffs/codes/{{ code.word }}/off">
+            <button type="submit" class="btn">{{ t("Switch off") }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="/tariffs/codes/{{ code.word }}/on">
+            <button type="submit" class="btn ok">{{ t("Switch on") }}</button>
+        </form>
+        {% endif %}
+        <a href="/tariffs/codes/{{ code.word }}/edit" class="btn primary">{{ t("Edit") }}</a>
+        <form method="post" action="/tariffs/codes/{{ code.word }}/delete"
+              onsubmit="return confirm({{ t("Remove this code from the list? Switching it off is usually enough — a removed one leaves no record of who came in through it.")|tojson }});">
+            <button type="submit" class="btn danger">{{ t("Remove") }}</button>
+        </form>
+    </div>
+</div>
+
+<div class="cards">
+    <div class="card">
+        <div class="label">{{ t("Status") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if code.state == 'live' %}
+            <span class="badge on nodot">{{ t("The code works") }}</span>
+            {% elif code.state == 'spent' %}
+            <span class="badge off nodot">{{ t("used up") }}</span>
+            {% else %}
+            <span class="badge off nodot">{{ t("switched off") }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Activations left") }}</div>
+        <div class="value">{% if code.unlimited %}∞{% else %}{{ code.uses_left }}{% endif %}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Came in through it") }}</div>
+        <div class="value">{{ code.used_count }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Created") }}</div>
+        <div class="value" style="font-size: 18px;">{{ code.created }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Came in through it") }} {{ fields.help(t("Everybody who registered by writing this word. The record stays whatever happens to the code later — switching it off or renaming it keeps the list, removing the code from the list is what throws it away.")) }}</h2>
+    </div>
+    {% if arrivals %}
+    <div class="tscroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ t("Email / name") }}</th>
+                    <th>{{ t("Status") }}</th>
+                    <th>{{ t("Traffic") }}</th>
+                    <th>{{ t("Registered") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for arrival in arrivals %}
+                <tr>
+                    {% if arrival.client %}
+                    <td>
+                        <a href="/clients/{{ arrival.client.uuid }}" class="row-link">
+                            <div class="mono" style="white-space: nowrap;">{{ arrival.client.remark or arrival.client.bare_email }}</div>
+                            {% if arrival.client.comment %}
+                            <div class="muted">{{ arrival.client.comment }}</div>
+                            {% endif %}
+                        </a>
+                    </td>
+                    <td>
+                        {% if arrival.client.enable %}
+                        <span class="badge on nodot">{{ t("Active [badge]") }}</span>
+                        {% else %}
+                        <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono">
+                        {% if arrival.client.unlimited %}{{ arrival.client.used_gb }} {{ t("GB") }}
+                        {% else %}{{ arrival.client.used_gb }} / {{ arrival.client.limit_gb }} {{ t("GB") }}{% endif %}
+                    </td>
+                    <td class="mono">{{ arrival.client.created }}</td>
+                    {% else %}
+                    {# The address registered through this code, and the client
+                       is gone from 3x-ui since. The record is still true. #}
+                    <td class="mono">{{ arrival.address }}</td>
+                    <td colspan="3" class="muted">{{ t("no longer in the panel") }}</td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">{{ t("Nobody has used this code yet.") }}</div>
+    {% endif %}
+</div>
+
+<style>
+    /* The panel's own links are quiet; the browser default stands out like a
+       mistake beside a heading. */
+    a.plain { color: var(--fg-2); text-decoration: none; border-bottom: 1px solid var(--line); }
+    a.plain:hover { color: var(--fg); border-color: var(--fg-3); }
+</style>
+
+<script>
+    (function () {
+        var button = document.getElementById("copy-word");
+        if (!button) return;
+        button.addEventListener("click", function () {
+            navigator.clipboard.writeText({{ code.word|tojson }}).then(function () {
+                window.showToast({{ t("Copied")|tojson }});
+            }, function () { /* a browser that refuses: the word is on screen anyway */ });
+        });
+    })();
+</script>
+{% endblock %}
