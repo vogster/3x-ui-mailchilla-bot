@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 
 import config
 import i18n
+import tariffs
 from admin.deps import templates, require_auth
 from admin.rows import _client_row
 from xui_client import get_shared_client
@@ -135,6 +136,12 @@ def broadcast_form(request: Request, error: str = ""):
             "active_count": sum(1 for r in recipients if r["enable"]),
             "skipped_count": skipped,
             "online_known": online is not None,
+            # Every tariff a recipient could be on, for the filter. Both the
+            # tariffs that exist and the labels of ones that no longer do: a
+            # group left behind by a deleted tariff still holds people, and
+            # writing to them is exactly what somebody might want.
+            "tariff_names": sorted({t["name"] for t in tariffs.all_tariffs()}
+                                   | {r["tariff"] for r in recipients if r["tariff"]}),
             "kinds": mail_templates.broadcast_kind_options(),
             "error": error,
         },

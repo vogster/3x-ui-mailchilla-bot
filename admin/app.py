@@ -362,6 +362,42 @@ def dashboard(request: Request):
     near_limit.sort(key=lambda r: r["percent"], reverse=True)
     near_limit = near_limit[:8]
 
+    # Tariffs: how many people are on each and what they have spent. Counted
+    # from the client list already in hand rather than asked of
+    # /clients/groups — the panel would answer the same numbers, and a page
+    # that adds a request per block ends up slow on the day 3x-ui is slow.
+    #
+    # A group naming a tariff that no longer exists is listed too, marked: the
+    # clients are still there and the figure is still real.
+    by_group = {}
+    for client in clients:
+        group = (client.get("group") or "").strip()
+        if not group:
+            continue
+        stats = by_group.setdefault(group, {"clients": 0, "used": 0})
+        stats["clients"] += 1
+        stats["used"] += _used_bytes(client)
+
+    tariff_rows = []
+    for tariff in tariffs.all_tariffs():
+        stats = by_group.pop(tariff["name"], {"clients": 0, "used": 0})
+        tariff_rows.append({
+            "id": tariff["id"],
+            "name": tariff["name"],
+            "clients": stats["clients"],
+            "used_gb": round(stats["used"] / GB, 1),
+            "limit_gb": tariff["limit_gb"],
+            "expire_days": tariff["expire_days"],
+            "orphan": False,
+        })
+    for name, stats in sorted(by_group.items()):
+        tariff_rows.append({
+            "id": "", "name": name, "clients": stats["clients"],
+            "used_gb": round(stats["used"] / GB, 1),
+            "limit_gb": 0, "expire_days": 0, "orphan": True,
+        })
+    tariff_rows.sort(key=lambda r: (r["orphan"], -r["clients"], r["name"].lower()))
+
     # Inbounds: how many clients are in each, and whether any tariff hands it
     # out. An inbound no tariff uses is not a fault — it may belong to somebody
     # else entirely — but one a tariff names and 3x-ui does not have is.
@@ -404,6 +440,10 @@ def dashboard(request: Request):
             "problems": problems,
             "problems_total": problems_total,
             "tariffs": tariff_choices(),
+            "tariff_rows": tariff_rows,
+            # Anybody carrying no group at all: registered before tariffs
+            # existed, or made by hand in 3x-ui.
+            "without_tariff": sum(1 for c in clients if not (c.get("group") or "").strip()),
             "new_defaults": {
                 "tariff_id": first["id"],
                 "limit_gb": first["limit_gb"],

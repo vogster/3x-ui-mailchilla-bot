@@ -249,6 +249,58 @@
     </div>
 </div>
 
+{% if tariff_rows %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Tariffs") }}</h2>
+        <a href="/tariffs" class="btn small">{{ t("Configure") }}</a>
+    </div>
+    <div class="tscroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ t("Name") }}</th>
+                    <th>{{ t("Clients") }}</th>
+                    <th>{{ t("Traffic") }}</th>
+                    <th>{{ t("What it hands out") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in tariff_rows %}
+                <tr>
+                    <td>
+                        {% if row.orphan %}
+                        <span class="muted">{{ row.name }}</span>
+                        <span class="badge off" style="margin-left:6px;">{{ t("no such tariff") }}</span>
+                        {% else %}
+                        <a href="/tariffs/{{ row.id }}" class="row-link">{{ row.name }}</a>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ row.clients }}</td>
+                    <td class="mono">{{ row.used_gb }} {{ t("GB") }}</td>
+                    <td class="mono muted">
+                        {% if row.orphan %}—
+                        {% else %}
+                        {% if row.limit_gb %}{{ row.limit_gb }} {{ t("GB") }}{% else %}{{ t("no limit") }}{% endif %} ·
+                        {% if row.expire_days %}{{ row.expire_days }} {{ t("d [days]") }}{% else %}{{ t("No expiry") }}{% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            {% if without_tariff %}
+                <tr>
+                    <td class="muted">{{ t("without a tariff") }}</td>
+                    <td class="mono">{{ without_tariff }}</td>
+                    <td class="mono muted">—</td>
+                    <td class="mono muted">—</td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
 <div class="panel" style="margin-top: 20px;">
     <div class="panel-head">
         <h2>{{ t("Inbounds") }}</h2>

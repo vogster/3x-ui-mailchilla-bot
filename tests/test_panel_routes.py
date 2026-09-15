@@ -307,3 +307,38 @@ class GroupsLeftBehind(PanelCase):
         # Nothing was asked of 3x-ui beyond reading: the client keeps its group,
         # its limits and its subscription.
         self.assertEqual(self.fake.get_all_clients()[0]["group"], "Basic")
+
+
+class DashboardTariffs(PanelCase):
+    """
+    The dashboard counts tariffs from the client list it already has. A count
+    that needed its own request would make the page slower on exactly the day
+    3x-ui is slow, which is the day the dashboard matters.
+    """
+
+    def test_the_block_names_the_tariff_and_counts_its_clients(self):
+        body = self.page("/")
+        self.assertIn("Basic", body)
+        # One client on Basic, one on nothing at all.
+        self.assertIn("without a tariff", body.replace("без тарифа", "without a tariff"))
+
+    def test_a_group_whose_tariff_is_gone_is_listed_and_marked(self):
+        tariffs.delete_tariff(self.tariff["id"])
+        body = self.page("/")
+        self.assertIn("Basic", body)
+
+
+class BroadcastByTariff(PanelCase):
+    """Writing to everybody on one tariff is the reason tariffs are on this page."""
+
+    def test_the_picker_offers_every_tariff_and_the_absence_of_one(self):
+        body = self.page("/broadcast")
+        self.assertIn('<select id="rcpt-tariff"', body)
+        self.assertIn('data-name="Basic"', body)
+
+    def test_each_recipient_carries_its_tariff(self):
+        body = self.page("/broadcast")
+        self.assertIn('data-tariff="Basic"', body)
+        # The one with no tariff carries an empty attribute rather than none:
+        # "without a tariff" has to be selectable.
+        self.assertIn('data-tariff=""', body)

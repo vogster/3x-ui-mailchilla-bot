@@ -48,6 +48,12 @@ read as something a person wants to know before updating.
   outlives the tariff, the client list marks it, and the tariffs page counts
   such groups under "Groups without a tariff" rather than letting them lurk.
 - Two tariffs may no longer share a name, since the name is the group.
+- The dashboard counts the tariffs: how many people are on each and what they
+  have spent, worked out from the client list it already had rather than from
+  another request.
+- The broadcast's recipient picker filters by tariff, including "without one",
+  so "everybody on Trial whose traffic is running out" is two clicks.
+- `/status` names the client's tariff, unless they are on none.
 - A client's card can move them to a tariff: pick one and the limit, the term
   (counted from today) and the inbounds fill themselves in, still editable, and
   nothing is saved until you press Save.

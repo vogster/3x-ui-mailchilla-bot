@@ -194,7 +194,8 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
     )
 
 
-def get_status_email(email, is_active, up, down, total, expiry_time_ms) -> Email:
+def get_status_email(email, is_active, up, down, total, expiry_time_ms,
+                     tariff: str = "") -> Email:
     """The letter with the subscription status and traffic spent."""
     used = (up or 0) + (down or 0)
     percent = None
@@ -219,6 +220,10 @@ def get_status_email(email, is_active, up, down, total, expiry_time_ms) -> Email
         used_text=used_text,
         percent=percent,
         meter_text=text("status.meter_text", percent=percent) if percent is not None else "",
+        # The client's group in 3x-ui, which this project names after the
+        # tariff. Empty for anybody registered before tariffs existed, and the
+        # line is then left out rather than showing a blank.
+        tariff=tariff or "",
     )
 
 

@@ -182,7 +182,7 @@ A tariff is what a client gets: traffic, term and the inbounds they are added to
 | Subscription length | in days; 0 means it never expires |
 | Inbounds | the client is added to each of them, in order |
 
-Every tariff and every code has a card of its own: a tariff's shows who is on it, a code's shows everybody who came in through that word - each a click away from their own client card.
+The dashboard counts who is on which tariff and what they have spent, the broadcast can be narrowed to one tariff, and `/status` tells a client which one they are on. Every tariff and every code has a card of its own: a tariff's shows who is on it, a code's shows everybody who came in through that word - each a click away from their own client card.
 
 **Who is on which tariff is kept in 3x-ui itself**, in the client's group, named after the tariff. Nothing has to be kept in step: the 3x-ui panel shows the same grouping, and a group changed there by hand is simply the truth. The client list shows the tariff beside the name and can filter by it, including "without one" - which is what anybody registered before tariffs existed will be. Renaming a tariff renames the group and carries its clients across, which is why two tariffs may not share a name. Deleting one leaves its clients exactly as they are: they hold their own limits, and the label they carry outlives the tariff - the list marks it with a dashed chip and the tariffs page counts such groups under "Groups without a tariff".
 

@@ -91,6 +91,12 @@ TEXTS = {
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
     "Groups without a tariff": "Группы без тарифа",
+    "The 'tariff' line": "Строка «тариф»",
+    "Left out for a client who is on no tariff — anybody registered before tariffs existed, or added by hand in 3x-ui.": "Не выводится, если клиент не на тарифе: так будет у всех, кто зарегистрировался до появления тарифов, и у заведённых руками в 3x-ui.",
+    "What it hands out": "Что выдаёт",
+    "no such tariff": "тарифа нет",
+    "without a tariff": "без тарифа",
+    "d [days]": "дн",
     "clients: {n}": "клиентов: {n}",
     "There is no such tariff any more — the client keeps the label 3x-ui holds.": "Такого тарифа больше нет — у клиента осталась метка, которую хранит 3x-ui.",
     "Clients in 3x-ui carrying the name of a tariff that no longer exists. Deleting a tariff leaves its clients exactly as they were — they hold their own limits, and a label is not a limit — so the label outlives it. Give the tariff its old name again and they belong to it once more; leave it, and nothing happens to them.": "Клиенты в 3x-ui с названием тарифа, которого больше нет. Удаление тарифа не трогает его клиентов — лимиты у них свои, а метка не лимит, — поэтому метка его переживает. Заведёте тариф с тем же названием — они снова окажутся на нём; не заведёте — с ними ничего не случится.",

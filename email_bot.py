@@ -432,7 +432,9 @@ def handle_status(email_addr: str):
         is_active = enable and is_user_enable
 
         send_email_reply(email_addr, templates.text("status.subject"),
-                         templates.get_status_email(email_addr, is_active, up, down, total, expiry_time))
+                         templates.get_status_email(email_addr, is_active, up, down, total,
+                                                    expiry_time,
+                                                    tariff=(client_info.get("group") or "").strip()))
     else:
         send_email_reply(email_addr, templates.notice_subject("status_error"),
                          templates.get_notice("status_error"))

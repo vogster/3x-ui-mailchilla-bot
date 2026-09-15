@@ -9,6 +9,7 @@
         <td class="stat-value" align="right" style="padding: 11px 0; border-bottom: 1px solid #1d1d20; font-size: 15px; font-weight: 600;
                    color: {{ '#45b866' if is_active else '#ef5350' }};">{{ status_text }}</td>
     </tr>
+    {% if tariff %}{{ ui.stat(t("status.label_tariff"), tariff) }}{% endif %}
     {{ ui.stat(t("status.label_expiry"), expiry_text) }}
     {{ ui.stat(t("status.label_used"), used_text) }}
 </table>
