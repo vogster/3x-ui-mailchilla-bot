@@ -276,3 +276,34 @@ class RoutesThatChangeThings(PanelCase):
         self.assertEqual(first["limit_gb"], 250)
         self.assertEqual(first["inbound_ids"], [2])
         self.assertIsNotNone(tariffs.match("SNOWFALL"))
+
+
+class GroupsLeftBehind(PanelCase):
+    """
+    A tariff deleted while people are on it. Their group label in 3x-ui outlives
+    it — deleting a template is not a reason to touch the clients stamped from
+    it — so both pages have to say so rather than show a tariff that is gone.
+    """
+
+    def test_the_tariffs_page_lists_a_group_whose_tariff_is_gone(self):
+        # The fake panel holds ben on "Basic"; delete the tariff of that name.
+        tariffs.delete_tariff(self.tariff["id"])
+        body = self.page("/tariffs")
+        self.assertIn("Basic", body)
+        self.assertIn("orphan", body)
+
+    def test_the_client_list_marks_such_a_label(self):
+        tariffs.delete_tariff(self.tariff["id"])
+        body = self.page("/clients")
+        self.assertIn("tariff-chip orphan", body)
+
+    def test_a_label_of_a_living_tariff_is_not_marked(self):
+        body = self.page("/clients")
+        self.assertIn("tariff-chip ", body)
+        self.assertNotIn("tariff-chip orphan", body)
+
+    def test_the_clients_are_not_touched_by_the_deletion(self):
+        tariffs.delete_tariff(self.tariff["id"])
+        # Nothing was asked of 3x-ui beyond reading: the client keeps its group,
+        # its limits and its subscription.
+        self.assertEqual(self.fake.get_all_clients()[0]["group"], "Basic")

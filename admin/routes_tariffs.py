@@ -130,6 +130,17 @@ def tariffs_list(request: Request, saved: str = "", error: str = "", issued: str
     if auth_redirect:
         return auth_redirect
     names = _names()
+    # Groups in 3x-ui whose tariff is gone. Deleting a tariff deliberately
+    # leaves its clients alone — they carry their own limits and a label is not
+    # a limit — so the labels outlive it, and the page says so instead of
+    # leaving them to be noticed in the client list one day.
+    live = set(names.values())
+    orphans = {}
+    for client in (get_shared_client().get_all_clients() or []):
+        group = (client.get("group") or "").strip()
+        if group and group not in live:
+            orphans[group] = orphans.get(group, 0) + 1
+
     return templates.TemplateResponse(
         "tariffs.html",
         {
@@ -146,6 +157,7 @@ def tariffs_list(request: Request, saved: str = "", error: str = "", issued: str
             "issued": issued,
             # Which tab to open on arrival, when a redirect wants to say.
             "tab": tab,
+            "orphans": sorted(orphans.items()),
         },
     )
 

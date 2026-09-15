@@ -25,6 +25,7 @@
         background: var(--surface-2); border: 1px solid var(--line);
     }
     .chip.gone { color: #f87171; border-color: #f87171; }
+    .chip.orphan { color: var(--fg-3); border-style: dashed; }
 
     /* A code, as it appears under its tariff and in the table of all codes. */
     .word {
@@ -108,7 +109,7 @@
                         <a href="/tariffs/{{ tariff.id }}/edit">{{ t("Edit") }}</a>
                         <hr>
                         <form method="post" action="/tariffs/{{ tariff.id }}/delete"
-                              onsubmit="return confirm({{ t("Delete the tariff {name}? Its codes go with it. The clients already created from it keep everything they have — a tariff only describes the next client.", name=tariff.name)|tojson }});">
+                              onsubmit="return confirm({{ t("Delete the tariff {name}? Its codes go with it. The clients stay exactly as they are — their limits are their own, and they keep the tariff's name as a label in 3x-ui, which the list then shows as a group without a tariff.", name=tariff.name)|tojson }});">
                             <button type="submit" class="danger">{{ t("Delete") }}</button>
                         </form>
                     </div>
@@ -148,6 +149,19 @@
     </div>
     {% endif %}
 </div>
+
+{% if orphans %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Groups without a tariff") }} {{ fields.help(t("Clients in 3x-ui carrying the name of a tariff that no longer exists. Deleting a tariff leaves its clients exactly as they were — they hold their own limits, and a label is not a limit — so the label outlives it. Give the tariff its old name again and they belong to it once more; leave it, and nothing happens to them.")) }}</h2>
+    </div>
+    <div style="padding: 14px 20px 18px 20px;" class="chips">
+        {% for name, count in orphans %}
+        <span class="chip orphan">{{ name }} · {{ t("clients: {n}", n=count) }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <p class="muted" style="margin-top: 14px;">
     {{ t("A tariff is read once, when a client is created: what it says then is written onto the client in 3x-ui. Editing a tariff therefore changes nothing for anybody already registered.") }}

@@ -90,6 +90,11 @@ TEXTS = {
     # Codes: the words that open a tariff. One object — a word with a number of
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
+    "Groups without a tariff": "Группы без тарифа",
+    "clients: {n}": "клиентов: {n}",
+    "There is no such tariff any more — the client keeps the label 3x-ui holds.": "Такого тарифа больше нет — у клиента осталась метка, которую хранит 3x-ui.",
+    "Clients in 3x-ui carrying the name of a tariff that no longer exists. Deleting a tariff leaves its clients exactly as they were — they hold their own limits, and a label is not a limit — so the label outlives it. Give the tariff its old name again and they belong to it once more; leave it, and nothing happens to them.": "Клиенты в 3x-ui с названием тарифа, которого больше нет. Удаление тарифа не трогает его клиентов — лимиты у них свои, а метка не лимит, — поэтому метка его переживает. Заведёте тариф с тем же названием — они снова окажутся на нём; не заведёте — с ними ничего не случится.",
+    "Delete the tariff {name}? Its codes go with it. The clients stay exactly as they are — their limits are their own, and they keep the tariff's name as a label in 3x-ui, which the list then shows as a group without a tariff.": "Удалить тариф {name}? Вместе с ним уйдут его коды. С клиентами ничего не случится: лимиты у них свои, а название тарифа останется меткой в 3x-ui — список покажет её как группу без тарифа.",
     "Clients on it": "Клиентов на нём",
     "Who came in through it": "Кто по нему пришёл",
     "Nobody is on this tariff yet.": "На этом тарифе пока никого нет.",
@@ -130,7 +135,6 @@ TEXTS = {
     "For you alone — it is never sent anywhere. Without it a list of generated codes is a row of strings that look alike.": "Только для вас, никуда не отправляется. Без неё список сгенерированных кодов — вереница похожих строк.",
     "A code opens one tariff. With no limit on its activations it is the word you hand out openly; with one activation it is a personal invitation, spent by whoever uses it. Putting a code out stops it working and keeps the record of who came in through it.": "Код открывает один тариф. Без ограничения активаций это слово, которое раздают открыто; с одной активацией — личное приглашение, которое гаснет, как только им воспользуются. Выключенный код перестаёт работать, но запись о том, кто по нему пришёл, остаётся.",
     "Remove this code from the list? Switching it off is usually enough — a removed one leaves no record of who came in through it.": "Убрать код из списка? Обычно достаточно выключить: у убранного не останется следа, кто по нему пришёл.",
-    "Delete the tariff {name}? Its codes go with it. The clients already created from it keep everything they have — a tariff only describes the next client.": "Удалить тариф {name}? Вместе с ним уйдут его коды. У клиентов, созданных по нему, всё останется как есть — тариф описывает только следующего клиента.",
     "the tariff was not found": "тариф не найден",
     "could not come up with a free code word": "не удалось придумать свободное кодовое слово",
     "How a client is created": "Как заводится клиент",

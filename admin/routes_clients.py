@@ -153,6 +153,11 @@ def clients_list(request: Request, q: str = ""):
         # still filters, since it is in the rows.
         "tariff_names": sorted({t["name"] for t in tariffs.all_tariffs()}
                                | {r["tariff"] for r in rows if r["tariff"]}),
+        # Names that no tariff answers to any more: the tariff was deleted and
+        # its clients kept the label, because deleting a template has never
+        # been a reason to touch the people stamped from it. The list marks
+        # those rather than pretending the tariff is still there.
+        "live_tariffs": sorted(t["name"] for t in tariffs.all_tariffs()),
     }
     context.update(new_dialog_context())
     return templates.TemplateResponse("clients.html", context)

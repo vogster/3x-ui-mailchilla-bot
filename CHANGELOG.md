@@ -43,7 +43,10 @@ read as something a person wants to know before updating.
   group changed in 3x-ui by hand is simply the truth. The client list shows it
   beside the name and filters by it — including "without one", which is what
   anybody registered before tariffs existed will be.
-- Renaming a tariff renames its group, carrying every client across.
+- Renaming a tariff renames its group, carrying every client across. Deleting
+  one leaves its clients exactly as they are — the label they carry in 3x-ui
+  outlives the tariff, the client list marks it, and the tariffs page counts
+  such groups under "Groups without a tariff" rather than letting them lurk.
 - Two tariffs may no longer share a name, since the name is the group.
 - A client's card can move them to a tariff: pick one and the limit, the term
   (counted from today) and the inbounds fill themselves in, still editable, and

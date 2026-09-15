@@ -8,6 +8,9 @@
         padding: 1px 7px; border-radius: 5px; color: var(--fg-2);
         background: var(--surface-2); border: 1px solid var(--line);
     }
+    /* A label left behind by a tariff that was deleted. Not an error — the
+       client is exactly as they were — but not a tariff you can open either. */
+    .tariff-chip.orphan { color: var(--fg-3); border-style: dashed; }
 </style>
 <div class="panel">
     <div class="panel-head">
@@ -139,7 +142,10 @@
                                client with no name the tariff would otherwise
                                sit where the name goes and read as one. #}
                             {% if c.tariff %}
-                            <div style="margin-top:3px;"><span class="tariff-chip">{{ c.tariff }}</span></div>
+                            <div style="margin-top:3px;">
+                                <span class="tariff-chip {% if c.tariff not in live_tariffs %}orphan{% endif %}"
+                                      {% if c.tariff not in live_tariffs %}title="{{ t('There is no such tariff any more — the client keeps the label 3x-ui holds.') }}"{% endif %}>{{ c.tariff }}</span>
+                            </div>
                             {% endif %}
                         </a>
                     </td>
