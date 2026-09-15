@@ -613,6 +613,32 @@
             content: "{{ t('edited') }}"; margin-left: 8px; color: var(--warn); font-size: 11px;
         }
 
+        /* A block of texts with a switch of its own. The switch used to be a row
+           like any other in the column of fields, which left it looking like one
+           more caption and said nothing about which field it governed. Framed,
+           with the switch in the heading, the question does not arise - and the
+           body greys out the moment it is turned off, so what is being sent and
+           what is not can be read down the page without opening anything. */
+        .mail-block {
+            border: 1px solid var(--line); border-radius: var(--radius);
+            background: var(--surface-2); margin-bottom: 18px;
+        }
+        .mail-block:last-child { margin-bottom: 0; }
+        .mail-block-head {
+            display: flex; align-items: center; gap: 8px;
+            padding: 11px 14px;
+        }
+        .mail-block-head label {
+            margin: 0; color: var(--fg); font-size: 13px; font-weight: 500; cursor: pointer;
+        }
+        .mail-block-head .switch { margin-left: auto; flex: 0 0 34px; }
+        .mail-block-body {
+            padding: 14px; border-top: 1px solid var(--line-soft);
+            transition: opacity .14s;
+        }
+        .mail-block.off .mail-block-head label { color: var(--fg-2); }
+        .mail-block.off .mail-block-body { opacity: .4; }
+
         /* The list filter bar */
         .filters {
             display: flex; align-items: center; gap: 14px; flex-wrap: wrap;

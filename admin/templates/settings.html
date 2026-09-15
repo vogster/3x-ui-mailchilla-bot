@@ -87,7 +87,7 @@
                        value="{{ state.SUPPORT_EMAIL.value }}" placeholder="support@example.com">
             </div>
             <div>
-                <label for="manual_url">{{ t("Link to the instructions") }} {{ fields.help(t("The page explaining how to connect. It becomes a button beside the app ones in the registration letter, which the Letters tab can switch off. An empty value removes the button.")) }}</label>
+                <label for="manual_url">{{ t("Link to the instructions") }} {{ fields.help(t("The page explaining how to connect. In the registration letter it becomes a link under every way of connecting, which the Letters tab can switch off. An empty value removes the link.")) }}</label>
                 <input type="text" id="manual_url" name="manual_url"
                        value="{{ state.MANUAL_URL.value }}" placeholder="https://example.com/howto">
             </div>
@@ -370,26 +370,30 @@
                 <div style="padding: 22px 20px;">
                     {% for f in g.fields %}
                     {% if f.kind == "switch" %}
-                    {# A setting rather than a text, saved by the same button. The
-                       hidden "off" goes first: a browser sends nothing at all for
-                       an unticked box, and the later value wins when it is ticked. #}
-                    <div class="mail-field checkbox-row">
-                        <input type="hidden" name="switch:{{ f.key }}" value="off">
-                        <input type="checkbox" class="switch" id="f-{{ loop.index }}-{{ g.id }}"
-                               name="switch:{{ f.key }}" value="on" {% if f.value %}checked{% endif %}>
-                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
-                    </div>
-                    {% else %}
-                    <div class="mail-field{% if f.changed %} changed{% endif %}">
-                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
-                        {% if f.kind == "text" %}
-                        <textarea id="f-{{ loop.index }}-{{ g.id }}" name="text:{{ f.key }}"
-                                  rows="3">{{ f.value }}</textarea>
-                        {% else %}
-                        <input type="text" id="f-{{ loop.index }}-{{ g.id }}"
-                               name="text:{{ f.key }}" value="{{ f.value }}">
+                    {# A setting rather than a text, saved by the same button, and
+                       the texts it governs drawn inside it: a block that is sent
+                       or not sent, rather than a switch and some fields that
+                       happen to be neighbours. The hidden "off" goes first — a
+                       browser sends nothing at all for an unticked box, and the
+                       later value wins when it is ticked. #}
+                    <div class="mail-block{% if not f.value %} off{% endif %}">
+                        <div class="mail-block-head">
+                            <label for="f-{{ g.id }}-{{ f.key }}">{{ f.label }}</label>
+                            {% if f.hint %}{{ fields.help(f.hint) }}{% endif %}
+                            <input type="hidden" name="switch:{{ f.key }}" value="off">
+                            <input type="checkbox" class="switch" id="f-{{ g.id }}-{{ f.key }}"
+                                   name="switch:{{ f.key }}" value="on" {% if f.value %}checked{% endif %}>
+                        </div>
+                        {% if f.fields %}
+                        <div class="mail-block-body">
+                            {% for sub in f.fields %}
+                            {% with f = sub %}{% include "_mail_field.html" %}{% endwith %}
+                            {% endfor %}
+                        </div>
                         {% endif %}
                     </div>
+                    {% else %}
+                    {% include "_mail_field.html" %}
                     {% endif %}
                     {% endfor %}
                 </div>
@@ -537,6 +541,15 @@
             }
             form.addEventListener("input", refresh);
             refresh();
+
+            // The block greys out as it is switched off, before anything is
+            // saved: the page should look the way the letter will read.
+            form.addEventListener("change", function (e) {
+                var box = e.target;
+                if (!box.classList || !box.classList.contains("switch")) return;
+                var block = box.closest(".mail-block");
+                if (block) block.classList.toggle("off", !box.checked);
+            });
         }
 
         // Switching the language reloads the editor with that language's texts,

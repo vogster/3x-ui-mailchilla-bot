@@ -69,14 +69,15 @@
 </table>
 {% endif %}
 
-{% if support %}
+{% if support_block %}
 {# Its own box rather than another grey paragraph: this is the line somebody
-   looks for when nothing else in the letter has worked. #}
+   looks for when nothing else in the letter has worked. It has a switch of
+   its own, apart from the address in the footer below. #}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 26px;">
     <tr>
         <td bgcolor="#141416" style="background-color: #141416; border: 1px solid #26262a;
                    border-radius: 8px; padding: 14px 16px; color: #ededef; font-size: 15px;">
-            {{ t("welcome.support") | emph | mailto(support) }}
+            {{ t("welcome.support") | emph | mailto(support_block) }}
         </td>
     </tr>
 </table>

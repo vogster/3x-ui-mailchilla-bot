@@ -15,7 +15,7 @@
 {% endfor %}{% endif %}
 {% if manual %}{{ manual.button | plain }}: {{ manual.url }}
 {% endif %}
-{% if support %}{{ t("welcome.support") | plain }}
+{% if support_block %}{{ t("welcome.support") | plain }}
 {% endif %}
 {% if t("welcome.commands_text") %}{{ t("welcome.commands_title") | plain }}
 {{ t("welcome.commands_text") | plain }}

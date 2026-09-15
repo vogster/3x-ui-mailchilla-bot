@@ -156,6 +156,17 @@ class PagesOpen(PanelCase):
             with self.subTest(url=url):
                 self.page(url)
 
+    def test_a_switched_block_carries_its_texts_inside_it(self):
+        # The switches on the Letters tab are drawn as blocks with the texts
+        # they govern inside them; a field that lost its way out of its block
+        # would still render, just in the wrong place, so the markup is what
+        # this asserts rather than the text alone.
+        body = self.page("/settings")
+        block = body.index('name="switch:WELCOME_MANUAL_ENABLED"')
+        field = body.index('name="text:welcome.button_manual"')
+        self.assertLess(block, field)
+        self.assertLess(field, body.index('name="switch:WELCOME_SUPPORT_ENABLED"'))
+
     def test_a_tariff_card_lists_who_is_on_it(self):
         body = self.page(f"/tariffs/{self.tariff['id']}")
         self.assertIn("Basic", body)

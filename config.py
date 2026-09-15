@@ -86,14 +86,24 @@ REMARK_INCLUDE_NAME = os.getenv("REMARK_INCLUDE_NAME", "true").strip().lower() i
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "").strip()
 MANUAL_URL = os.getenv("MANUAL_URL", "").strip()
 
+# The support line in the footer every letter carries. On by default and
+# harmless without an address: with SUPPORT_EMAIL empty there is no line.
+# Separate from the registration letter's own line below, because the two are
+# asked for in different places — the footer is a signature, the other is help
+# offered to somebody setting a connection up for the first time.
+FOOTER_SUPPORT_ENABLED = True
+
 # --- The welcome letter ---
 # The QR code of the subscription link. On by default: the reader who opened
 # their mail on a computer is exactly who the letter is for.
 WELCOME_QR_ENABLED = True
 
-# The button to the instructions, beside the app buttons. On by default and
-# harmless without a link: with MANUAL_URL empty there is nothing to draw.
+# The link to the instructions, under every way of connecting. On by default
+# and harmless without a link: with MANUAL_URL empty there is nothing to draw.
 WELCOME_MANUAL_ENABLED = True
+
+# The support line of the registration letter's own, below the instructions.
+WELCOME_SUPPORT_ENABLED = True
 
 # --- Language ---
 # The interface language and the language letters go out in are separate:

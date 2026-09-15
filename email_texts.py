@@ -41,7 +41,27 @@ LINE, TEXT = "line", "text"
 # installation, not a string that differs per language. It is described here
 # rather than on the settings page so that it sits beside the texts it governs,
 # which is where somebody editing the letter will look for it.
+#
+# A switch carries a fifth element: the fields it governs. The two are drawn as
+# one framed block, with the switch in its heading — a switch on a row of its
+# own reads as one more field in the column, and which of its neighbours it
+# belongs to is then anybody's guess. Nesting says it instead of explaining it.
 SWITCH = "switch"
+
+
+def walk(fields):
+    """
+    Every field of a group in order, the switched blocks flattened into it.
+
+    Each item is the plain four-tuple, so anything that does not care about the
+    nesting — the catalogue check, the per-group key sets — reads the structure
+    as the flat list it used to be.
+    """
+    for field in fields:
+        yield tuple(field[:4])
+        for inner in (field[4] if len(field) > 4 else ()):
+            yield tuple(inner[:4])
+
 
 # The captions and hints below are interface strings and go through the panel's
 # own catalogue; the letter texts themselves live in DEFAULTS_BY_LANG.
@@ -53,9 +73,11 @@ GROUPS = [
         "fields": [
             ("common.footer", "Letter footer", TEXT,
              "Substitution: {service}. Every line is a paragraph of its own."),
-            ("common.support", "The support line in the footer", LINE,
-             "Shown in every letter, under the footer, when a support address is "
-             "set on the General tab. Substitution: {support}."),
+            ("FOOTER_SUPPORT_ENABLED", "The support line in the footer", SWITCH,
+             "The line below the footer of every letter, telling the reader where to "
+             "write. The address itself is set on the General tab; with no address "
+             "there is no line, switch or no switch.",
+             [("common.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("common.unit_gb", "Gigabytes", LINE,
              "Substitution: {gb}. The unit beside a traffic figure."),
         ],
@@ -79,25 +101,24 @@ GROUPS = [
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
-            ("WELCOME_MANUAL_ENABLED", "Show the instructions button", SWITCH,
-             "The button beside the app ones, leading to the page that explains how "
-             "to connect. The link itself is set on the General tab; with no link "
-             "there is no button, switch or no switch."),
-            ("WELCOME_QR_ENABLED", "Send the QR code", SWITCH,
+            ("WELCOME_QR_ENABLED", "The QR code", SWITCH,
              "The subscription link as a code, for the reader who opened the letter on a "
              "computer and would otherwise be carrying the link across to their phone by "
              "hand. It is drawn on the server and travels inside the letter, so nothing "
-             "is fetched from anywhere."),
-            ("welcome.qr_intro", "The line above the QR code", LINE,
-             "The code carries the same subscription link as the button above it."),
-            ("welcome.button_manual", "The instructions button", LINE,
-             "Beside the app buttons. Shown when a link to the instructions is set "
-             "on the General tab and the switch above is on."),
-            ("welcome.support", "The support line", LINE,
-             "Its own line in this letter, where somebody is setting a connection up "
-             "for the first time. Shown when a support address is set. "
-             "Substitution: {support}."),
+             "is fetched from anywhere.",
+             [("welcome.qr_intro", "The line above the code", LINE,
+               "The code carries the same subscription link as the button above it.")]),
             ("welcome.manual_intro", "The line above the link", LINE, ""),
+            ("WELCOME_MANUAL_ENABLED", "The link to the instructions", SWITCH,
+             "The link under every way of connecting, leading to the page that explains "
+             "how to do it by hand. The address itself is set on the General tab; with "
+             "no address there is no link, switch or no switch.",
+             [("welcome.button_manual", "The text of the link", LINE, "")]),
+            ("WELCOME_SUPPORT_ENABLED", "The support line", SWITCH,
+             "The line of this letter's own, below the instructions, where somebody is "
+             "setting a connection up for the first time. The footer of every letter "
+             "carries the address as well, under General.",
+             [("welcome.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("welcome.commands_title", "The commands block heading", LINE, ""),
             ("welcome.commands_text", "The commands block text", TEXT, ""),
         ],
@@ -408,7 +429,7 @@ DEFAULTS_BY_LANG = {
 }
 
 # Flat lookups over the structure itself, language aside.
-FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in g["fields"]
+FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in walk(g["fields"])
               if kind != SWITCH}
 GROUP_BY_ID = {g["id"]: g for g in GROUPS}
 ALL_KEYS = frozenset(FIELD_KIND)
@@ -522,7 +543,7 @@ def reset(group_id: str = None, code: str = None):
         if group_id is None:
             merged[code] = {}
         else:
-            keys = {key for key, _, _, _ in GROUP_BY_ID[group_id]["fields"]}
+            keys = {key for key, _, _, _ in walk(GROUP_BY_ID[group_id]["fields"])}
             merged[code] = {k: v for k, v in merged.get(code, {}).items() if k not in keys}
         _write(merged)
         return dict(merged[code])
@@ -543,7 +564,7 @@ def _write(merged: dict):
 
 
 def changed_count(group_id: str, code: str = None) -> int:
-    keys = {key for key, _, _, _ in GROUP_BY_ID[group_id]["fields"]}
+    keys = {key for key, _, _, _ in walk(GROUP_BY_ID[group_id]["fields"])}
     with _lock:
         edited = _overrides.get(lang(code), {})
         return sum(1 for k in edited if k in keys)

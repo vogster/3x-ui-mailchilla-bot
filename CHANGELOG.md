@@ -15,12 +15,16 @@ read as something a person wants to know before updating.
 - **A support address and a link to the instructions**, both set on the General
   tab. The address goes into the footer of every letter and, in its own words,
   into the registration letter — where somebody is setting a connection up for
-  the first time. The link becomes a button beside the "Add to Happ / Incy"
-  ones, and the Letters tab can switch that button off the way it switches off
-  the QR code. Both are empty by default: a letter should not invite anybody to
-  write to a blank address. The address is a link in both places, so a reader
-  presses it and their mail client opens a new letter. Every letter text can use
-  `{support}` and `{manual}`, the way it already uses `{service}`.
+  the first time. The link to the instructions sits below every way of
+  connecting, after the buttons, the QR code and the link to copy: try it first,
+  read about it if it did not work. All three blocks have a switch of their own
+  on the Letters tab: the switch and the text it governs are drawn as one
+  framed block that greys out when it is off, so what a letter carries can be
+  read down the page. The QR code is one of those blocks now too. Both addresses are empty by default: a letter should not invite
+  anybody to write to a blank address. The support address is a link in both
+  places, so a reader presses it and their mail client opens a new letter. Every
+  letter text can use `{support}` and `{manual}`, the way it already uses
+  `{service}`.
 
 - **Tariffs.** What a new client gets — traffic, term, inbounds — is a tariff
   now, and each tariff has its own code word. There can be as many as you like:

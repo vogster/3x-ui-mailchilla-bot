@@ -142,13 +142,17 @@ class SupportAndInstructions(unittest.TestCase):
 
     def setUp(self):
         self.saved = (config.SUPPORT_EMAIL, config.MANUAL_URL,
-                      config.WELCOME_MANUAL_ENABLED, config.MAIL_LANG)
+                      config.WELCOME_MANUAL_ENABLED, config.WELCOME_SUPPORT_ENABLED,
+                      config.FOOTER_SUPPORT_ENABLED, config.MAIL_LANG)
         config.MAIL_LANG = "ru"
+        config.WELCOME_SUPPORT_ENABLED = True
+        config.FOOTER_SUPPORT_ENABLED = True
         email_texts.load()
 
     def tearDown(self):
         (config.SUPPORT_EMAIL, config.MANUAL_URL,
-         config.WELCOME_MANUAL_ENABLED, config.MAIL_LANG) = self.saved
+         config.WELCOME_MANUAL_ENABLED, config.WELCOME_SUPPORT_ENABLED,
+         config.FOOTER_SUPPORT_ENABLED, config.MAIL_LANG) = self.saved
         email_texts.load()
 
     def welcome(self):
@@ -176,23 +180,52 @@ class SupportAndInstructions(unittest.TestCase):
         self.assertIn("Напишите нам", mail.html)
         self.assertIn("Вопросы", mail.html)
 
-    def test_the_instructions_are_a_button_beside_the_apps(self):
+    def test_the_instructions_are_a_link_in_the_letter(self):
         config.MANUAL_URL = "https://example.com/howto"
         config.WELCOME_MANUAL_ENABLED = True
         mail = self.welcome()
         self.assertIn("https://example.com/howto", mail.html)
         self.assertIn("https://example.com/howto", mail.text)
 
-    def test_the_switch_takes_the_button_away(self):
+    def test_the_switch_takes_the_link_away(self):
         config.MANUAL_URL = "https://example.com/howto"
         config.WELCOME_MANUAL_ENABLED = False
         self.assertNotIn("https://example.com/howto", self.welcome().html)
 
-    def test_no_link_means_no_button_whatever_the_switch(self):
+    def test_no_address_means_no_link_whatever_the_switch(self):
         config.MANUAL_URL = ""
         config.WELCOME_MANUAL_ENABLED = True
         mail = self.welcome()
         self.assertNotIn("Как настроить", mail.html)
+
+    def test_each_support_line_has_its_own_switch(self):
+        # The footer is a signature; the line in the registration letter is
+        # help offered to somebody setting a connection up. An installation may
+        # well want one without the other, so one switch each.
+        config.SUPPORT_EMAIL = "help@example.com"
+
+        config.WELCOME_SUPPORT_ENABLED = False
+        config.FOOTER_SUPPORT_ENABLED = True
+        mail = self.welcome()
+        self.assertNotIn("Напишите нам", mail.html)
+        self.assertNotIn("Напишите нам", mail.text)
+        self.assertIn("Вопросы", mail.html)
+
+        config.WELCOME_SUPPORT_ENABLED = True
+        config.FOOTER_SUPPORT_ENABLED = False
+        mail = self.welcome()
+        self.assertIn("Напишите нам", mail.html)
+        self.assertNotIn("Вопросы", mail.html)
+        self.assertNotIn("Вопросы", mail.text)
+
+    def test_the_footer_switch_reaches_every_letter(self):
+        # It is the footer of all of them, not of the registration letter.
+        config.SUPPORT_EMAIL = "help@example.com"
+        config.FOOTER_SUPPORT_ENABLED = False
+        for mail in (templates.get_status_email("ben@example.com", True, 1, 2, 0, 0),
+                     templates.get_notice("unknown", subject="?")):
+            self.assertNotIn("help@example.com", mail.html)
+            self.assertNotIn("help@example.com", mail.text)
 
     def test_the_substitutions_work_in_any_text(self):
         # {support} and {manual} are offered to every editable text, like

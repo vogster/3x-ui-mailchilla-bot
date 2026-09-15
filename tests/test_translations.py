@@ -32,7 +32,7 @@ class LetterEditorCaptions(unittest.TestCase):
         wanted = []
         for group in email_texts.GROUPS:
             wanted += [group["title"], group["hint"]]
-            for key, label, kind, hint in group["fields"]:
+            for key, label, kind, hint in email_texts.walk(group["fields"]):
                 wanted += [label, hint]
         self.assertEqual(_missing(wanted), [])
 

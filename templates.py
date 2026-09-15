@@ -166,7 +166,7 @@ def _render(name: str, **context) -> Email:
     context.setdefault("service_name", config.SERVICE_NAME)
     # Every letter carries the support address in its footer, so it is set here
     # rather than by each builder. Empty means the footer says nothing about it.
-    context.setdefault("support", config.SUPPORT_EMAIL)
+    context.setdefault("support", _support("FOOTER_SUPPORT_ENABLED"))
     try:
         html = _env.get_template(f"{name}.html").render(**context)
     except Exception as e:
@@ -190,18 +190,32 @@ def _app_links(sub_url):
     return apps
 
 
-def _manual_button():
+def _manual_link():
     """
-    The instructions button, or nothing.
+    The link to the instructions, or nothing.
 
     Two ways to have none: no address to send anybody to, or the switch turned
     off for an installation whose letters say enough already. Either way the
-    row of buttons closes up around it, as it does for an app with no scheme.
+    letter closes up around it, as it does for an app with no scheme.
     """
     url = (config.MANUAL_URL or "").strip()
     if not url or not config.WELCOME_MANUAL_ENABLED:
         return None
     return {"url": url, "button": text("welcome.button_manual")}
+
+
+def _support(switch: str) -> str:
+    """
+    The support address for the block named by that switch, or nothing.
+
+    Each place the address appears has a switch of its own — the footer of
+    every letter, and the registration letter's own line — because an
+    installation may well want the signature without the second offer of help,
+    or the other way round. An empty address silences both regardless.
+    """
+    if not getattr(config, switch, True):
+        return ""
+    return (config.SUPPORT_EMAIL or "").strip()
 
 
 def _fmt_gb(value_bytes) -> str:
@@ -230,7 +244,9 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
                "url": a["url"],
                "button": text("welcome.button_app", app=a["label"])}
               for a in _app_links(sub_url)],
-        manual=_manual_button(),
+        manual=_manual_link(),
+        # This letter's own support line, switched separately from the footer's.
+        support_block=_support("WELCOME_SUPPORT_ENABLED"),
         expire_text=(text("welcome.value_forever") if not expire_days
                      else text("welcome.value_days", days=expire_days)),
         limit_text=(text("welcome.value_unlimited") if not limit_gb

@@ -57,21 +57,27 @@ def _text_groups():
     follow the panel's own language: someone running an English panel may well
     be writing the Russian letters.
     """
+    def build(entry):
+        key, label, kind, hint = entry[:4]
+        field = {"key": key, "label": i18n.t(label), "kind": kind,
+                 "hint": i18n.t(hint) if hint else ""}
+        if kind == email_texts.SWITCH:
+            # A settings key, not a text: its value comes from config and
+            # there is nothing per-language to have been "changed". The fields
+            # it governs travel inside it, and the page draws the lot as one
+            # block so that the switch is plainly about them.
+            field["value"] = bool(getattr(config, key, False))
+            field["changed"] = False
+            field["fields"] = [build(inner) for inner in
+                               (entry[4] if len(entry) > 4 else ())]
+        else:
+            field["value"] = email_texts.get(key)
+            field["changed"] = email_texts.is_changed(key)
+        return field
+
     groups = []
     for g in email_texts.GROUPS:
-        fields = []
-        for key, label, kind, hint in g["fields"]:
-            field = {"key": key, "label": i18n.t(label), "kind": kind,
-                     "hint": i18n.t(hint) if hint else ""}
-            if kind == email_texts.SWITCH:
-                # A settings key, not a text: its value comes from config and
-                # there is nothing per-language to have been "changed".
-                field["value"] = bool(getattr(config, key, False))
-                field["changed"] = False
-            else:
-                field["value"] = email_texts.get(key)
-                field["changed"] = email_texts.is_changed(key)
-            fields.append(field)
+        fields = [build(entry) for entry in g["fields"]]
         groups.append({
             "id": g["id"], "title": i18n.t(g["title"]), "hint": i18n.t(g["hint"]),
             "fields": fields,
