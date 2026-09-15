@@ -88,7 +88,11 @@ Table-based layout with inline styles, flat colours, a text version in every let
 
 The welcome letter carries a QR code of the subscription link, for the reader who opened their mail on a computer and would otherwise be copying the link across to their phone by hand. It is drawn on the server and travels inside the letter - no QR service is handed everyone's subscription link.
 
-Every text is editable from the panel: subjects, headings, captions, the footer, the service replies. Each letter has a test-send button.
+The registration letter opens with what the subscription is: the tariff by name, the term and the traffic limit. The name is the one the client is actually on, read from their group in 3x-ui, so somebody already registered who writes another tariff's word is told what they still have rather than what the word would have given them. A client from before tariffs existed carries no group, and then the line is simply left out.
+
+Two addresses of yours travel with the letters, both optional and both set on the General tab. The support address is in the footer of every letter and, in its own words, in the registration letter — where somebody is setting a connection up for the first time. It is a link to write to, so pressing it opens a new letter already addressed. The link to the instructions sits in the registration letter below every way of connecting — the buttons, the QR code, the link to copy — because reading about it comes after trying it.
+
+Every text is editable from the panel: subjects, headings, captions, the footer, the service replies. Each letter has a test-send button. The parts that can be left out — the QR code, the link to the instructions, either support line — are framed blocks with a switch of their own, beside the text each one governs.
 
 ![Letter settings](docs/screenshots/settings-mail.png)
 
@@ -174,6 +178,8 @@ The wizard goes step by step: service, mail, inbounds and the first tariff, then
 
 A tariff is what a client gets: traffic, term and the inbounds they are added to. Each has its own code word, and a letter carrying that word registers the sender on that tariff. There can be as many tariffs as you like - a generous one for the family, a small one for a trial, one with no word at all that can only be reached another way.
 
+![Tariffs](docs/screenshots/tariffs.png)
+
 | Field | What it means |
 |---|---|
 | Name | yours to read; it names the tariff in the panel and in the log |
@@ -191,6 +197,8 @@ The dashboard counts who is on which tariff and what they have spent, the broadc
 Two details worth knowing about the word. It is matched whole, so `START` is not found inside `RESTART`; and it is looked for only in the part of a letter its sender actually typed, so a reply quoting the welcome letter does not count as a fresh registration. If one letter carries the words of two tariffs, the bot writes back and asks which is meant rather than guessing.
 
 **Code words are a thing of their own**, on their own tab beside the tariffs. A code is a word, the tariff it opens, how many activations are left in it, a note for you, and a switch:
+
+![Code words](docs/screenshots/codes.png)
 
 | Activations | What it is |
 |---|---|
@@ -225,7 +233,7 @@ Everything that changes during normal use is set in the panel and applies on the
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, notification text |
-| **Letters** | the language letters go out in, and every text of every letter |
+| **Letters** | the language letters go out in, every text of every letter, and a switch for each block that can be left out |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
 
@@ -355,6 +363,13 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 ## 🛠️ Development
 
 Forks and pull requests are welcome. The main branch is `main`.
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m unittest discover -s tests   # what CI runs
+```
+
+Most of the tests are pure — the settings coercion, the code-word matching, the letter texts. `tests/test_panel_routes.py` is the other kind: it drives the panel through `fastapi.testclient` with 3x-ui stubbed out, and exists for one failure in particular — a template reading a context key the route never sent. Jinja resolves that to Undefined in silence, the page still renders, and the missing part is found by somebody clicking a week later. A new page or a new context key wants a line in that file.
 
 ```bash
 git checkout -b feature/my-feature

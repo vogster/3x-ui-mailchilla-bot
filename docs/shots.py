@@ -95,11 +95,11 @@ _family = _demo_tariff("Family", 500, 365, [1], "AURORA-FAMILY")
 _trial = _demo_tariff("Trial", 10, 7, [1])
 # A personal code on the trial tariff, so the page shows both shapes at once.
 tariffs.save_code({{"word": "K78QYYDNSZ", "tariff_id": _trial["id"],
-                   "uses_left": 1, "note": "Для Лены", "enabled": True}})
+                   "uses_left": 1, "note": "For Lena", "enabled": True}})
 # A word handed out for a few days, so the page shows a code that runs out by
 # itself beside ones that do not.
 tariffs.save_code({{"word": "AURORA-WEEKEND", "tariff_id": _standard["id"],
-                   "uses_left": None, "note": "На выходные", "enabled": True,
+                   "uses_left": None, "note": "For the weekend", "enabled": True,
                    "expires_at": int(time.time() * 1000) + 3 * 86400 * 1000}})
 # Somebody has come in through the open word, so the code's card has a list to
 # show rather than an empty state.
@@ -262,6 +262,17 @@ def main():
             page.goto(base + first, wait_until="networkidle")
             page.wait_for_timeout(300)
             shoot(page, "client")
+
+            # Both tabs of the tariffs page: what a client gets, and the words
+            # that open it. The second one is the point of the split, so it is
+            # worth a frame of its own rather than a mention in the first.
+            page.goto(f"{base}/tariffs", wait_until="networkidle")
+            page.wait_for_timeout(300)
+            shoot(page, "tariffs")
+
+            page.goto(f"{base}/tariffs?tab=codes", wait_until="networkidle")
+            page.wait_for_timeout(300)
+            shoot(page, "codes")
 
             page.goto(f"{base}/broadcast", wait_until="networkidle")
             page.wait_for_timeout(300)
