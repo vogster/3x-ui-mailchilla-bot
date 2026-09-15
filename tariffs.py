@@ -91,9 +91,9 @@ def _clean_code(raw: dict) -> dict:
     """
     One code. `uses_left` of None means it never runs out.
 
-    A `kind` left over from an older file is ignored rather than migrated: the
-    number of activations says everything it used to say, and the field simply
-    stops being written the next time the file is saved.
+    A `kind` or a `confirm` left over from an older file is ignored rather than
+    migrated: both belonged to ideas this project tried and dropped, and they
+    simply stop being written the next time the file is saved.
     """
     word = str(raw.get("word") or "").strip()
     if not word:
@@ -109,10 +109,6 @@ def _clean_code(raw: dict) -> dict:
         "enabled": raw.get("enabled") is not False,
         # None: unlimited. A number: how many registrations are left in it.
         "uses_left": uses_left,
-        # Whether a letter carrying this code waits for the administrator.
-        # The code's own, from the moment it is made: a tariff edited later must
-        # never quietly change how a word already handed out behaves.
-        "confirm": bool(raw.get("confirm")),
         "used_by": [str(x) for x in (raw.get("used_by") or [])],
         # What the code is for, in the administrator's own words. Never sent
         # anywhere — it is a note on a list, so that a page of codes is not ten
@@ -150,7 +146,7 @@ def _seed_from_settings() -> dict:
     word = str(getattr(config, "CODEWORD", "") or "").strip()
     if word:
         codes.append(_clean_code({"word": word, "tariff_id": tariff["id"],
-                                  "uses_left": None, "confirm": False}))
+                                  "uses_left": None}))
     return {"tariffs": [tariff], "codes": codes}
 
 
