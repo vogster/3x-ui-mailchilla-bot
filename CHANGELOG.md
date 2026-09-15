@@ -21,6 +21,11 @@ read as something a person wants to know before updating.
 - A tariff is read once, when a client is created. Editing one therefore
   changes nothing for anybody already registered, and the page says so rather
   than leaving you to wonder.
+- The list of who came in through a code no longer grows without end. The
+  count stays exact; the last two hundred addresses are kept, and the page says
+  so when there were more. A word handed out openly could otherwise make every
+  registration a little more expensive than the last, since the file is
+  rewritten whole each time.
 - A code can be given a **date it works until** — the last day, counted to its
   end. A word handed out for a weekend then stops on its own instead of waiting
   to be remembered on Monday. Empty means it never runs out by itself.

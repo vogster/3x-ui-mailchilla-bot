@@ -70,6 +70,11 @@
 <div class="panel">
     <div class="panel-head">
         <h2>{{ t("Came in through it") }} {{ fields.help(t("Everybody who registered by writing this word. The record stays whatever happens to the code later — switching it off or renaming it keeps the list, removing the code from the list is what throws it away.")) }}</h2>
+        {% if code.used_trimmed %}
+        <span class="muted" style="margin-left:auto;">
+            {{ t("{total} in all, the last {kept} are kept", total=code.used_count, kept=code.used_kept) }}
+        </span>
+        {% endif %}
     </div>
     {% if arrivals %}
     <div class="tscroll">

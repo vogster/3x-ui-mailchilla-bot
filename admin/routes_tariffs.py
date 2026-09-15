@@ -33,7 +33,10 @@ def _code_row(code: dict, tariff_names: dict) -> dict:
         **code,
         "tariff_name": tariff_names.get(code["tariff_id"], ""),
         "used": ", ".join(code["used_by"]),
-        "used_count": len(code["used_by"]),
+        "used_count": code["used_total"],
+        # Whether the list is the whole story or only its end.
+        "used_trimmed": code["used_total"] > len(code["used_by"]),
+        "used_kept": len(code["used_by"]),
         "unlimited": code["uses_left"] is None,
         "created": datetime.fromtimestamp(code["created_at"] / 1000).strftime("%d.%m.%Y"),
         "expires": (datetime.fromtimestamp(code["expires_at"] / 1000).strftime("%d.%m.%Y")

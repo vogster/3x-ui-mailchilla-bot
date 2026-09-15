@@ -37,6 +37,15 @@ logger = logging.getLogger(__name__)
 
 TARIFFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tariffs.json")
 
+# How many of the addresses that came in through a code are kept on it.
+#
+# The count is exact forever; the list is a window onto the end of it. A word
+# handed out openly can let in thousands, and tariffs.json is rewritten whole
+# on every registration — an unbounded list would make each new client cost a
+# little more than the last. Two hundred is far past anything one person looks
+# through, and the page says plainly when there were more.
+USED_BY_KEPT = 200
+
 # The alphabet a generated code is drawn from. No 0/O and no 1/I/l: the word is
 # read off a screen and typed by hand, often from a phone, and a pair that
 # cannot be told apart in the reader's font costs somebody a registration.
@@ -118,7 +127,13 @@ def _clean_code(raw: dict) -> dict:
         # When it stops working by itself. A word handed out for a weekend
         # should not have to be remembered and switched off on Monday.
         "expires_at": max(expires_at, 0),
-        "used_by": [str(x) for x in (raw.get("used_by") or [])],
+        "used_by": [str(x) for x in (raw.get("used_by") or [])][-USED_BY_KEPT:],
+        # How many came in through it altogether, kept apart from the list so
+        # that trimming the list does not quietly change the figure. An older
+        # file has no such field, and the list it does have is the whole truth
+        # about it.
+        "used_total": max(int(raw.get("used_total") or 0),
+                          len(raw.get("used_by") or [])),
         # What the code is for, in the administrator's own words. Never sent
         # anywhere — it is a note on a list, so that a page of codes is not ten
         # anonymous strings.
@@ -362,6 +377,7 @@ def save_code(values: dict, was: str = None) -> dict:
             # Whoever came in through it is history, not a setting: a rename
             # must not lose the record of who used the code.
             code["used_by"] = previous["used_by"]
+            code["used_total"] = previous["used_total"]
             code["created_at"] = previous["created_at"]
             needle = normalise_word(previous["word"])
             _state["codes"] = [code if normalise_word(c["word"]) == needle else c
@@ -479,6 +495,9 @@ def spend(word: str, email: str):
                 continue
             if email and email not in code["used_by"]:
                 code["used_by"].append(email)
+                code["used_total"] += 1
+                # The window slides; the count does not.
+                del code["used_by"][:-USED_BY_KEPT]
             if code["uses_left"] is not None:
                 code["uses_left"] = max(code["uses_left"] - 1, 0)
             _write(_state)

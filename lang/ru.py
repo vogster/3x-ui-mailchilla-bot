@@ -91,6 +91,7 @@ TEXTS = {
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
     "Groups without a tariff": "Группы без тарифа",
+    "{total} in all, the last {kept} are kept": "всего {total}, хранятся последние {kept}",
     "Works until": "Работает до",
     "out of date": "срок истёк",
     "out of date since {date}": "срок истёк {date}",

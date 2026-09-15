@@ -55,7 +55,14 @@
 
 {% if code.used_by %}
 <div class="panel" style="margin-top: 20px;">
-    <div class="panel-head"><h2>{{ t("Came in through it") }}</h2></div>
+    <div class="panel-head">
+        <h2>{{ t("Came in through it") }}</h2>
+        {% if code.used_trimmed %}
+        <span class="muted" style="margin-left:auto;">
+            {{ t("{total} in all, the last {kept} are kept", total=code.used_count, kept=code.used_kept) }}
+        </span>
+        {% endif %}
+    </div>
     <div style="padding: 16px 24px 22px 24px;">
         {% for who in code.used_by %}
         <div class="mono">{{ who }}</div>

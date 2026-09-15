@@ -574,3 +574,45 @@ class CodesThatRunOutOfTime(StorageCase):
         tariffs._state = {"tariffs": stored["tariffs"],
                           "codes": [tariffs._clean_code(c) for c in stored["codes"]]}
         self.assertIsNotNone(tariffs.match("AURORA"))
+
+
+class TheListOfArrivalsIsBounded(StorageCase):
+    """
+    A word handed out openly can let in thousands, and tariffs.json is
+    rewritten whole on every registration. The list of who came is a window
+    onto the end of it; the count behind it stays exact.
+    """
+
+    def test_the_count_is_exact_past_the_window(self):
+        tariff = self.make(word="AURORA")
+        for n in range(tariffs.USED_BY_KEPT + 25):
+            tariffs.spend("AURORA", f"user{n}@example.com")
+        code = tariffs.get_code("AURORA")
+        self.assertEqual(code["used_total"], tariffs.USED_BY_KEPT + 25)
+        self.assertEqual(len(code["used_by"]), tariffs.USED_BY_KEPT)
+
+    def test_the_window_keeps_the_newest(self):
+        self.make(word="AURORA")
+        for n in range(tariffs.USED_BY_KEPT + 3):
+            tariffs.spend("AURORA", f"user{n}@example.com")
+        kept = tariffs.get_code("AURORA")["used_by"]
+        self.assertEqual(kept[-1], f"user{tariffs.USED_BY_KEPT + 2}@example.com")
+        self.assertNotIn("user0@example.com", kept)
+
+    def test_an_old_file_counts_what_it_has(self):
+        # No used_total in it: the list is the whole truth about that code.
+        tariff = self.make(name="Family", word="")
+        code = tariffs._clean_code({
+            "word": "OLD", "tariff_id": tariff["id"], "uses_left": None,
+            "used_by": ["a@example.com", "b@example.com"],
+        })
+        self.assertEqual(code["used_total"], 2)
+
+    def test_a_rename_carries_both(self):
+        self.make(word="AURORA")
+        for n in range(3):
+            tariffs.spend("AURORA", f"user{n}@example.com")
+        renamed = tariffs.save_code({**tariffs.get_code("AURORA"), "word": "BOREALIS"},
+                                    was="AURORA")
+        self.assertEqual(renamed["used_total"], 3)
+        self.assertEqual(len(renamed["used_by"]), 3)
