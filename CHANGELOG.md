@@ -61,6 +61,12 @@ read as something a person wants to know before updating.
   (counted from today) and the inbounds fill themselves in, still editable, and
   nothing is saved until you press Save.
 
+- `mailchilla check` no longer stops at "3x-ui answers". It also says when
+  there is no tariff at all, when every code word is switched off or used up,
+  when a tariff has no inbounds ticked, and when one names an inbound the panel
+  does not have — the four ways registration stops working without a line in
+  the log.
+
 ### Changed
 
 - The inbound table has left the dashboard. It is 3x-ui's own list, and which

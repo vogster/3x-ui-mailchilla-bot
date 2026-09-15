@@ -210,7 +210,15 @@ declare -A MSG=(
 [en.c_auth]="3x-ui refused the credentials (HTTP {0}). Check XUI_API_TOKEN, or the username and password, in {1}."
 [en.c_net]="No answer from {0}. Check XUI_URL in {1}."
 [en.c_odd]="3x-ui answered, but not as expected. Look at the log: mailchilla log"
+[en.c_no_tariffs]="There is not a single tariff. A letter with a code word will register nobody until one exists."
+[en.c_no_codes]="No code word works: every one is switched off or used up. Nobody can register by mail."
+[en.c_tariff_empty]="The tariff {0} has no inbounds ticked. Registration on it will fail."
+[en.c_tariff_gone]="The tariff {0} names inbounds that 3x-ui does not have: {1}. Registration breaks off on them."
 [ru.c_auth]="3x-ui отклонил доступы (HTTP {0}). Проверьте XUI_API_TOKEN или логин с паролем в {1}."
+[ru.c_no_tariffs]="Нет ни одного тарифа. Пока его нет, письмо с кодовым словом никого не зарегистрирует."
+[ru.c_no_codes]="Ни одно кодовое слово не работает: все выключены или израсходованы. Зарегистрироваться письмом невозможно."
+[ru.c_tariff_empty]="В тарифе {0} не отмечен ни один inbound. Регистрация по нему не пройдёт."
+[ru.c_tariff_gone]="В тарифе {0} указаны inbound'ы, которых нет в 3x-ui: {1}. Регистрация на них обрывается."
 [ru.c_net]="Адрес {0} не отвечает. Проверьте XUI_URL в {1}."
 [ru.c_odd]="3x-ui ответил, но не так, как ожидалось. Посмотрите лог: mailchilla log"
 
@@ -459,15 +467,57 @@ except Exception:
 if not body.get("success"):
     print("ODD"); sys.exit(0)
 print("OK", len(body.get("obj") or []))
+
+# A reachable panel is only half the question. These are the three ways
+# registration stops working in silence, and none of them shows up in the log
+# until somebody writes in and gets nothing back.
+import tariffs
+tariffs.load()
+known = {i.get("id") for i in (body.get("obj") or [])}
+all_tariffs = tariffs.all_tariffs()
+if not all_tariffs:
+    print("NOTARIFFS")
+elif not tariffs.live_words():
+    print("NOCODES")
+def one_line(value):
+    # The shell reads this a line at a time; a name with a newline in it would
+    # arrive as two findings, the second of them nonsense.
+    return " ".join(str(value).split())
+
+for t in all_tariffs:
+    if not t["inbound_ids"]:
+        print("EMPTY", one_line(t["name"]))
+    else:
+        missing = sorted(set(t["inbound_ids"]) - known)
+        if missing:
+            # The ids first: a tariff name may hold spaces, so it has to be
+            # what is left over rather than what is up to the first space.
+            print("GONE", ",".join(str(i) for i in missing), one_line(t["name"]))
 ' 2>/dev/null)" || out="NET"
 
-    status="${out%% *}"
-    case "$status" in
-        OK)   good "$(t c_ok "${out#OK }")" ;;
-        AUTH) bad "$(t c_auth "${out#AUTH }" "$ENV_FILE")" ;;
-        ODD)  bad "$(t c_odd)" ;;
-        *)    bad "$(t c_net "$(env_get XUI_URL)" "$ENV_FILE")" ;;
-    esac
+    # The probe prints one line per finding, so each is read on its own rather
+    # than only the first: a panel that answers can still be unable to register
+    # anybody, and that is worth saying in the same breath.
+    local line status rest name ids
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        status="${line%% *}"
+        rest="${line#"$status"}"
+        rest="${rest# }"
+        case "$status" in
+            OK)         good "$(t c_ok "$rest")" ;;
+            AUTH)       bad "$(t c_auth "$rest" "$ENV_FILE")" ;;
+            ODD)        bad "$(t c_odd)" ;;
+            NOTARIFFS)  warn "$(t c_no_tariffs)" ;;
+            NOCODES)    warn "$(t c_no_codes)" ;;
+            EMPTY)      warn "$(t c_tariff_empty "$rest")" ;;
+            GONE)       ids="${rest%% *}"; name="${rest#"$ids"}"; name="${name# }"
+                        warn "$(t c_tariff_gone "$name" "$ids")" ;;
+            *)          bad "$(t c_net "$(env_get XUI_URL)" "$ENV_FILE")" ;;
+        esac
+    done <<EOF
+$out
+EOF
     printf '\n'
 }
 
