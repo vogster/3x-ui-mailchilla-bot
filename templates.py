@@ -65,6 +65,10 @@ class _SafeFormat(dict):
 def text(key: str, **values) -> str:
     """A string from the editable texts, with its values substituted in."""
     values.setdefault("service", config.SERVICE_NAME)
+    # Available to every text, like the service name: an installation sets them
+    # once and any letter may mention either.
+    values.setdefault("support", config.SUPPORT_EMAIL)
+    values.setdefault("manual", config.MANUAL_URL)
     raw = email_texts.get(key)
     try:
         return raw.format_map(_SafeFormat(values))
@@ -138,6 +142,9 @@ def qr_png(url: str) -> bytes:
 def _render(name: str, **context) -> Email:
     """Builds the HTML and text pair from the templates of the same name."""
     context.setdefault("service_name", config.SERVICE_NAME)
+    # Every letter carries the support address in its footer, so it is set here
+    # rather than by each builder. Empty means the footer says nothing about it.
+    context.setdefault("support", config.SUPPORT_EMAIL)
     try:
         html = _env.get_template(f"{name}.html").render(**context)
     except Exception as e:
@@ -159,6 +166,20 @@ def _app_links(sub_url):
         if scheme:
             apps.append({"label": label, "url": f"{scheme}/{sub_url}"})
     return apps
+
+
+def _manual_button():
+    """
+    The instructions button, or nothing.
+
+    Two ways to have none: no address to send anybody to, or the switch turned
+    off for an installation whose letters say enough already. Either way the
+    row of buttons closes up around it, as it does for an app with no scheme.
+    """
+    url = (config.MANUAL_URL or "").strip()
+    if not url or not config.WELCOME_MANUAL_ENABLED:
+        return None
+    return {"url": url, "button": text("welcome.button_manual")}
 
 
 def _fmt_gb(value_bytes) -> str:
@@ -187,6 +208,7 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
                "url": a["url"],
                "button": text("welcome.button_app", app=a["label"])}
               for a in _app_links(sub_url)],
+        manual=_manual_button(),
         expire_text=(text("welcome.value_forever") if not expire_days
                      else text("welcome.value_days", days=expire_days)),
         limit_text=(text("welcome.value_unlimited") if not limit_gb

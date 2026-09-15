@@ -220,7 +220,7 @@ Everything that changes during normal use is set in the panel and applies on the
 
 | Tab | What is inside |
 |---|---|
-| **General** | interface language, service name, subscription base address, administrator address |
+| **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions |
 | **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, connection check |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |

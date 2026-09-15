@@ -12,6 +12,15 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **A support address and a link to the instructions**, both set on the General
+  tab. The address goes into the footer of every letter and, in its own words,
+  into the registration letter — where somebody is setting a connection up for
+  the first time. The link becomes a button beside the "Add to Happ / Incy"
+  ones, and the Letters tab can switch that button off the way it switches off
+  the QR code. Both are empty by default: a letter should not invite anybody to
+  write to a blank address. Every letter text can use `{support}` and
+  `{manual}`, the way it already uses `{service}`.
+
 - **Tariffs.** What a new client gets — traffic, term, inbounds — is a tariff
   now, and each tariff has its own code word. There can be as many as you like:
   a generous one for the family, a small one for a trial, a closed one with no

@@ -27,6 +27,7 @@ MANAGED_KEYS = (
     # General
     "PANEL_LANG", "MAIL_LANG",
     "SERVICE_NAME", "ADMIN_EMAIL", "XUI_SUBSCRIPTION_BASE_URL",
+    "SUPPORT_EMAIL", "MANUAL_URL",
     # Mail
     "IMAP_SERVER", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD",
     "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
@@ -34,6 +35,7 @@ MANAGED_KEYS = (
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
+    "WELCOME_MANUAL_ENABLED",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
@@ -122,6 +124,15 @@ def _coerce(key, value):
         if address and "@" not in address:
             raise ValueError(i18n.t("the administrator address must contain an @"))
         return address
+    if key == "SUPPORT_EMAIL":
+        # Shown to clients rather than used to send anything, so the case is
+        # left as typed: Support@… is somebody's choice about how it reads.
+        address = str(value or "").strip()
+        if address and "@" not in address:
+            raise ValueError(i18n.t("the support address must contain an @"))
+        return address
+    if key == "MANUAL_URL":
+        return str(value or "").strip().rstrip("/")
     if key in ("IMAP_SERVER", "SMTP_SERVER"):
         # Empty means the bot simply will not reach for the mailbox, and says
         # as much in the log.
@@ -168,7 +179,7 @@ def _coerce(key, value):
         # A version string or nothing; it is only ever compared, never shown.
         return str(value or "").strip().lstrip("v")
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
-               "WELCOME_QR_ENABLED"):
+               "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

@@ -74,6 +74,8 @@ config.ADMIN_EMAIL = "admin@example.com"
 config.XUI_INBOUND_IDS = [1, 2]
 config.XUI_SUBSCRIPTION_BASE_URL = "https://aurora.example.com/sub"
 config.GOTIFY_URL, config.GOTIFY_TOKEN = "https://push.example.com", "AbCdEf123456"
+config.SUPPORT_EMAIL = "support@aurora.example.com"
+config.MANUAL_URL = "https://aurora.example.com/howto"
 config.CODEWORD = "AURORA"
 config.LIMIT_GB, config.EXPIRE_DAYS = 100, 90
 config.SETUP_DONE = {setup_done!r}
@@ -206,6 +208,8 @@ def letter_html(copy_dir):
         "config.SERVICE_NAME = 'Aurora VPN'\n"
         "config.MAIL_LANG = 'en'\n"
         "config.HAPP_URL, config.INCY_URL = 'happ://add', 'incy://add'\n"
+        "config.SUPPORT_EMAIL = 'support@aurora.example.com'\n"
+        "config.MANUAL_URL = 'https://aurora.example.com/howto'\n"
         "import email_texts; email_texts.load()\n"
         "import templates\n"
         "mail = templates.get_welcome_email('https://aurora.example.com/sub/8f2c41d9', 90, 100)\n"

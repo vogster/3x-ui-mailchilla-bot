@@ -9,12 +9,17 @@
 
 {{ t("welcome.manual_intro") | plain }}
 {{ sub_url }}
-{% if apps %}
+{% if apps or manual %}
 {{ t("welcome.apps_intro") | plain }}
 {% for app in apps %}  {{ app.button | plain }}: {{ app.url }}
-{% endfor %}{% endif %}
+{% endfor %}{% if manual %}  {{ manual.button | plain }}: {{ manual.url }}
+{% endif %}{% endif %}
+{% if support %}{{ t("welcome.support") | plain }}
+{% endif %}
 {% if t("welcome.commands_text") %}{{ t("welcome.commands_title") | plain }}
 {{ t("welcome.commands_text") | plain }}
 {% endif %}
 --
 {{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}

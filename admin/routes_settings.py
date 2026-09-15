@@ -113,6 +113,8 @@ def settings_submit(
     panel_lang: str = Form(""),
     service_name: str = Form(""),
     admin_email: str = Form(""),
+    support_email: str = Form(""),
+    manual_url: str = Form(""),
     xui_subscription_base_url: str = Form(""),
     imap_server: str = Form(""),
     imap_port: str = Form("993"),
@@ -141,6 +143,8 @@ def settings_submit(
     values = {
         "SERVICE_NAME": service_name,
         "ADMIN_EMAIL": admin_email,
+        "SUPPORT_EMAIL": support_email,
+        "MANUAL_URL": manual_url,
         "XUI_SUBSCRIPTION_BASE_URL": xui_subscription_base_url,
         "IMAP_SERVER": imap_server,
         "IMAP_PORT": imap_port,

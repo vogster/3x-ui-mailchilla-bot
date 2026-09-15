@@ -131,3 +131,72 @@ class MimeShape(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SupportAndInstructions(unittest.TestCase):
+    """
+    The address to write to and the page to read, both optional. An
+    installation with neither should promise neither — an empty line inviting
+    somebody to write to nobody is worse than no line.
+    """
+
+    def setUp(self):
+        self.saved = (config.SUPPORT_EMAIL, config.MANUAL_URL,
+                      config.WELCOME_MANUAL_ENABLED, config.MAIL_LANG)
+        config.MAIL_LANG = "ru"
+        email_texts.load()
+
+    def tearDown(self):
+        (config.SUPPORT_EMAIL, config.MANUAL_URL,
+         config.WELCOME_MANUAL_ENABLED, config.MAIL_LANG) = self.saved
+        email_texts.load()
+
+    def welcome(self):
+        return templates.get_welcome_email("https://example.com/sub/abc", 90, 100)
+
+    def test_the_support_address_reaches_every_letter(self):
+        config.SUPPORT_EMAIL = "help@example.com"
+        for mail in (self.welcome(),
+                     templates.get_status_email("ben@example.com", True, 1, 2, 0, 0),
+                     templates.get_notice("unknown", subject="?")):
+            self.assertIn("help@example.com", mail.html)
+            self.assertIn("help@example.com", mail.text)
+
+    def test_no_address_means_no_line(self):
+        config.SUPPORT_EMAIL = ""
+        mail = templates.get_status_email("ben@example.com", True, 1, 2, 0, 0)
+        self.assertNotIn("Вопросы", mail.html)
+        self.assertNotIn("Вопросы", mail.text)
+
+    def test_the_registration_letter_says_it_twice_on_purpose(self):
+        # Once in its own words, where somebody is setting things up, and once
+        # in the footer every letter carries.
+        config.SUPPORT_EMAIL = "help@example.com"
+        mail = self.welcome()
+        self.assertIn("Напишите нам", mail.html)
+        self.assertIn("Вопросы", mail.html)
+
+    def test_the_instructions_are_a_button_beside_the_apps(self):
+        config.MANUAL_URL = "https://example.com/howto"
+        config.WELCOME_MANUAL_ENABLED = True
+        mail = self.welcome()
+        self.assertIn("https://example.com/howto", mail.html)
+        self.assertIn("https://example.com/howto", mail.text)
+
+    def test_the_switch_takes_the_button_away(self):
+        config.MANUAL_URL = "https://example.com/howto"
+        config.WELCOME_MANUAL_ENABLED = False
+        self.assertNotIn("https://example.com/howto", self.welcome().html)
+
+    def test_no_link_means_no_button_whatever_the_switch(self):
+        config.MANUAL_URL = ""
+        config.WELCOME_MANUAL_ENABLED = True
+        mail = self.welcome()
+        self.assertNotIn("Как настроить", mail.html)
+
+    def test_the_substitutions_work_in_any_text(self):
+        # {support} and {manual} are offered to every editable text, like
+        # {service}, so a rewritten letter can mention either.
+        config.SUPPORT_EMAIL = "help@example.com"
+        config.MANUAL_URL = "https://example.com/howto"
+        self.assertEqual(templates.text("common.support"), "Вопросы: help@example.com")

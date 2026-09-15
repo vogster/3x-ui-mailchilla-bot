@@ -82,6 +82,16 @@
                        placeholder="https://sub.example.com">
             </div>
             <div>
+                <label for="support_email">{{ t("Support address") }} {{ fields.help(t("Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. Nothing is sent from it or to it — it is an address for people to write to. An empty value leaves it out of the letters altogether.")) }}</label>
+                <input type="text" id="support_email" name="support_email"
+                       value="{{ state.SUPPORT_EMAIL.value }}" placeholder="support@example.com">
+            </div>
+            <div>
+                <label for="manual_url">{{ t("Link to the instructions") }} {{ fields.help(t("The page explaining how to connect. It becomes a button beside the app ones in the registration letter, which the Letters tab can switch off. An empty value removes the button.")) }}</label>
+                <input type="text" id="manual_url" name="manual_url"
+                       value="{{ state.MANUAL_URL.value }}" placeholder="https://example.com/howto">
+            </div>
+            <div>
                 <label for="admin_email">{{ t("Administrator address") }} {{ fields.help(t("The /broadcast mail command works from this address, and the broadcast report comes back to it. An empty value switches the command off. It is also offered as the address for test letters on the Letters tab.")) }}</label>
                 <input type="text" id="admin_email" name="admin_email"
                        value="{{ state.ADMIN_EMAIL.value }}" placeholder="you@example.com">

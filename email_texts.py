@@ -53,6 +53,9 @@ GROUPS = [
         "fields": [
             ("common.footer", "Letter footer", TEXT,
              "Substitution: {service}. Every line is a paragraph of its own."),
+            ("common.support", "The support line in the footer", LINE,
+             "Shown in every letter, under the footer, when a support address is "
+             "set on the General tab. Substitution: {support}."),
             ("common.unit_gb", "Gigabytes", LINE,
              "Substitution: {gb}. The unit beside a traffic figure."),
         ],
@@ -76,6 +79,10 @@ GROUPS = [
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
+            ("WELCOME_MANUAL_ENABLED", "Show the instructions button", SWITCH,
+             "The button beside the app ones, leading to the page that explains how "
+             "to connect. The link itself is set on the General tab; with no link "
+             "there is no button, switch or no switch."),
             ("WELCOME_QR_ENABLED", "Send the QR code", SWITCH,
              "The subscription link as a code, for the reader who opened the letter on a "
              "computer and would otherwise be carrying the link across to their phone by "
@@ -83,6 +90,13 @@ GROUPS = [
              "is fetched from anywhere."),
             ("welcome.qr_intro", "The line above the QR code", LINE,
              "The code carries the same subscription link as the button above it."),
+            ("welcome.button_manual", "The instructions button", LINE,
+             "Beside the app buttons. Shown when a link to the instructions is set "
+             "on the General tab and the switch above is on."),
+            ("welcome.support", "The support line", LINE,
+             "Its own line in this letter, where somebody is setting a connection up "
+             "for the first time. Shown when a support address is set. "
+             "Substitution: {support}."),
             ("welcome.manual_intro", "The line above the link", LINE, ""),
             ("welcome.commands_title", "The commands block heading", LINE, ""),
             ("welcome.commands_text", "The commands block text", TEXT, ""),
@@ -177,6 +191,7 @@ DEFAULTS_BY_LANG = {
         "common.footer":
             "This is an automatic letter from {service}.\n"
             "If you did not ask for it, simply ignore it.",
+        "common.support": "Questions: {support}",
         "common.unit_gb": "{gb} GB",
 
         "welcome.subject_new": "Your {service} subscription is active",
@@ -198,6 +213,8 @@ DEFAULTS_BY_LANG = {
         "welcome.apps_intro": "Or add the subscription straight to an app:",
         "welcome.button_app": "Add to {app}",
         "welcome.qr_intro": "Or scan the code in the app:",
+        "welcome.button_manual": "How to set it up",
+        "welcome.support": "Something not working? Write to us: **{support}**",
         "welcome.manual_intro": "If the button did not work, copy the subscription link by hand:",
         "welcome.commands_title": "Bot commands",
         "welcome.commands_text":
@@ -283,6 +300,7 @@ DEFAULTS_BY_LANG = {
         "common.footer":
             "Это автоматическое письмо от сервиса {service}.\n"
             "Если вы его не запрашивали, просто проигнорируйте.",
+        "common.support": "Вопросы: {support}",
         "common.unit_gb": "{gb} ГБ",
 
         "welcome.subject_new": "Ваша подписка {service} активирована",
@@ -304,6 +322,8 @@ DEFAULTS_BY_LANG = {
         "welcome.apps_intro": "Или добавьте подписку прямо в приложение:",
         "welcome.button_app": "Добавить в {app}",
         "welcome.qr_intro": "Или отсканируйте код в приложении:",
+        "welcome.button_manual": "Как настроить",
+        "welcome.support": "Что-то не работает? Напишите нам: **{support}**",
         "welcome.manual_intro": "Если кнопка не сработала, скопируйте ссылку подписки вручную:",
         "welcome.commands_title": "Команды бота",
         "welcome.commands_text":

@@ -78,10 +78,22 @@ INCY_URL = os.getenv("INCY_URL", "incy://add")
 # a limited set of characters there and rejects spaces and angle brackets.
 REMARK_INCLUDE_NAME = os.getenv("REMARK_INCLUDE_NAME", "true").strip().lower() in ("1", "true", "yes", "on")
 
+# --- Where to write, and where to read ---
+# The address a client writes to when something does not work, and the page
+# that explains how to connect. Both are shown in the letters, both are empty
+# by default: an installation with nowhere to write and nothing to read should
+# not promise either.
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "").strip()
+MANUAL_URL = os.getenv("MANUAL_URL", "").strip()
+
 # --- The welcome letter ---
 # The QR code of the subscription link. On by default: the reader who opened
 # their mail on a computer is exactly who the letter is for.
 WELCOME_QR_ENABLED = True
+
+# The button to the instructions, beside the app buttons. On by default and
+# harmless without a link: with MANUAL_URL empty there is nothing to draw.
+WELCOME_MANUAL_ENABLED = True
 
 # --- Language ---
 # The interface language and the language letters go out in are separate:

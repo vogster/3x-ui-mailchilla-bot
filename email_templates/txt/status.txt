@@ -12,3 +12,5 @@
 {% endif %}
 --
 {{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}
