@@ -92,6 +92,10 @@ GROUPS = [
             ("welcome.greeting", "Greeting", LINE, ""),
             ("welcome.intro_new", "Opening — a new subscription", TEXT, "Substitution: {service}"),
             ("welcome.intro_again", "Opening — sent again", TEXT, "Substitution: {service}"),
+            ("welcome.label_tariff", "The 'tariff' line", LINE,
+             "Beside the term and the limit. Shown when the client is on a tariff — "
+             "anybody registered before tariffs existed is on none, and then the line "
+             "is left out."),
             ("welcome.label_expire", "The 'expires' line", LINE, ""),
             ("welcome.label_limit", "The 'limit' line", LINE, ""),
             ("welcome.value_forever", "The 'never expires' value", LINE, ""),
@@ -224,6 +228,7 @@ DEFAULTS_BY_LANG = {
         "welcome.intro_again":
             "Here is the link to your {service} subscription once more. Below are the "
             "terms of your plan and the link to import into your client.",
+        "welcome.label_tariff": "Tariff",
         "welcome.label_expire": "Valid until",
         "welcome.label_limit": "Traffic limit",
         "welcome.value_forever": "No expiry",
@@ -333,6 +338,7 @@ DEFAULTS_BY_LANG = {
         "welcome.intro_again":
             "Высылаем ссылку на вашу подписку в сервисе {service} ещё раз. "
             "Ниже — параметры тарифа и ссылка для импорта в клиент.",
+        "welcome.label_tariff": "Тариф",
         "welcome.label_expire": "Срок действия",
         "welcome.label_limit": "Лимит трафика",
         "welcome.value_forever": "Бессрочно",

@@ -21,6 +21,7 @@ import email_bot
 import email_texts
 import i18n
 import settings
+import tariffs
 import templates as mail_templates
 from admin.deps import templates, require_auth
 from xui_client import get_shared_client
@@ -87,6 +88,12 @@ def _text_groups():
             "kinds": mail_templates.broadcast_kind_options() if g["id"] == "broadcast" else [],
         })
     return groups
+
+
+def _demo_tariff_name() -> str:
+    """A tariff name for the sample letters: the first one there is, or none."""
+    rows = tariffs.all_tariffs()
+    return rows[0]["name"] if rows else ""
 
 
 def _cleanup_last() -> str:
@@ -588,7 +595,8 @@ def _sample_email(group: str, kind: str = "info"):
 
     if group == "welcome":
         return (mail_templates.welcome_subject(False),
-                mail_templates.get_welcome_email(demo_sub, config.EXPIRE_DAYS, config.LIMIT_GB))
+                mail_templates.get_welcome_email(demo_sub, config.EXPIRE_DAYS, config.LIMIT_GB,
+                                                 tariff=_demo_tariff_name()))
     if group == "status":
         return (mail_templates.text("status.subject"),
                 mail_templates.get_status_email(demo_mail, True, 8 * 1024**3, 34 * 1024**3,

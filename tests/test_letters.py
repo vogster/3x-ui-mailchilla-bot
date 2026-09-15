@@ -133,6 +133,46 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TheTariffInTheLetter(unittest.TestCase):
+    """
+    The name of the tariff, beside the term and the limit it gave.
+
+    It answers the question the numbers do not: somebody who writes back asking
+    "which one am I on?" was told in the first letter.
+    """
+
+    def setUp(self):
+        self.saved = config.MAIL_LANG
+        config.MAIL_LANG = "ru"
+        email_texts.load()
+
+    def tearDown(self):
+        config.MAIL_LANG = self.saved
+        email_texts.load()
+
+    def test_it_stands_with_the_term_and_the_limit(self):
+        mail = templates.get_welcome_email("https://example.com/sub/abc", 90, 100,
+                                           tariff="Standard")
+        for part in (mail.html, mail.text):
+            self.assertIn("Standard", part)
+            self.assertLess(part.index("Standard"), part.index("Срок действия"))
+
+    def test_no_tariff_means_no_line(self):
+        # Anybody registered before tariffs existed carries no group, and an
+        # empty "Тариф:" says less than no line at all.
+        mail = templates.get_welcome_email("https://example.com/sub/abc", 90, 100)
+        self.assertNotIn("Тариф", mail.html)
+        self.assertNotIn("Тариф", mail.text)
+
+    def test_the_text_part_keeps_its_line_breaks(self):
+        # trim_blocks eats the newline after a tag, which once glued two lines
+        # of a letter together.
+        text = templates.get_welcome_email("https://example.com/sub/abc", 90, 100,
+                                           tariff="Standard").text
+        self.assertIn("Тариф: Standard\n", text)
+        self.assertNotIn("StandardСрок", text)
+
+
 class SupportAndInstructions(unittest.TestCase):
     """
     The address to write to and the page to read, both optional. An

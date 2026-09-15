@@ -92,12 +92,17 @@ def build_client_email(email_addr: str) -> str:
     return cleaned
 
 def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
-                       limit_gb: int = None, renewed: bool = False):
+                       limit_gb: int = None, renewed: bool = False, tariff: str = ""):
     """
     The welcome letter carrying the subscription link.
 
     One place serves both self-registration by code word and creating a client
     from the web panel, so that the letter is the same either way.
+
+    `tariff` is the name shown beside the term and the limit. It is the name of
+    the tariff the client is actually on — their group in 3x-ui — rather than
+    the one the word they wrote would have given them: a letter that named a
+    tariff somebody is not on would be worse than one naming none.
     """
     if expire_days is None:
         expire_days = config.EXPIRE_DAYS
@@ -105,7 +110,8 @@ def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
         limit_gb = config.LIMIT_GB
 
     send_email_reply(email_addr, templates.welcome_subject(renewed),
-                     templates.get_welcome_email(sub_url, expire_days, limit_gb, renewed=renewed))
+                     templates.get_welcome_email(sub_url, expire_days, limit_gb,
+                                                 renewed=renewed, tariff=tariff))
 
 
 def send_personal_email(email_addr: str, subject: str, message_body: str, kind="plain"):
@@ -141,7 +147,10 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
 
     if client_info:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_info.get('subId')}"
-        send_welcome_email(email_addr, sub_url, renewed=True)
+        # Their own tariff, not the one the word opens: an existing client keeps
+        # what they have, and the letter has to say the same thing.
+        send_welcome_email(email_addr, sub_url, renewed=True,
+                           tariff=client_info.get("group") or "")
         logger.info(f"Client {email_addr} is already registered; the link was sent again. "
                     f"The {tariff['name']!r} tariff was not applied — an existing client keeps what it has.")
         return
@@ -171,7 +180,8 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
 
     if client_info:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_info.get('subId')}"
-        send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"])
+        send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"],
+                           tariff=tariff["name"])
         logger.info(f"Client {email_addr} registered successfully on {tariff['name']!r}.")
         # The code is spent only now. Burning it before the client exists would
         # lose an invitation to a 3x-ui that happened to be unreachable.

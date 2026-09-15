@@ -226,7 +226,7 @@ def welcome_subject(renewed=False) -> str:
     return text("welcome.subject_again" if renewed else "welcome.subject_new")
 
 
-def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
+def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="") -> Email:
     """The letter carrying the subscription link, on registration or resent."""
     # Somebody reading their mail on a computer has the link on the wrong
     # machine, and carrying it across to the phone by hand is exactly the sort
@@ -238,6 +238,10 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
         title=welcome_subject(renewed),
         renewed=renewed,
         sub_url=sub_url,
+        # The name of the tariff, beside the term and the limit it gave. Empty
+        # for anybody registered before tariffs existed, and then the line is
+        # simply not drawn — an empty "Tariff:" says less than no line at all.
+        tariff=tariff or "",
         qr_cid=QR_CID if qr else "",
         images={QR_CID: qr} if qr else None,
         apps=[{"label": a["label"],

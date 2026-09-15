@@ -12,6 +12,15 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **The registration letter names the tariff**, beside the term and the traffic
+  limit it gave. It answers the question the numbers do not — somebody who would
+  otherwise write back asking which one they are on was told in the first
+  letter. It is the tariff the client is actually on rather than the one the
+  word they wrote would have given them, so somebody already registered who
+  writes another word is told what they still have. A client with no tariff —
+  anybody from before tariffs existed — gets no line at all, and the text is
+  editable like every other.
+
 - **Clearing the mailbox out by itself.** The bot's mailbox is not read by
   anybody — every letter in it has been answered already — and after a year of
   registrations it is thousands of them. The Mail tab can now move the read

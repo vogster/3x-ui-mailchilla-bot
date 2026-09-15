@@ -389,7 +389,8 @@ def client_new_submit(
     key = XuiClient.client_key(client_obj)
     if raw["send_email"]:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_obj.get('subId')}"
-        background_tasks.add_task(_send_welcome, client_email, sub_url, days, total_gb)
+        background_tasks.add_task(_send_welcome, client_email, sub_url, days, total_gb,
+                                  False, chosen["name"] if chosen else "")
 
     target = f"/clients/{key}?created=1"
     if wants_json:
@@ -398,10 +399,11 @@ def client_new_submit(
 
 
 def _send_welcome(email_addr: str, sub_url: str, expire_days: int, limit_gb: int,
-                  renewed: bool = False):
+                  renewed: bool = False, tariff: str = ""):
     """The letter leaves after the response: sending takes seconds and has no reason to sit inside the request."""
     try:
-        email_bot.send_welcome_email(email_addr, sub_url, expire_days, limit_gb, renewed=renewed)
+        email_bot.send_welcome_email(email_addr, sub_url, expire_days, limit_gb,
+                                     renewed=renewed, tariff=tariff)
         logger.info(f"Welcome letter sent to {email_addr}.")
     except Exception as e:
         logger.error(f"Could not send the welcome letter to {email_addr}: {e}")
@@ -508,6 +510,9 @@ def client_resend_welcome(request: Request, client_uuid: str, background_tasks: 
         f"{config.XUI_SUBSCRIPTION_BASE_URL}/{sub_id}",
         days, round(total_gb / GB_FACTOR) if total_gb > 0 else 0,
         True,   # the subscription already runs — a subject without "activated!"
+        # Whatever group the client carries in 3x-ui, including one a deleted
+        # tariff left behind: the letter reports, it does not decide.
+        client_obj.get("group") or "",
     )
     return RedirectResponse(url=f"/clients/{client_uuid}?sent=welcome", status_code=303)
 

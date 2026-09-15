@@ -454,6 +454,44 @@ class LimitedCodes(StorageCase):
             for name, value in real.items():
                 setattr(email_bot, name, value)
 
+    def test_the_letter_names_the_tariff_the_client_is_actually_on(self):
+        # A registration names the tariff just given; a repeat names whatever
+        # group the client already carries, because they keep what they have.
+        # Naming the word's tariff there would tell somebody they had been moved
+        # onto a tariff they are not on.
+        sent = []
+        added = []
+        real = {name: getattr(email_bot, name) for name in
+                ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+
+        class FakeXui:
+            def find_client_by_email(self, addr):
+                if not added:
+                    return None
+                return {"subId": "sub01", "group": "Family"}
+
+            def add_client(self, **kwargs):
+                added.append(kwargs)
+                return ("uuid", [1])
+
+        email_bot.get_shared_client = lambda: FakeXui()
+        email_bot.send_welcome_email = lambda *a, **kw: sent.append(kw.get("tariff", ""))
+        email_bot.send_gotify_notification = lambda **kw: None
+        try:
+            tariff = self.make(name="Family", word="FAMILY")
+            matched = tariffs.match("FAMILY")
+            email_bot.handle_registration("ben@example.com", "Ben", matched[0], matched[1])
+            self.assertEqual(sent, ["Family"])
+
+            # The same address again, this time through another tariff's word.
+            other = self.make(name="Trial", word="TRIAL")
+            matched = tariffs.match("TRIAL")
+            email_bot.handle_registration("ben@example.com", "Ben", matched[0], matched[1])
+            self.assertEqual(sent, ["Family", "Family"])
+        finally:
+            for name, value in real.items():
+                setattr(email_bot, name, value)
+
     def test_an_invitation_used_by_somebody_already_registered_is_not_burned(self):
         # They get their link again and nothing else — so the invitation is
         # still there for the person it was actually meant for.

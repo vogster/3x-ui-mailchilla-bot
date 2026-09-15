@@ -4,7 +4,8 @@
 
 {{ t("welcome.intro_again" if renewed else "welcome.intro_new") | plain }}
 
-{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
+{% if tariff %}{{ t("welcome.label_tariff") | plain }}: {{ tariff | plain }}
+{% endif %}{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
 {{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
 
 {{ t("welcome.manual_intro") | plain }}
