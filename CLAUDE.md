@@ -73,6 +73,12 @@ On an installed server the same work goes through `mailchilla` (`status`, `resta
 
 **Letters are built twice.** `templates.py` renders `email_templates/<name>.html` and `email_templates/txt/<name>.txt` into an `Email(html, text)` namedtuple; every letter must have both parts. HTML is autoescaped, `.txt` is not. The only markup allowed from editable text is `**bold**` and line breaks, applied by the `emph`/`plain` filters — editable texts are text, not HTML. `t()` inside these templates is `templates.text()` (the letter texts), not `i18n.t()`.
 
+**The bot is three files, not one.** `email_bot.py` had grown to hold how a letter is sent, how the mailbox is read, and what the bot does about what it finds — three jobs that never call each other except at one seam.
+
+- `mailer.py` sends: building the MIME message, SMTP, the Gotify push. It knows nothing about tariffs, commands or clients.
+- `inbox.py` reads: the IMAP poll loop, the health of that loop, scanning the mailbox for sender names. `check_mail(handle)` **takes the handler as an argument** rather than importing it — otherwise the loop would depend on the commands, which already depend on the loop's own helpers. It is called `inbox` because the standard library owns `mailbox` and a module of ours beside it would shadow it for the whole process.
+- `email_bot.py` is the middle: the commands, the registrations, the letters sent back — and it **re-exports** the transport names (`send_email_reply`, `probe_imap`, `mail_health`, …) so that everything the panel, `run.py` and the tests already call on it keeps resolving, patching included.
+
 **Entry point.** `run.py` starts the IMAP poll loop in a daemon thread and uvicorn in the main thread, with shared SIGINT/SIGTERM handling (uvicorn's own signal handlers are deliberately disabled). `admin/app.py` also calls `settings.load()`/`email_texts.load()`/`applog.install()` at import, so the panel works when imported on its own; all three are idempotent.
 
 **Panel layout.** `admin/app.py` owns auth and the dashboard and mounts routers from `admin/routes_*.py`. `admin/deps.py` holds the shared Jinja2 environment, globals and `require_auth` — it exists to break an import cycle, so routers import from `deps`, never from `app`. Routes guard with `auth_redirect = require_auth(request); if auth_redirect: return auth_redirect`. `admin/rows.py` flattens a 3x-ui client into the row shape shared by the client list and the broadcast recipient picker.

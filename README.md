@@ -333,7 +333,9 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `install.sh` | the installer: one command, English or Russian |
 | `mailchilla.sh` | managing an installed copy: the menu and the subcommands |
 | `run.py` | the entry point: the bot in a background thread, the panel in the main one |
-| `email_bot.py` | IMAP polling, parsing letters, commands, sending |
+| `email_bot.py` | what a letter means: the commands, registrations, the letters sent back |
+| `mailer.py` | sending: the MIME message, SMTP, the Gotify push |
+| `inbox.py` | reading: the IMAP poll loop and the health of it |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |
 | `email_texts.py` | the editable letter texts, one set per language |

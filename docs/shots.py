@@ -65,7 +65,7 @@ XuiClient.find_client_by_uuid = lambda self, u: next(
 XuiClient.login = lambda self: True
 
 import admin.app as appmod
-import settings as app_settings, email_bot, tariffs
+import settings as app_settings, email_bot, inbox, tariffs
 
 config.SERVICE_NAME = demo.SERVICE_NAME
 config.IMAP_SERVER, config.IMAP_USER, config.IMAP_PASSWORD = "imap.example.com", "bot@example.com", "x"
@@ -104,7 +104,8 @@ tariffs.save_code({{"word": "AURORA-WEEKEND", "tariff_id": _standard["id"],
 for _who in ("anna.bright@example.com", "ben@example.com", "g.parry@example.com",
              "m.vaughan@example.com", "someone-who-left@example.com"):
     tariffs.spend("AURORA", _who)
-email_bot._last_ok_at = time.time() - 20
+# The mail loop's health lives with the loop, in inbox.py.
+inbox._last_ok_at = time.time() - 20
 # A handful of records so the log page is not empty.
 import logging
 log = logging.getLogger("email_bot")
