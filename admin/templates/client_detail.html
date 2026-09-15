@@ -3,6 +3,9 @@
 {% block title %}{{ client.remark or client.bare_email }}{% endblock %}
 {% block nav_clients %}active{% endblock %}
 {% block content %}
+<style>
+    .status-value .badge { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+</style>
 <a href="/clients" class="back">← {{ t("Back to the list") }}</a>
 
 {% set toast = t("The client was created, the welcome letter is on its way") if created
@@ -55,7 +58,10 @@
 <div class="cards">
     <div class="card">
         <div class="label">{{ t("Status") }}</div>
-        <div class="value" style="font-size: 18px;">
+        {# The badge carries its own 12px, which is right in a table row and too
+           quiet in a tile beside figures set at 23px. Here it takes the tile's
+           size — this is the first thing anybody reads on the card. #}
+        <div class="value status-value">
             {% if client.enable %}
             <span class="badge on nodot">{{ t("Active [badge]") }}</span>
             {% else %}
