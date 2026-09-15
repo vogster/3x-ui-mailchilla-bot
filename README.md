@@ -59,6 +59,7 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 - A client list with live search, sorting and filters (status, mail, connection, period, traffic)
 - Who is connected right now shows as a dot beside the address - green breathes, red sits still - on the list, on a client's own page and in the broadcast's recipient list. It refreshes itself every twenty seconds without disturbing anything you are in the middle of
+- **Last online**, as its own column and as a line on the card: minutes and hours while it is fresh, a date once it is past a week, a dash for somebody who has never connected. The exact moment is in the tooltip, and the column sorts, so the people who have stopped using the thing are two clicks away
 - The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button. Beside it, how the mail loop is doing - a bot that has quietly stopped reading the mailbox otherwise looks exactly like a mailbox nobody writes to
 - A client's card: traffic, expiry, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
 - Each inbound also carries its own ready-made connection URL, the same string 3x-ui's copy button hands out. One click copies it

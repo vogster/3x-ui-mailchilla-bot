@@ -51,6 +51,14 @@ TEXTS = {
     "Offline [filter]": "Не в сети",
     "Online [badge]": "В сети",
     "Offline [badge]": "Не в сети",
+    # When the panel last saw the client. The units are abbreviated because they
+    # do not then have to agree with the number: "5 минут", но "2 минуты".
+    "Last online": "Был в сети",
+    "now [last seen]": "сейчас",
+    "just now": "только что",
+    "{n} min ago": "{n} мин назад",
+    "{n} h ago": "{n} ч назад",
+    "{n} d ago": "{n} дн назад",
     # The QR code in the welcome letter
     "Send the QR code": "Отправлять QR-код",
     "The subscription link as a code, for the reader who opened the letter on a computer and would otherwise be carrying the link across to their phone by hand. It is drawn on the server and travels inside the letter, so nothing is fetched from anywhere.": "Ссылка подписки кодом — для тех, кто открыл письмо на компьютере и иначе переносил бы ссылку на телефон руками. Код рисуется на сервере и едет внутри письма, ничего никуда не запрашивается.",

@@ -15,6 +15,24 @@ _shared_client = None
 _shared_lock = threading.Lock()
 
 
+# 3x-ui counts in milliseconds everywhere else, but the last-online map is
+# documented in seconds and builds disagree about it. The magnitude tells them
+# apart with no guessing at a version: ten digits stays seconds until the year
+# 2286, thirteen is already milliseconds.
+_SECONDS_CEILING = 10 ** 11
+
+
+def epoch_ms(value) -> int:
+    """A panel timestamp as milliseconds, whichever unit it arrived in. 0 when absent."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    if number <= 0:
+        return 0
+    return number * 1000 if number < _SECONDS_CEILING else number
+
+
 def get_shared_client():
     """Returns the process-wide XuiClient instance, created on first use."""
     global _shared_client
@@ -340,6 +358,42 @@ class XuiClient:
             return [str(x) for x in (resp_json.get("obj") or [])]
         except Exception as e:
             logger.debug(f"Exception while fetching the online list: {e}")
+            return None
+
+    def get_last_online(self) -> dict or None:
+        """
+        When the panel last saw each client: identifier -> milliseconds.
+
+        None carries the same meaning it does for the online list — the panel
+        did not answer, or the build has no such route — and the column then
+        stays out of the table altogether. A client missing from the map is a
+        different thing: it has simply never connected, which is an answer, and
+        the row shows a dash for it.
+        """
+        try:
+            # A POST that changes nothing, the same as the online list.
+            response = self._request("POST", "/panel/api/clients/lastOnline", json={})
+            if response.status_code != 200:
+                logger.debug(f"The panel does not report when clients were last online: "
+                             f"{response.status_code}")
+                return None
+            resp_json = response.json()
+            if not resp_json.get("success"):
+                logger.debug(f"The panel returned an error for the last-online map: "
+                             f"{resp_json.get('msg')}")
+                return None
+            obj = resp_json.get("obj") or {}
+            if not isinstance(obj, dict):
+                logger.debug(f"The last-online map came back as {type(obj).__name__}, not a map.")
+                return None
+            out = {}
+            for email, value in obj.items():
+                ms = epoch_ms(value)
+                if ms:
+                    out[str(email)] = ms
+            return out
+        except Exception as e:
+            logger.debug(f"Exception while fetching the last-online map: {e}")
             return None
 
     def get_client_links(self, email: str) -> list:

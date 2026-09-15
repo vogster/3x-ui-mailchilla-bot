@@ -28,11 +28,11 @@
 
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
     <div>
+        {# The connection dot used to sit here, beside the address. It reads
+           better in the tile below, where it stands next to the moment it is
+           about: a green dot and "сейчас" say one thing together, while a dot
+           on its own left the reader to work out what it meant. #}
         <h1 style="margin: 0 0 6px 0;" class="mono">
-            {% if online_known and client.online is not none %}
-            <span class="odot {{ 'on' if client.online else 'off' }}" id="client-odot"
-                  title="{{ t('Online [badge]') if client.online else t('Offline [badge]') }}"></span>
-            {% endif %}
             {{ client.remark or client.bare_email }}
         </h1>
         <p class="muted" style="margin: 0;">
@@ -63,6 +63,24 @@
             {% endif %}
         </div>
     </div>
+    {% if last_seen_known or (online_known and client.online is not none) %}
+    <div class="card">
+        <div class="label">{{ t("Last online") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if online_known and client.online is not none %}
+            <span class="odot {{ 'on' if client.online else 'off' }}" id="client-odot"
+                  title="{{ t('Online [badge]') if client.online else t('Offline [badge]') }}"></span>
+            {% endif %}
+            {% if last_seen_known %}
+            <span id="client-lastseen" title="{{ client.last_seen_full }}">{{ client.last_seen }}</span>
+            {% else %}
+            {# The panel knows who is connected but not since when: the dot
+               would then stand beside nothing, so it gets its own word. #}
+            <span>{{ t("Online [badge]") if client.online else t("Offline [badge]") }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     <div class="card">
         <div class="label">{{ t("Used") }}</div>
         <div class="value">{{ client.used_gb }} {{ t("GB") }}
@@ -190,6 +208,7 @@
                     <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
+
                 </tbody>
             </table>
         </div>
@@ -281,20 +300,21 @@
     })();
 </script>
 {% endif %}
-{% if online_known and client.online is not none %}
+{% if (online_known and client.online is not none) or last_seen_known %}
 <script>
-    // The dot beside the name keeps itself current, on the same twenty seconds
-    // as the list and through the same endpoint — one answer for the whole
-    // panel, and this page simply looks for its own identifier in it. Nothing
-    // else on the page is touched: no form is redrawn and no field loses what
-    // is being typed into it.
+    // The tile keeps itself current, on the same twenty seconds as the list and
+    // through the same endpoint — one answer for the whole panel, and this page
+    // simply looks for its own identifier in it. Nothing else on the page is
+    // touched: no form is redrawn and no field loses what is being typed into
+    // it.
     (function () {
         var dot = document.getElementById("client-odot");
-        if (!dot) return;
         var WHO = {{ client.remark|tojson }};
         var EVERY = 20000;
         var ON = {{ t("Online [badge]")|tojson }};
         var OFF = {{ t("Offline [badge]")|tojson }};
+        var NOW = {{ t("now [last seen]")|tojson }};
+        var seenCell = document.getElementById("client-lastseen");
         var busy = false;
 
         setInterval(function () {
@@ -305,8 +325,20 @@
                 .then(function (data) {
                     if (!data || !data.ok || !data.online) return;
                     var on = data.online.indexOf(WHO) !== -1;
-                    dot.className = "odot " + (on ? "on" : "off");
-                    dot.title = on ? ON : OFF;
+                    if (dot) {
+                        dot.className = "odot " + (on ? "on" : "off");
+                        dot.title = on ? ON : OFF;
+                    }
+                    // The words beside the dot follow it, so the two cannot end
+                    // up telling different stories.
+                    if (!seenCell) return;
+                    if (on) {
+                        seenCell.textContent = NOW;
+                        seenCell.title = "";
+                    } else if (data.last_seen && data.last_seen[WHO]) {
+                        seenCell.textContent = data.last_seen[WHO].text;
+                        seenCell.title = data.last_seen[WHO].title;
+                    }
                 })
                 .catch(function () { /* the dot stands until a request gets through */ })
                 .then(function () { busy = false; });

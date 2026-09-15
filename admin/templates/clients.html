@@ -77,6 +77,9 @@
                     <th>{{ t("Status") }}</th>
                     <th class="sortable" data-sort="traffic" data-numeric="1">{{ t("Traffic") }}</th>
                     <th class="sortable" data-sort="created" data-numeric="1">{{ t("Registered") }}</th>
+                    {% if last_seen_known %}
+                    <th class="sortable" data-sort="lastseen" data-numeric="1">{{ t("Last online") }}</th>
+                    {% endif %}
                     <th>{{ t("Expiry") }}</th>
                     <th style="text-align:right;">{{ t("Actions") }}</th>
                 </tr>
@@ -87,6 +90,7 @@
                     data-name="{{ (c.remark or c.bare_email)|lower }}"
                     data-traffic="{{ c.used_bytes }}"
                     data-created="{{ c.created_ms }}"
+                    data-lastseen="{{ c.last_seen_ms }}"
                     data-enabled="{{ 1 if c.enable else 0 }}"
                     data-hasmail="{{ 1 if c.bare_email else 0 }}"
                     data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
@@ -125,6 +129,14 @@
                         {% endif %}
                     </td>
                     <td class="mono">{{ c.created }}</td>
+                    {% if last_seen_known %}
+                    {# The cell keeps the rough figure; the exact moment is in
+                       the tooltip, where it costs the column no width. nowrap
+                       because "52 мин назад" otherwise breaks across two lines
+                       and takes the height of every row in the table with it. #}
+                    <td class="mono last-seen" style="white-space: nowrap;"
+                        title="{{ c.last_seen_full }}">{{ c.last_seen }}</td>
+                    {% endif %}
                     <td class="mono">{{ c.expiry }}</td>
                     <td style="text-align:right; white-space:nowrap;">
                         <details class="rowmenu">
@@ -146,7 +158,7 @@
                 </tr>
             {% endfor %}
                 <tr id="no-match" hidden>
-                    <td colspan="6"><div class="empty">{{ t("Nothing found") }}</div></td>
+                    <td colspan="{{ 7 if last_seen_known else 6 }}"><div class="empty">{{ t("Nothing found") }}</div></td>
                 </tr>
             </tbody>
         </table>
@@ -348,15 +360,34 @@
         var EVERY = 20000;
         var ON = {{ t("Online [badge]")|tojson }};
         var OFF = {{ t("Offline [badge]")|tojson }};
+        var NOW = {{ t("now [last seen]")|tojson }};
         var busy = false;
 
-        function paint(list) {
+        function paint(list, seen) {
             var live = {};
             for (var i = 0; i < list.length; i++) live[list[i]] = true;
             var rows = document.querySelectorAll("tbody tr[data-remark]");
             for (var j = 0; j < rows.length; j++) {
                 var row = rows[j];
                 var on = live[row.dataset.remark] === true;
+                // The last-online cell is redrawn even when the dot has not
+                // changed: somebody who has been offline all along still moves
+                // from "5 мин назад" to "20 мин назад" while the page stands.
+                var cell = row.querySelector(".last-seen");
+                if (cell) {
+                    if (on) {
+                        cell.textContent = NOW;
+                        cell.title = "";
+                        row.dataset.lastseen = String(Date.now());
+                    } else if (seen && seen[row.dataset.remark]) {
+                        var s = seen[row.dataset.remark];
+                        cell.textContent = s.text;
+                        cell.title = s.title;
+                        row.dataset.lastseen = String(s.ms);
+                    }
+                    // Neither connected nor in the map: never seen, and the
+                    // dash it was drawn with still stands.
+                }
                 if (row.dataset.online === (on ? "1" : "0")) continue;
                 row.dataset.online = on ? "1" : "0";
                 var dot = row.querySelector(".odot");
@@ -380,7 +411,7 @@
             fetch("/clients/online", { credentials: "same-origin" })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (data) {
-                    if (data && data.ok && data.online) paint(data.online);
+                    if (data && data.ok && data.online) paint(data.online, data.last_seen);
                 })
                 .catch(function () { /* the dots simply stand until it works */ })
                 .then(function () { busy = false; });

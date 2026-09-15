@@ -1,5 +1,6 @@
 """Client routes: the list, search, enable/disable, editing and deletion."""
 import logging
+import time
 import uuid
 from datetime import datetime
 from urllib.parse import quote
@@ -17,7 +18,7 @@ from xui_client import XuiClient, get_shared_client
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from admin.rows import GB_FACTOR, _fmt_gb, _fmt_ts, _client_row
+from admin.rows import GB_FACTOR, _fmt_gb, _fmt_last_seen, _fmt_ts, _client_row
 
 
 def _attach_links(rows: list, links: list) -> list:
@@ -52,9 +53,9 @@ def _attach_links(rows: list, links: list) -> list:
 
 
 def _client_detail(client_obj: dict, inbounds: list, links: list = None,
-                   online: set = None) -> dict:
+                   online: set = None, last_online: dict = None) -> dict:
     """The fuller view of a client, for its own page."""
-    row = _client_row(client_obj, online)
+    row = _client_row(client_obj, online, last_online)
     traffic_obj = client_obj.get("traffic") or {}
     up = int(traffic_obj.get("up") or client_obj.get("up") or 0)
     down = int(traffic_obj.get("down") or client_obj.get("down") or 0)
@@ -118,7 +119,10 @@ def clients_list(request: Request, q: str = ""):
     # panel could not say, and the column then keeps quiet.
     online_emails = xui.get_online_emails()
     online = None if online_emails is None else set(online_emails)
-    rows = [_client_row(c, online) for c in all_clients]
+    # Likewise one question for the whole table. An older panel does not know
+    # the route, and the column is then left out rather than filled with dashes.
+    last_online = xui.get_last_online()
+    rows = [_client_row(c, online, last_online) for c in all_clients]
 
     query = (q or "").strip().lower()
     if query:
@@ -140,6 +144,8 @@ def clients_list(request: Request, q: str = ""):
         "total": len(rows),
         # Whether to draw the dots and offer the filter at all.
         "online_known": online is not None,
+        # Whether the last-online column has anything to stand on.
+        "last_seen_known": last_online is not None,
     }
     context.update(new_dialog_context())
     return templates.TemplateResponse("clients.html", context)
@@ -203,13 +209,30 @@ def clients_online(request: Request):
     A 502 when the panel cannot say. The page then leaves the dots as they are
     rather than blanking them — a failed request is not evidence that everybody
     went offline.
+
+    The last-online column rides along, already formatted: the same strings the
+    list was rendered with come from _fmt_last_seen, and working them out here
+    keeps the wording, the units and the week-old cutoff in one place instead of
+    a second copy in JavaScript. Clients the panel reports as connected are left
+    out of the map — the page has its own word for those.
     """
     if not is_authenticated(request):
         return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
-    emails = get_shared_client().get_online_emails()
+    xui = get_shared_client()
+    emails = xui.get_online_emails()
     if emails is None:
         return JSONResponse({"ok": False}, status_code=502)
-    return JSONResponse({"ok": True, "online": emails})
+    payload = {"ok": True, "online": emails}
+    last_online = xui.get_last_online()
+    if last_online is not None:
+        now_ms = int(time.time() * 1000)
+        connected = set(emails)
+        payload["last_seen"] = {
+            remark: {"text": _fmt_last_seen(ms, now_ms), "title": _fmt_ts(ms), "ms": ms}
+            for remark, ms in last_online.items()
+            if remark not in connected
+        }
+    return JSONResponse(payload)
 
 
 @router.get("/clients/new", response_class=HTMLResponse)
@@ -337,9 +360,10 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
     if not client_obj:
         raise HTTPException(status_code=404, detail=i18n.t("The client was not found"))
 
-    # Same question the list asks, and the same None when the panel cannot say.
+    # Same questions the list asks, and the same None when the panel cannot say.
     online_emails = xui.get_online_emails()
     online = None if online_emails is None else set(online_emails)
+    last_online = xui.get_last_online()
 
     return templates.TemplateResponse(
         "client_detail.html",
@@ -350,8 +374,9 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
             # inbound chips their copy button.
             "client": _client_detail(client_obj, xui.get_inbounds(),
                                      xui.get_client_links(client_obj.get("email") or ""),
-                                     online),
+                                     online, last_online),
             "online_known": online is not None,
+            "last_seen_known": last_online is not None,
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
             "sent": sent,

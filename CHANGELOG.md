@@ -8,6 +8,20 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.1.5] - 2026-09-15
+
+### Added
+
+- The client list has a "Last online" column: when 3x-ui last saw each client.
+  Minutes and hours while it is recent, a date once it is past a week, a dash
+  for somebody who has never connected, and the exact moment in the tooltip.
+  It sorts — one click gathers the people who have stopped connecting at the
+  top — and keeps itself current alongside the connection dots. On a client's
+  own page it is a tile of its own, right after the status, and the connection
+  dot has moved there from beside the address: a dot and the moment it is about
+  say more together than either did apart. A 3x-ui that does not know the
+  endpoint simply leaves both out.
+
 ## [0.1.4] - 2026-09-14
 
 ### Added
