@@ -368,3 +368,19 @@ class DashboardWithoutTheInboundTable(PanelCase):
         self.fake.get_inbounds = lambda: []
         body = self.page("/")
         self.assertNotIn("Registration breaks off", body)
+
+
+class ClientCardTariff(PanelCase):
+    """The tariff belongs with the status, not among the uuids at the bottom."""
+
+    def test_it_is_a_tile_rather_than_a_row_in_the_technical_table(self):
+        body = self.page("/clients/c0ffee01")
+        cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
+        self.assertIn("Basic", cards)
+
+    def test_a_client_on_no_tariff_says_so_rather_than_leaving_a_blank(self):
+        # Everybody registered before tariffs existed is this client.
+        body = self.page("/clients/c0ffee02")
+        cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
+        self.assertNotIn("Basic", cards)
+        self.assertIn("не задан", cards)

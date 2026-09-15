@@ -63,6 +63,18 @@
             {% endif %}
         </div>
     </div>
+    <div class="card">
+        <div class="label">{{ t("Tariff") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if client.tariff %}
+            {{ client.tariff }}
+            {% else %}
+            {# Registered before tariffs existed, or made by hand in 3x-ui.
+               A fact about them, not a gap to fill in. #}
+            <span class="muted">{{ t("not set") }}</span>
+            {% endif %}
+        </div>
+    </div>
     {% if last_seen_known or (online_known and client.online is not none) %}
     <div class="card">
         <div class="label">{{ t("Last online") }}</div>
@@ -206,10 +218,6 @@
                     </tr>
                     <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
                     <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
-                    <tr>
-                        <td class="muted">{{ t("Tariff") }}</td>
-                        <td class="mono">{% if client.tariff %}{{ client.tariff }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</td>
-                    </tr>
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
 
