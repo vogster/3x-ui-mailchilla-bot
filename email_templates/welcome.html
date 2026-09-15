@@ -17,10 +17,14 @@
 <p style="margin: 24px 0 14px 0; color: #a0a0a8; font-size: 15px; text-align: center;">
     {{ t("welcome.apps_intro") | emph }}
 </p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{# The buttons in a table of their own, centred as a group rather than each in
+   half the letter's width: stretched across a desktop window they sat at
+   opposite ends and read as two unrelated things. On a phone .btn-cell turns
+   each into a full-width block and they stack, which is right there. #}
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
     <tr>
         {% for app in apps %}
-        <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
+        <td class="btn-cell" align="center" style="padding: 0 6px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
         {% endfor %}
     </tr>
 </table>
