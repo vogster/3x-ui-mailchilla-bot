@@ -278,12 +278,12 @@
         </div>
         <div style="padding: 24px;" class="form-grid">
             <div>
-                <label for="gotify_title">{{ t("Title") }}</label>
+                <label for="gotify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {email}, {name}, {service}, {tariff}.")) }}</label>
                 <input type="text" id="gotify_title" name="gotify_title"
                        value="{{ state.GOTIFY_TITLE.value }}">
             </div>
             <div>
-                <label for="gotify_message">{{ t("Text") }} {{ fields.help(t("The notification goes out when a client registers themselves, by letter with the code word. {name} is the name from the letter's header, and it may be empty.")) }}</label>
+                <label for="gotify_message">{{ t("Text") }} {{ fields.help(t("The notification goes out when a client registers themselves, by letter with a code word. Substitutions: {email}, {name}, {service}, {tariff}. {name} is the name from the letter's header and may be empty; {tariff} is the tariff the word opened.")) }}</label>
                 <textarea id="gotify_message" name="gotify_message"
                           style="min-height:90px;">{{ state.GOTIFY_MESSAGE.value }}</textarea>
             </div>

@@ -91,6 +91,8 @@ TEXTS = {
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
     "Groups without a tariff": "Группы без тарифа",
+    "Substitutions: {email}, {name}, {service}, {tariff}.": "Подстановки: {email}, {name}, {service}, {tariff}.",
+    "The notification goes out when a client registers themselves, by letter with a code word. Substitutions: {email}, {name}, {service}, {tariff}. {name} is the name from the letter's header and may be empty; {tariff} is the tariff the word opened.": "Уведомление уходит, когда клиент зарегистрировался сам, письмом с кодовым словом. Подстановки: {email}, {name}, {service}, {tariff}. {name} — имя из заголовка письма, может быть пустым; {tariff} — тариф, который открыло слово.",
     "Came in through": "Пришёл по коду",
     "not known": "неизвестно",
     "The code word this client registered with. It says how they arrived, not what they have now — a client can be moved to another tariff afterwards, and the word stays what it was. Empty for anybody registered before code words were kept, or added by hand in 3x-ui.": "Кодовое слово, по которому клиент зарегистрировался. Это про то, как он пришёл, а не про то, что у него сейчас: клиента можно перевести на другой тариф, а слово останется прежним. Пусто у всех, кто зарегистрировался до того, как коды начали запоминаться, и у заведённых руками в 3x-ui.",
