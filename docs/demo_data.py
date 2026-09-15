@@ -41,6 +41,37 @@ PEOPLE = [
 ONLINE = ["anna.bright@example.com", "lab-router", "paul@example.com",
           "t.okafor@example.com", "w.hume@example.com"]
 
+# How long ago each of the others was last seen, in minutes. The spread is
+# deliberate: the column has to show every shape it can take in one picture —
+# minutes, hours, days, and a date for anyone past a week. Nobody names
+# iris@example.com, and that is the fourth shape: a client who has never
+# connected at all.
+LAST_SEEN_MINUTES = {
+    "ben@example.com": 7,
+    "d.hollis@example.com": 52,
+    "ellie.k@example.com": 9 * 1440,
+    "g.parry@example.com": 3,
+    "k.ivens@example.com": 26 * 1440,
+    "kitchen-tv": 18,
+    "m.vaughan@example.com": 4 * 60,
+    "nathan@example.com": 2 * 1440,
+    "olive.s@example.com": 40 * 1440,
+    "r.zane@example.com": 11 * 60,
+    "s.novak@example.com": 5 * 1440,
+    "vera.l@example.com": 63 * 1440,
+    "zoe@example.com": 14 * 1440,
+}
+
+
+def last_online():
+    """The map XuiClient.get_last_online hands back: identifier -> ms."""
+    out = {ident: NOW - minutes * 60000 for ident, minutes in LAST_SEEN_MINUTES.items()}
+    # The panel keeps writing the heartbeat while a client is connected, so
+    # everyone online is in the map too, with a moment or two behind them.
+    for ident in ONLINE:
+        out[ident] = NOW - 15000
+    return out
+
 INBOUNDS = [
     {"id": 1, "remark": "VLESS-REALITY-443", "protocol": "vless", "port": 443,
      "enable": True, "clients": 17},

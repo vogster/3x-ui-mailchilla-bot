@@ -48,6 +48,7 @@ from xui_client import XuiClient
 
 XuiClient.get_all_clients = lambda self: demo.clients()
 XuiClient.get_online_emails = lambda self: list(demo.ONLINE)
+XuiClient.get_last_online = lambda self: demo.last_online()
 XuiClient.get_inbounds = lambda self: [dict(i) for i in demo.INBOUNDS]
 XuiClient.get_server_status = lambda self: dict(demo.SERVER)
 # The real method parses the panel's raw URLs into these dicts; _attach_links
