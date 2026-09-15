@@ -1,0 +1,34 @@
+{# A date field in the panel's own clothes: a box that speaks ДД.ММ.ГГГГ and a
+   calendar drawn by base_admin.html.
+
+   The pair is deliberate — the text box is what a person reads and types into,
+   the hidden input carries the ISO date everything downstream already
+   understands, and it keeps the id so that filters listening on it need no
+   changes. Without JavaScript the text box posts what was typed and the server
+   takes either shape.
+
+   Expects: field_id, field_name (empty for a filter that is never posted),
+   field_value (ISO or empty), field_title. #}
+<span class="datefield" data-datefield>
+    <input type="text" id="{{ field_id }}-shown" autocomplete="off"
+           placeholder="{{ t('dd.mm.yyyy') }}" title="{{ field_title }}"
+           value="{{ field_shown }}">
+    <input type="hidden" id="{{ field_id }}" {% if field_name %}name="{{ field_name }}"{% endif %}
+           value="{{ field_value }}">
+    <button type="button" class="df-open" title="{{ t('Pick a date') }}" tabindex="-1">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+             stroke-linecap="round"><rect x="2" y="3.2" width="12" height="11" rx="1.6"/><path d="M2 6.4h12M5.5 1.8v2.6M10.5 1.8v2.6"/></svg>
+    </button>
+    <div class="cal" hidden>
+        <div class="cal-head">
+            <button type="button" class="prev" tabindex="-1">‹</button>
+            <span class="title"></span>
+            <button type="button" class="next" tabindex="-1">›</button>
+        </div>
+        <div class="cal-grid"></div>
+        <div class="cal-foot">
+            <button type="button" class="today-btn">{{ t("Today") }}</button>
+            <button type="button" class="clear-btn">{{ t("Clear") }}</button>
+        </div>
+    </div>
+</span>

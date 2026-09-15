@@ -40,7 +40,11 @@
         </div>
         <div>
             <label for="expires_on">{{ t("Works until") }} {{ fields.help(t("The last day the code works, to the end of it. Empty means it never runs out on its own. Use it for a word you hand out for a weekend — it stops on its own rather than waiting to be remembered on Monday.")) }}</label>
-            <input type="date" id="expires_on" name="expires_on" value="{{ code.expires_input }}">
+            {% with field_id = "expires_on", field_name = "expires_on",
+                    field_value = code.expires_input, field_shown = code.expires,
+                    field_title = t("Works until") %}
+            {% include "_datefield.html" %}
+            {% endwith %}
         </div>
         <div>
             <label for="note">{{ t("Note") }} {{ fields.help(t("For you alone — it is never sent anywhere. Without it a list of generated codes is a row of strings that look alike.")) }}</label>

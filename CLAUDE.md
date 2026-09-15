@@ -85,6 +85,8 @@ On an installed server the same work goes through `mailchilla` (`status`, `resta
 
 Broadcasts run as in-memory background jobs (`admin/routes_broadcast.py`) because sending takes minutes; the browser gets a self-refreshing status page. Job state dies with the process, by design.
 
+**Dates are a pair of inputs.** `_datefield.html` draws a text box that speaks `дд.мм.гггг` and a hidden input carrying the ISO date; the calendar itself is in `base_admin.html`, keyed off `[data-datefield]`. The hidden half keeps the id, so anything listening for changes keeps working, and the widget dispatches `input` on it when a day is picked. Month and weekday names come from `Intl` in the panel's language, so a new language needs no entries. Without JavaScript the visible box is what gets posted — which is why `_end_of_day()` accepts both shapes.
+
 **No static files.** All panel CSS and JS is inline in `admin/templates/base_admin.html` (~1.4k lines); there is no `StaticFiles` mount.
 
 **Logging.** `applog.install()` attaches a ring buffer (read by `/logs`) and a rotating file to the root logger. Use `logging.getLogger(__name__)` and log at INFO for anything an admin should see in the panel; per-poll noise goes to DEBUG.

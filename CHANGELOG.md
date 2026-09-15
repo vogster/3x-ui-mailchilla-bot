@@ -77,6 +77,12 @@ read as something a person wants to know before updating.
 
 ### Changed
 
+- Dates are picked in a calendar of the panel's own making rather than the
+  browser's. The native one paints itself, cannot be themed, and shows the date
+  in the reader's locale — `mm/dd/yyyy` in a Russian interface, which is how a
+  date gets read wrong. Ours speaks `дд.мм.гггг`, starts the week on Monday,
+  and can be typed into as well as clicked.
+
 - The inbound table has left the dashboard. It is 3x-ui's own list, and which
   inbounds a client gets is a property of their tariff now — the tariff's card
   says it where it matters. What stayed is the fault the table carried: a

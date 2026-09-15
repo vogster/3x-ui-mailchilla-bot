@@ -66,9 +66,15 @@
     <div class="filters-more" id="filters-more" hidden>
         <div class="filter-group">
             <span class="lbl">{{ t("Registered") }}</span>
-            <input type="date" id="f-from" title="{{ t('from') }}">
+            {% with field_id = "f-from", field_name = "", field_value = "",
+                    field_shown = "", field_title = t('from') %}
+            {% include "_datefield.html" %}
+            {% endwith %}
             <span class="sep">—</span>
-            <input type="date" id="f-to" title="{{ t('to') }}">
+            {% with field_id = "f-to", field_name = "", field_value = "",
+                    field_shown = "", field_title = t('to') %}
+            {% include "_datefield.html" %}
+            {% endwith %}
         </div>
         {% if tariff_names %}
         <div class="filter-group">
@@ -392,6 +398,10 @@
                     s[group.dataset.filter] = "";
                 });
                 [from, to, gbMin, gbMax, tariff].forEach(function (el) { if (el) el.value = ""; });
+                // The date fields are a pair: the box somebody reads has to be
+                // cleared as well as the value behind it.
+                document.querySelectorAll("[data-datefield] input[type=text]")
+                        .forEach(function (el) { el.value = ""; });
                 s.tariff = null;
                 s.from = s.to = s.gbMin = s.gbMax = null;
                 changed();

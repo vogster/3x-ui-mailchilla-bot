@@ -858,6 +858,73 @@
            as a bar rather than as a groove. */
         .bar { box-shadow: inset 0 0 0 1px var(--line); }
 
+        /* The date field, and the calendar it opens.
+           
+           Hand-made because the browser's own is a stranger in this panel: it
+           paints itself, it cannot be themed past color-scheme, and it shows
+           the date in the reader's locale — mm/dd/yyyy in a Russian interface,
+           which is how a date gets read wrong. This one speaks one format and
+           looks like everything else here. */
+        .datefield { position: relative; display: inline-block; }
+        .datefield input { padding-right: 32px; }
+        .datefield .df-open {
+            position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer; padding: 4px;
+            color: var(--fg-3); line-height: 0;
+        }
+        .datefield .df-open:hover { color: var(--fg); }
+        .datefield .df-open svg { width: 15px; height: 15px; }
+
+        /* Fixed, not absolute: the panel around a form has overflow:hidden and
+           would cut the calendar off at its edge — the same reason the row
+           menus are positioned this way. The coordinates are set when it opens. */
+        .cal {
+            position: fixed; z-index: 40; visibility: hidden;
+            background: var(--surface-2); border: 1px solid var(--line);
+            border-radius: var(--radius-sm); padding: 10px;
+            box-shadow: 0 12px 30px rgba(0,0,0,.45);
+            width: 244px;
+        }
+        .cal.placed { visibility: visible; }
+        .cal[hidden] { display: none; }
+        .cal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .cal-head .title {
+            flex: 1; text-align: center; font-size: 13px; font-weight: 600;
+            text-transform: capitalize;
+        }
+        .cal-head button {
+            background: none; border: 1px solid transparent; border-radius: 6px;
+            color: var(--fg-3); cursor: pointer; width: 26px; height: 26px;
+            font-family: inherit; font-size: 13px; line-height: 1;
+        }
+        .cal-head button:hover { color: var(--fg); border-color: var(--line); }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .cal-grid .wd {
+            text-align: center; font-size: 10.5px; color: var(--fg-3);
+            padding-bottom: 4px; text-transform: uppercase;
+        }
+        .cal-grid button {
+            background: none; border: 1px solid transparent; border-radius: 6px;
+            color: var(--fg-2); cursor: pointer; height: 28px;
+            font-family: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums;
+        }
+        .cal-grid button:hover { color: var(--fg); border-color: var(--line); }
+        .cal-grid button.other { color: var(--fg-3); opacity: .55; }
+        .cal-grid button.today { border-color: var(--line); }
+        .cal-grid button.picked {
+            background: var(--fg); color: var(--bg); border-color: var(--fg);
+        }
+        .cal-foot {
+            display: flex; gap: 8px; margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid var(--line-soft);
+        }
+        .cal-foot button {
+            flex: 1; background: none; border: 1px solid var(--line);
+            border-radius: 6px; color: var(--fg-2); cursor: pointer;
+            font-family: inherit; font-size: 12px; padding: 5px 0;
+        }
+        .cal-foot button:hover { color: var(--fg); }
+
         /* Buttons */
         .btn {
             display: inline-flex; align-items: center; justify-content: center;
@@ -1457,6 +1524,184 @@
         });
     })();
 </script>
+    <script>
+        // The date field: a text box that speaks ДД.ММ.ГГГГ and a calendar of
+        // our own drawing.
+        //
+        // Every field is a pair — what the reader sees and types into, and a
+        // hidden input carrying the ISO date that the form or the filters
+        // actually use. That way nothing downstream has to learn a new format,
+        // and a page without JavaScript still posts whatever was typed: the
+        // server takes both shapes.
+        //
+        // Month and weekday names come from Intl in the panel's own language,
+        // so a new interface language needs no entries here.
+        (function () {
+            var fields = Array.prototype.slice.call(document.querySelectorAll("[data-datefield]"));
+            if (!fields.length) return;
+            var lang = document.documentElement.lang || "en";
+            var open = null;
+
+            function pad(n) { return (n < 10 ? "0" : "") + n; }
+            function toIso(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+            function toShown(d) { return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear(); }
+
+            function parseShown(value) {
+                var m = /^\s*(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\s*$/.exec(value || "");
+                if (!m) return null;
+                var d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+                return (d.getFullYear() === Number(m[3]) && d.getMonth() === Number(m[2]) - 1
+                        && d.getDate() === Number(m[1])) ? d : null;
+            }
+
+            function parseIso(value) {
+                var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+                return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+            }
+
+            fields.forEach(function (field) {
+                var shown = field.querySelector("input[type=text]");
+                var iso = field.querySelector("input[type=hidden]");
+                var calendar = field.querySelector(".cal");
+                var grid = calendar.querySelector(".cal-grid");
+                var title = calendar.querySelector(".title");
+                var at = parseIso(iso.value) || new Date();
+
+                function setValue(date) {
+                    iso.value = date ? toIso(date) : "";
+                    shown.value = date ? toShown(date) : "";
+                    // The filters listen for input on the hidden field, and a
+                    // value set from script raises no event by itself.
+                    iso.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+
+                function draw() {
+                    var picked = parseIso(iso.value);
+                    var today = new Date();
+                    // Month and year, without the "г." that ru dates carry: this
+                    // is a heading, not a date.
+                    title.textContent = at.toLocaleDateString(lang, { month: "long" })
+                                        + " " + at.getFullYear();
+                    grid.innerHTML = "";
+
+                    // Monday first: the week starts there in every language this
+                    // panel speaks, and Intl would put Sunday first for some.
+                    var first = new Date(at.getFullYear(), at.getMonth(), 1);
+                    var shift = (first.getDay() + 6) % 7;
+                    var start = new Date(first);
+                    start.setDate(1 - shift);
+
+                    for (var w = 0; w < 7; w++) {
+                        var head = document.createElement("div");
+                        head.className = "wd";
+                        var day = new Date(start);
+                        day.setDate(start.getDate() + w);
+                        head.textContent = day.toLocaleDateString(lang, { weekday: "short" }).slice(0, 2);
+                        grid.appendChild(head);
+                    }
+
+                    for (var i = 0; i < 42; i++) {
+                        var date = new Date(start);
+                        date.setDate(start.getDate() + i);
+                        var cell = document.createElement("button");
+                        cell.type = "button";
+                        cell.textContent = date.getDate();
+                        if (date.getMonth() !== at.getMonth()) cell.className = "other";
+                        if (toIso(date) === toIso(today)) cell.className += " today";
+                        if (picked && toIso(date) === toIso(picked)) cell.className += " picked";
+                        cell.dataset.iso = toIso(date);
+                        grid.appendChild(cell);
+                    }
+                }
+
+                function place() {
+                    // Under the field, or above it when the window ends first.
+                    var box = field.getBoundingClientRect();
+                    calendar.style.left = Math.max(8, Math.min(box.left,
+                        window.innerWidth - calendar.offsetWidth - 8)) + "px";
+                    var below = box.bottom + 6;
+                    calendar.style.top = (below + calendar.offsetHeight > window.innerHeight
+                        ? Math.max(8, box.top - calendar.offsetHeight - 6) : below) + "px";
+                    calendar.classList.add("placed");
+                }
+
+                function show() {
+                    if (open && open !== calendar) {
+                        open.hidden = true;
+                        open.classList.remove("placed");
+                    }
+                    at = parseIso(iso.value) || new Date();
+                    draw();
+                    calendar.hidden = false;
+                    place();
+                    open = calendar;
+                }
+
+                function hide() {
+                    calendar.hidden = true;
+                    calendar.classList.remove("placed");
+                    if (open === calendar) open = null;
+                }
+
+                grid.addEventListener("click", function (e) {
+                    var cell = e.target.closest("button[data-iso]");
+                    if (!cell) return;
+                    setValue(parseIso(cell.dataset.iso));
+                    hide();
+                });
+
+                calendar.querySelector(".prev").addEventListener("click", function () {
+                    at = new Date(at.getFullYear(), at.getMonth() - 1, 1); draw();
+                });
+                calendar.querySelector(".next").addEventListener("click", function () {
+                    at = new Date(at.getFullYear(), at.getMonth() + 1, 1); draw();
+                });
+                calendar.querySelector(".today-btn").addEventListener("click", function () {
+                    setValue(new Date()); hide();
+                });
+                calendar.querySelector(".clear-btn").addEventListener("click", function () {
+                    setValue(null); hide();
+                });
+
+                field.querySelector(".df-open").addEventListener("click", function () {
+                    if (calendar.hidden) { show(); } else { hide(); }
+                });
+                shown.addEventListener("focus", show);
+
+                // Typing is allowed and is the faster way for anybody who knows
+                // the date; the calendar follows what was typed.
+                shown.addEventListener("input", function () {
+                    var typed = parseShown(shown.value);
+                    iso.value = typed ? toIso(typed) : "";
+                    iso.dispatchEvent(new Event("input", { bubbles: true }));
+                    if (typed) { at = typed; if (!calendar.hidden) draw(); }
+                });
+                shown.addEventListener("blur", function () {
+                    // Tidy what was typed, or clear what cannot be a date.
+                    var typed = parseShown(shown.value);
+                    if (typed) { shown.value = toShown(typed); }
+                    else if (shown.value.trim() === "") { setValue(null); }
+                });
+            });
+
+            function closeOpen() {
+                if (!open) return;
+                open.hidden = true;
+                open.classList.remove("placed");
+                open = null;
+            }
+
+            document.addEventListener("click", function (e) {
+                if (open && !e.target.closest("[data-datefield]")) closeOpen();
+            });
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "Escape") closeOpen();
+            });
+            // Fixed to the window: a page that scrolls under it would leave it
+            // hanging beside nothing.
+            window.addEventListener("scroll", closeOpen, true);
+        })();
+    </script>
     <script>
         // The kebab menu on a table row, shared by every page that has one:
         // closes on a click elsewhere and on Esc. The body is position:fixed,

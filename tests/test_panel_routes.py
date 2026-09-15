@@ -488,3 +488,36 @@ class CodeExpiryThroughTheForm(PanelCase):
                            "expires_at": tariffs._now_ms() - 86400 * 1000})
         body = self.page("/tariffs/codes/GONE")
         self.assertIn("срок истёк", body)
+
+
+class DatesTypedByHand(PanelCase):
+    """
+    The date field is a pair: a box a person reads and a hidden ISO value. With
+    no JavaScript only the box is posted, so the server takes both shapes — or
+    a date typed on a page whose script did not load would be silently dropped.
+    """
+
+    def test_a_date_typed_the_way_it_is_read(self):
+        from datetime import datetime
+        self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "BYHAND", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "17.03.2030", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        when = datetime.fromtimestamp(tariffs.get_code("BYHAND")["expires_at"] / 1000)
+        self.assertEqual(when.strftime("%Y-%m-%d"), "2030-03-17")
+
+    def test_something_that_is_not_a_date_leaves_the_code_open(self):
+        self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "NONSENSE", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "завтра", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        self.assertEqual(tariffs.get_code("NONSENSE")["expires_at"], 0)
+
+    def test_the_form_shows_the_date_in_both_halves(self):
+        self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "WEEKEND", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "2030-03-17", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        body = self.page("/tariffs/codes/WEEKEND/edit")
+        self.assertIn('value="2030-03-17"', body)   # the hidden half
+        self.assertIn('value="17.03.2030"', body)   # the half that is read

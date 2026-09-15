@@ -285,11 +285,15 @@ def _end_of_day(value: str) -> int:
     value = (value or "").strip()
     if not value:
         return 0
-    try:
-        day = datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
-        return 0
-    return int(day.replace(hour=23, minute=59, second=59).timestamp() * 1000)
+    # ISO from the field's hidden half, and the shape a person types when there
+    # is no JavaScript to translate it.
+    for shape in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            day = datetime.strptime(value, shape)
+        except ValueError:
+            continue
+        return int(day.replace(hour=23, minute=59, second=59).timestamp() * 1000)
+    return 0
 
 
 def _code_form_context(request: Request, code: dict = None, error: str = "",
