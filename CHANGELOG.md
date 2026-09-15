@@ -18,8 +18,9 @@ read as something a person wants to know before updating.
   the first time. The link becomes a button beside the "Add to Happ / Incy"
   ones, and the Letters tab can switch that button off the way it switches off
   the QR code. Both are empty by default: a letter should not invite anybody to
-  write to a blank address. Every letter text can use `{support}` and
-  `{manual}`, the way it already uses `{service}`.
+  write to a blank address. The address is a link in both places, so a reader
+  presses it and their mail client opens a new letter. Every letter text can use
+  `{support}` and `{manual}`, the way it already uses `{service}`.
 
 - **Tariffs.** What a new client gets — traffic, term, inbounds — is a tariff
   now, and each tariff has its own code word. There can be as many as you like:

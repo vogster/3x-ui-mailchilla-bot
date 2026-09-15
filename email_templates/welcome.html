@@ -22,12 +22,19 @@
         {% for app in apps %}
         <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
         {% endfor %}
-        {# The instructions sit in the same row: somebody setting a connection
-           up is looking here already, and a link further down the letter is a
-           link found after the trouble rather than before it. #}
-        {% if manual %}
-        <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(manual.url, manual.button, primary=false) }}</td>
-        {% endif %}
+    </tr>
+</table>
+{% endif %}
+
+{# The instructions stand apart from the app buttons. In one row with them
+   everything read as the same kind of thing — three ways to import a
+   subscription — while this one goes somewhere else entirely. #}
+{% if manual %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 22px;">
+    <tr>
+        <td align="center">
+            <a href="{{ manual.url }}" style="color: #a0a0a8; font-size: 15px; text-decoration: underline;">{{ manual.button }}</a>
+        </td>
     </tr>
 </table>
 {% endif %}
@@ -59,9 +66,16 @@
 {{ ui.code(sub_url) }}
 
 {% if support %}
-<p style="margin: 22px 0 0 0; color: #a0a0a8; font-size: 15px;">
-    {{ t("welcome.support") | emph }}
-</p>
+{# Its own box rather than another grey paragraph: this is the line somebody
+   looks for when nothing else in the letter has worked. #}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 26px;">
+    <tr>
+        <td bgcolor="#141416" style="background-color: #141416; border: 1px solid #26262a;
+                   border-radius: 8px; padding: 14px 16px; color: #ededef; font-size: 15px;">
+            {{ t("welcome.support") | emph | mailto(support) }}
+        </td>
+    </tr>
+</table>
 {% endif %}
 
 {% if t("welcome.commands_title") or t("welcome.commands_text") %}

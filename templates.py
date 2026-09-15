@@ -103,8 +103,30 @@ def _split(value):
 
 _env.globals["t"] = text
 _env.globals["split"] = _split
+def _mailto(value, address: str):
+    """
+    Turns the support address inside an already-rendered line into a link.
+
+    The address arrives through the editable texts as a substitution, so it
+    cannot carry markup of its own — a text is text, and letting it hold HTML
+    would make every letter field a place where markup can be typed. Instead
+    the address is found in the finished line and wrapped here, which keeps the
+    text plain and still gives the reader something to press.
+    """
+    address = (address or "").strip()
+    if not address:
+        return value
+    shown = escape(address)
+    link = Markup(
+        '<a href="mailto:{href}" style="color: #45b866; text-decoration: none; '
+        'font-weight: 600;">{shown}</a>'
+    ).format(href=address, shown=address)
+    return Markup(str(value).replace(str(shown), str(link)))
+
+
 _env.filters["emph"] = _emph
 _env.filters["plain"] = _plain
+_env.filters["mailto"] = _mailto
 
 
 # How the subscription QR is referred to from the HTML: <img src="cid:QR_CID">.

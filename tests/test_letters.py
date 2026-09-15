@@ -200,3 +200,30 @@ class SupportAndInstructions(unittest.TestCase):
         config.SUPPORT_EMAIL = "help@example.com"
         config.MANUAL_URL = "https://example.com/howto"
         self.assertEqual(templates.text("common.support"), "Вопросы: help@example.com")
+
+    def test_the_address_is_a_link_to_write_to(self):
+        # A reader who has to select and copy an address has already been given
+        # one more chore than they came for.
+        config.SUPPORT_EMAIL = "help@example.com"
+        html = self.welcome().html
+        self.assertIn('href="mailto:help@example.com"', html)
+        # Both places it appears: the letter's own line and the footer.
+        self.assertEqual(html.count('href="mailto:'), 2)
+
+    def test_the_text_part_keeps_the_plain_address(self):
+        # Nothing to press in plain text, and a mailto: in it would read as
+        # markup that did not render.
+        config.SUPPORT_EMAIL = "help@example.com"
+        text = self.welcome().text
+        self.assertIn("help@example.com", text)
+        self.assertNotIn("mailto:", text)
+
+    def test_the_instructions_are_not_in_the_row_of_app_buttons(self):
+        # In one row with them it read as a third way to import a subscription,
+        # which is not what it is.
+        config.MANUAL_URL = "https://example.com/howto"
+        config.WELCOME_MANUAL_ENABLED = True
+        html = self.welcome().html
+        apps_row = html.split("btn-cell")
+        self.assertNotIn("https://example.com/howto", "".join(apps_row[:-1]))
+        self.assertIn("https://example.com/howto", html)

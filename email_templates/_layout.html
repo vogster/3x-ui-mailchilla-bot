@@ -79,7 +79,7 @@
                     <td class="pad" style="padding: 18px 28px; border-top: 1px solid #1d1d20;
                                color: #7a7a83; font-size: 14px; line-height: 1.55;">
                         {{ t("common.footer") | emph }}
-                        {% if support %}<br>{{ t("common.support") | emph }}{% endif %}
+                        {% if support %}<br>{{ t("common.support") | emph | mailto(support) }}{% endif %}
                     </td>
                 </tr>
             </table>
