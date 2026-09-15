@@ -12,13 +12,19 @@ Mailchilla: an email bot plus FastAPI web panel that hands out [3x-ui](https://g
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env          # then fill XUI_*, ADMIN_PANEL_USER/PASSWORD/SECRET
 python run.py                 # bot thread + web panel on 127.0.0.1:8080
 python email_bot.py           # the bot alone, no panel
 ```
 
-There is no test suite, no linter config and no build step. Verification is by running the process and watching the log (`logs/bot.log`, or the `/logs` page).
+```bash
+python -m unittest discover -s tests   # what CI runs
+```
+
+There is no linter config and no build step. The tests are unittest, no pytest, and they fall into two kinds. Most are pure: coercion, the code-word matching, the letter texts. `tests/test_panel_routes.py` is the other kind — it drives the panel through `fastapi.testclient` with 3x-ui stubbed out, and exists for one failure in particular: a template reading a context key the route never sent. Jinja resolves that to Undefined in silence, the page still renders, and the missing part is found by somebody clicking a week later. **A new page or a new context key wants a line in that file**; asserting on one string from the page is enough. `httpx` is what `TestClient` needs and lives in `requirements-dev.txt`, so an installation does not carry it.
+
+Beyond the tests, verification is by running the process and watching the log (`logs/bot.log`, or the `/logs` page).
 
 **A running panel picks up template edits but not Python ones.** Jinja re-reads a template on every render, while routes, `settings.py` and the rest are already imported — so editing both and reloading the page leaves the new markup running against the old route. The markup then reads context keys the route never sent, Jinja quietly resolves them to Undefined, and the feature disappears instead of erroring. Restart the process after any Python change, and be suspicious of "it renders but the new thing is missing".
 

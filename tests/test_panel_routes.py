@@ -1,0 +1,278 @@
+"""
+Every page of the panel opens, and the forms that change things do.
+
+These are deliberately shallow: a status code, a redirect, a word that has to be
+on the page. What they are for is the failure this project keeps producing —
+a template reading a context key the route never sent. Jinja resolves it to
+Undefined without a murmur, the page still renders, and the missing part is
+found by somebody clicking a week later. A request that renders the whole
+template catches it the moment it happens.
+
+3x-ui is stubbed out: these tests must never reach a panel, and a route that
+only works when the VPN panel answers is a route that breaks on the first
+network hiccup anyway.
+
+The tariffs live in a temporary file, for the reason tests/test_tariffs.py
+gives at length: tariffs.TARIFFS_PATH is built from the module's own __file__,
+and a test that forgot would write over a real installation's tariffs.
+"""
+import os
+import tempfile
+import unittest
+
+from fastapi.testclient import TestClient
+
+import config
+import tariffs
+import xui_client
+
+USER, PASSWORD = "panel-tests", "panel-tests-password"
+
+# What the stubbed 3x-ui answers with. Two inbounds, two clients, one of them on
+# a tariff and one on none — the second is what every installation updating from
+# 0.1.x is full of.
+INBOUNDS = [
+    {"id": 1, "remark": "VLESS-REALITY", "protocol": "vless", "port": 443,
+     "enable": True, "clients": 2},
+    {"id": 2, "remark": "Shadowsocks", "protocol": "shadowsocks", "port": 8388,
+     "enable": True, "clients": 0},
+]
+CLIENTS = [
+    {"uuid": "c0ffee01", "id": 1, "email": "ben@example.com", "comment": "Ben",
+     "enable": True, "totalGB": 0, "expiryTime": 0, "subId": "sub01",
+     "inboundIds": [1], "group": "Basic", "traffic": {"up": 1, "down": 2}},
+    {"uuid": "c0ffee02", "id": 2, "email": "old-timer@example.com", "comment": "",
+     "enable": True, "totalGB": 0, "expiryTime": 0, "subId": "sub02",
+     "inboundIds": [1], "group": "", "traffic": {"up": 0, "down": 0}},
+]
+
+
+class FakeXui:
+    """Every call the panel makes, answered without a network."""
+
+    def get_inbounds(self):
+        return [dict(i) for i in INBOUNDS]
+
+    def get_all_clients(self):
+        return [dict(c) for c in CLIENTS]
+
+    def get_online_emails(self):
+        return ["ben@example.com"]
+
+    def get_last_online(self):
+        return {"ben@example.com": 1_770_000_000_000}
+
+    def get_server_status(self):
+        return None
+
+    def find_client_by_uuid(self, uuid):
+        return next((dict(c) for c in CLIENTS
+                     if c["uuid"] == uuid or str(c["id"]) == str(uuid)), None)
+
+    def find_client_by_email(self, email):
+        return next((dict(c) for c in CLIENTS if c["email"] == email), None)
+
+    def get_client_links(self, email):
+        return []
+
+    def rename_group(self, old_name, new_name):
+        self.renamed = (old_name, new_name)
+        return True
+
+    def login(self):
+        return True
+
+
+class PanelCase(unittest.TestCase):
+    """A signed-in client against the panel, with 3x-ui and the tariffs faked."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.saved_user = config.ADMIN_PANEL_USER
+        cls.saved_password = config.ADMIN_PANEL_PASSWORD
+        config.ADMIN_PANEL_USER = USER
+        config.ADMIN_PANEL_PASSWORD = PASSWORD
+        # Imported here rather than at module level: importing admin.app runs
+        # settings.load() and tariffs.load(), and the credentials have to be in
+        # place before anything reads them.
+        import admin.app as appmod
+        cls.app = appmod.app
+
+    @classmethod
+    def tearDownClass(cls):
+        config.ADMIN_PANEL_USER = cls.saved_user
+        config.ADMIN_PANEL_PASSWORD = cls.saved_password
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="mailchilla-routes-")
+        self.real_path = tariffs.TARIFFS_PATH
+        tariffs.TARIFFS_PATH = os.path.join(self.dir, "tariffs.json")
+        self.saved_state = tariffs.snapshot()
+        tariffs._state = {"tariffs": [], "codes": []}
+        self.tariff = tariffs.save_tariff(
+            {"name": "Basic", "limit_gb": 100, "expire_days": 90, "inbound_ids": [1]})
+        tariffs.save_code({"word": "AURORA", "tariff_id": self.tariff["id"],
+                           "uses_left": None, "enabled": True})
+
+        self.fake = FakeXui()
+        self.real_shared = xui_client.get_shared_client
+        xui_client.get_shared_client = lambda: self.fake
+        # The routers took their own reference at import time.
+        self.patched = []
+        for name in ("admin.routes_tariffs", "admin.routes_clients",
+                     "admin.routes_broadcast", "admin.routes_settings",
+                     "admin.routes_setup", "admin.app"):
+            module = __import__(name, fromlist=["x"])
+            if hasattr(module, "get_shared_client"):
+                self.patched.append((module, module.get_shared_client))
+                module.get_shared_client = lambda: self.fake
+
+        self.client = TestClient(self.app)
+        response = self.client.post("/login", data={"username": USER, "password": PASSWORD},
+                                    follow_redirects=False)
+        self.assertIn(response.status_code, (200, 302, 303))
+
+    def tearDown(self):
+        xui_client.get_shared_client = self.real_shared
+        for module, original in self.patched:
+            module.get_shared_client = original
+        tariffs.TARIFFS_PATH = self.real_path
+        tariffs._state = self.saved_state
+
+    def page(self, url):
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, f"{url} answered {response.status_code}")
+        return response.text
+
+
+class PagesOpen(PanelCase):
+    def test_the_pages_of_the_panel(self):
+        for url in ("/", "/clients", "/tariffs", "/tariffs/new", "/broadcast",
+                    "/settings", "/logs", "/setup"):
+            with self.subTest(url=url):
+                self.page(url)
+
+    def test_a_tariff_card_lists_who_is_on_it(self):
+        body = self.page(f"/tariffs/{self.tariff['id']}")
+        self.assertIn("Basic", body)
+        # The client whose group is this tariff, and not the one with none.
+        self.assertIn("ben@example.com", body)
+        self.assertNotIn("old-timer@example.com", body)
+
+    def test_a_code_card_lists_who_came_through_it(self):
+        tariffs.spend("AURORA", "ben@example.com")
+        body = self.page("/tariffs/codes/AURORA")
+        self.assertIn("AURORA", body)
+        self.assertIn("ben@example.com", body)
+
+    def test_the_code_form_opens_with_a_word_ready(self):
+        body = self.page("/tariffs/codes/new")
+        self.assertIn("Basic", body)
+
+    def test_the_client_list_shows_the_tariff_and_offers_it_as_a_filter(self):
+        body = self.page("/clients")
+        self.assertIn("ben@example.com", body)
+        # The chip on the row and the option in the filter — the filter is fed
+        # by its own context key, and a route that forgot it would still render
+        # a perfectly good page with the filter silently missing.
+        self.assertIn('data-tariff="Basic"', body)
+        self.assertIn('<select id="f-tariff"', body)
+        self.assertIn('data-name="Basic"', body)
+
+    def test_a_client_card_and_its_edit_form(self):
+        self.page("/clients/c0ffee01")
+        self.page("/clients/c0ffee01/edit")
+
+    def test_a_page_behind_the_login_redirects_when_signed_out(self):
+        fresh = TestClient(self.app)
+        response = fresh.get("/tariffs", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/login", response.headers["location"])
+
+
+class RoutesThatChangeThings(PanelCase):
+    """
+    The paths where one route could swallow another. /tariffs/codes/new is three
+    segments, exactly like /tariffs/<id>/edit, and FastAPI matches in the order
+    routes are declared — so this is not a hypothetical.
+    """
+
+    def test_saving_a_tariff(self):
+        response = self.client.post("/tariffs/save", data={
+            "tariff_id": self.tariff["id"], "name": "Basic", "limit_gb": "250",
+            "expire_days": "30", "inbounds_present": "1", "inbound_ids": ["1", "2"],
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(tariffs.get(self.tariff["id"])["limit_gb"], 250)
+        self.assertEqual(tariffs.get(self.tariff["id"])["inbound_ids"], [1, 2])
+
+    def test_renaming_a_tariff_renames_the_group_in_the_panel(self):
+        self.client.post("/tariffs/save", data={
+            "tariff_id": self.tariff["id"], "name": "Family", "limit_gb": "100",
+            "expire_days": "90", "inbounds_present": "1", "inbound_ids": ["1"],
+        }, follow_redirects=False)
+        self.assertEqual(self.fake.renamed, ("Basic", "Family"))
+
+    def test_a_new_tariff_lands_on_the_code_form(self):
+        # A tariff with no way into it is not finished, and saying so later is
+        # worse than offering the form now.
+        response = self.client.post("/tariffs/save", data={
+            "name": "Trial", "limit_gb": "10", "expire_days": "7",
+            "inbounds_present": "1", "inbound_ids": ["1"],
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/tariffs/codes/new", response.headers["location"])
+
+    def test_a_duplicate_tariff_name_comes_back_with_the_error(self):
+        tariffs.save_tariff({"name": "Family", "limit_gb": 1, "expire_days": 1,
+                             "inbound_ids": [1]})
+        response = self.client.post("/tariffs/save", data={
+            "tariff_id": self.tariff["id"], "name": "Family", "limit_gb": "100",
+            "expire_days": "90", "inbounds_present": "1", "inbound_ids": ["1"],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Family", response.text)
+        self.assertEqual(tariffs.get(self.tariff["id"])["name"], "Basic")
+
+    def test_saving_a_code(self):
+        response = self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "SNOWDROP", "tariff_id": self.tariff["id"],
+            "uses_left": "1", "note": "for Ben", "enabled": "on",
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("issued=SNOWDROP", response.headers["location"])
+        self.assertEqual(tariffs.get_code("SNOWDROP")["uses_left"], 1)
+
+    def test_a_code_word_that_is_taken_comes_back_with_the_error(self):
+        response = self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "aurora", "tariff_id": self.tariff["id"],
+            "uses_left": "", "note": "", "enabled": "on",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(tariffs.all_codes()), 1)
+
+    def test_switching_a_code_off_and_on(self):
+        self.client.post("/tariffs/codes/AURORA/off", follow_redirects=False)
+        self.assertIsNone(tariffs.match("AURORA"))
+        self.client.post("/tariffs/codes/AURORA/on", follow_redirects=False)
+        self.assertIsNotNone(tariffs.match("AURORA"))
+
+    def test_removing_a_code(self):
+        self.client.post("/tariffs/codes/AURORA/delete", follow_redirects=False)
+        self.assertEqual(tariffs.all_codes(), [])
+
+    def test_deleting_a_tariff_takes_its_codes(self):
+        self.client.post(f"/tariffs/{self.tariff['id']}/delete", follow_redirects=False)
+        self.assertEqual(tariffs.all_tariffs(), [])
+        self.assertEqual(tariffs.all_codes(), [])
+
+    def test_the_wizard_writes_the_first_tariff_rather_than_the_settings(self):
+        response = self.client.post("/setup/save", data={
+            "codeword": "SNOWFALL", "limit_gb": "250", "expire_days": "30",
+            "inbounds_present": "1", "inbound_ids": ["2"],
+        })
+        self.assertEqual(response.status_code, 200)
+        first = tariffs.all_tariffs()[0]
+        self.assertEqual(first["limit_gb"], 250)
+        self.assertEqual(first["inbound_ids"], [2])
+        self.assertIsNotNone(tariffs.match("SNOWFALL"))
