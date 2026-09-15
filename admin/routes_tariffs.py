@@ -28,6 +28,7 @@ router = APIRouter()
 def _code_row(code: dict, tariff_names: dict) -> dict:
     """One code, shaped for a table."""
     spent = code["uses_left"] is not None and code["uses_left"] <= 0
+    expired = tariffs.is_expired(code)
     return {
         **code,
         "tariff_name": tariff_names.get(code["tariff_id"], ""),
@@ -35,10 +36,18 @@ def _code_row(code: dict, tariff_names: dict) -> dict:
         "used_count": len(code["used_by"]),
         "unlimited": code["uses_left"] is None,
         "created": datetime.fromtimestamp(code["created_at"] / 1000).strftime("%d.%m.%Y"),
-        # Three states worth telling apart: still open, used up, and switched
-        # off by hand. The middle one is not a fault — it is a personal
-        # invitation that did its job.
-        "state": "off" if not code["enabled"] else ("spent" if spent else "live"),
+        "expires": (datetime.fromtimestamp(code["expires_at"] / 1000).strftime("%d.%m.%Y")
+                    if code["expires_at"] else ""),
+        # The form wants the date back in the shape <input type="date"> speaks.
+        "expires_input": (datetime.fromtimestamp(code["expires_at"] / 1000).strftime("%Y-%m-%d")
+                          if code["expires_at"] else ""),
+        # Four states worth telling apart: still open, used up, out of date, and
+        # switched off by hand. Only the last is a decision; the middle two are
+        # a code that did its job or a date that passed.
+        "state": ("off" if not code["enabled"]
+                  else "spent" if spent
+                  else "expired" if expired
+                  else "live"),
     }
 
 
@@ -262,6 +271,24 @@ def tariff_delete(request: Request, tariff_id: str):
 
 # ------------------------------------------------------------------ codes ---
 
+def _end_of_day(value: str) -> int:
+    """
+    A date from the form as milliseconds at the end of that day, or 0.
+
+    The end rather than the start: somebody writing "valid until the 20th"
+    means the 20th counts, and a code that stopped working at midnight on the
+    19th would be a small, annoying surprise.
+    """
+    value = (value or "").strip()
+    if not value:
+        return 0
+    try:
+        day = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return 0
+    return int(day.replace(hour=23, minute=59, second=59).timestamp() * 1000)
+
+
 def _code_form_context(request: Request, code: dict = None, error: str = "",
                        was: str = ""):
     return {
@@ -292,6 +319,7 @@ def code_new(request: Request, tariff: str = "", generated: str = "1"):
             "word": tariffs.generate_word() if generated == "1" else "",
             "tariff_id": tariff or known[0]["id"],
             "uses_left": 1,
+            "expires_input": "",
             "note": "",
             "enabled": True,
         }))
@@ -306,7 +334,8 @@ def code_edit(request: Request, word: str):
     if not code:
         return RedirectResponse("/tariffs?tab=codes", status_code=303)
     return templates.TemplateResponse(
-        "code_edit.html", _code_form_context(request, code, was=code["word"]))
+        "code_edit.html",
+        _code_form_context(request, _code_row(code, _names()), was=code["word"]))
 
 
 @router.post("/tariffs/codes/save", response_class=HTMLResponse)
@@ -315,6 +344,7 @@ def code_save(request: Request,
               word: str = Form(""),
               tariff_id: str = Form(""),
               uses_left: str = Form(""),
+              expires_on: str = Form(""),
               note: str = Form(""),
               enabled: str = Form("")):
     auth_redirect = require_auth(request)
@@ -324,6 +354,10 @@ def code_save(request: Request,
     values = {
         "word": (word or "").strip(),
         "tariff_id": tariff_id,
+        # A date names a day, and a code good "until Sunday" has to work all
+        # Sunday — so it runs out at the end of the day chosen, not at its
+        # first second.
+        "expires_at": _end_of_day(expires_on),
         # An empty field means "no limit": that is the public word everybody
         # writes, and it is the one case where a blank is a real answer rather
         # than something left unfilled.
@@ -334,8 +368,10 @@ def code_save(request: Request,
     try:
         saved = tariffs.save_code(values, was=was or None)
     except (ValueError, TypeError) as e:
+        broken = dict(values)
+        broken["expires_input"] = (expires_on or "").strip()
         return templates.TemplateResponse(
-            "code_edit.html", _code_form_context(request, values, error=str(e), was=was))
+            "code_edit.html", _code_form_context(request, broken, error=str(e), was=was))
     except OSError as e:
         logger.error(f"Could not write tariffs.json: {e}")
         return templates.TemplateResponse(

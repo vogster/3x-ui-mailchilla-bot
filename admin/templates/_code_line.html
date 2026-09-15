@@ -19,6 +19,8 @@
 
     {% if code.state == 'off' %}
     <span class="muted">{{ t("switched off") }}</span>
+    {% elif code.state == 'expired' %}
+    <span class="muted">{{ t("out of date since {date}", date=code.expires) }}</span>
     {% elif code.state == 'spent' %}
     <span class="muted">{{ t("used up") }}{% if code.used %} · {{ code.used }}{% endif %}</span>
     {% elif code.unlimited %}
@@ -28,6 +30,9 @@
     {% endif %}
 
     <span class="right">
+        {% if code.expires and code.state == 'live' %}
+        <span class="muted">{{ t("until {date}", date=code.expires) }}</span>
+        {% endif %}
         <span class="muted">{{ code.created }}</span>
     </span>
 </div>

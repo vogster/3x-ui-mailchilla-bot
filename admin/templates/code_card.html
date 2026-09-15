@@ -40,6 +40,8 @@
             <span class="badge on nodot">{{ t("The code works") }}</span>
             {% elif code.state == 'spent' %}
             <span class="badge off nodot">{{ t("used up") }}</span>
+            {% elif code.state == 'expired' %}
+            <span class="badge off nodot">{{ t("out of date") }}</span>
             {% else %}
             <span class="badge off nodot">{{ t("switched off") }}</span>
             {% endif %}
@@ -52,6 +54,12 @@
     <div class="card">
         <div class="label">{{ t("Came in through it") }}</div>
         <div class="value">{{ code.used_count }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Works until") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if code.expires %}{{ code.expires }}{% else %}∞{% endif %}
+        </div>
     </div>
     <div class="card">
         <div class="label">{{ t("Created") }}</div>

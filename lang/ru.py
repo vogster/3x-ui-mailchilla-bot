@@ -91,6 +91,11 @@ TEXTS = {
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
     "Groups without a tariff": "Группы без тарифа",
+    "Works until": "Работает до",
+    "out of date": "срок истёк",
+    "out of date since {date}": "срок истёк {date}",
+    "until {date}": "до {date}",
+    "The last day the code works, to the end of it. Empty means it never runs out on its own. Use it for a word you hand out for a weekend — it stops on its own rather than waiting to be remembered on Monday.": "Последний день, когда код работает, включительно. Пусто — код не истекает сам. Пригодится для слова, которое раздают на выходные: оно погаснет само, а не будет ждать, пока о нём вспомнят в понедельник.",
     "Substitutions: {email}, {name}, {service}, {tariff}.": "Подстановки: {email}, {name}, {service}, {tariff}.",
     "The notification goes out when a client registers themselves, by letter with a code word. Substitutions: {email}, {name}, {service}, {tariff}. {name} is the name from the letter's header and may be empty; {tariff} is the tariff the word opened.": "Уведомление уходит, когда клиент зарегистрировался сам, письмом с кодовым словом. Подстановки: {email}, {name}, {service}, {tariff}. {name} — имя из заголовка письма, может быть пустым; {tariff} — тариф, который открыло слово.",
     "Came in through": "Пришёл по коду",

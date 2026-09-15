@@ -519,3 +519,58 @@ class TheGroupIsTheTariff(StorageCase):
         finally:
             for name, value in real.items():
                 setattr(email_bot, name, value)
+
+
+class CodesThatRunOutOfTime(StorageCase):
+    """
+    A word handed out for a weekend. The point is that it stops on its own:
+    a code that has to be remembered and switched off on Monday is a code that
+    stays open until somebody notices.
+    """
+
+    DAY_MS = 86400 * 1000
+
+    def dated(self, days_from_now, word="WEEKEND"):
+        tariff = self.make(name="Trial", word="")
+        return tariffs.save_code({
+            "word": word, "tariff_id": tariff["id"], "uses_left": None,
+            "enabled": True,
+            "expires_at": tariffs._now_ms() + days_from_now * self.DAY_MS,
+        })
+
+    def test_a_code_with_a_date_ahead_still_opens(self):
+        code = self.dated(2)
+        self.assertIsNotNone(tariffs.match(code["word"]))
+        self.assertIn(code["word"], tariffs.live_words())
+
+    def test_a_code_whose_day_has_passed_opens_nothing(self):
+        code = self.dated(-1)
+        self.assertIsNone(tariffs.match(code["word"]))
+        self.assertNotIn(code["word"], tariffs.live_words())
+
+    def test_a_code_with_no_date_never_runs_out(self):
+        self.make(word="AURORA")
+        code = tariffs.get_code("AURORA")
+        self.assertEqual(code["expires_at"], 0)
+        self.assertFalse(tariffs.is_expired(code))
+        self.assertIsNotNone(tariffs.match("AURORA"))
+
+    def test_the_date_survives_a_rename(self):
+        code = self.dated(3)
+        renamed = tariffs.save_code({**code, "word": "AUTUMN"}, was=code["word"])
+        self.assertEqual(renamed["expires_at"], code["expires_at"])
+
+    def test_an_expired_code_is_still_on_the_list_with_its_history(self):
+        # It did let people in; the record of that does not expire with it.
+        code = self.dated(-2)
+        tariffs.spend(code["word"], "ben@example.com")
+        kept = tariffs.get_code(code["word"])
+        self.assertEqual(kept["used_by"], ["ben@example.com"])
+
+    def test_an_old_file_without_the_field_reads_as_never_expiring(self):
+        self.make(word="AURORA")
+        stored = tariffs.snapshot()
+        del stored["codes"][0]["expires_at"]
+        tariffs._state = {"tariffs": stored["tariffs"],
+                          "codes": [tariffs._clean_code(c) for c in stored["codes"]]}
+        self.assertIsNotNone(tariffs.match("AURORA"))

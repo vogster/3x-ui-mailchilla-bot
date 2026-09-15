@@ -198,6 +198,8 @@ Two details worth knowing about the word. It is matched whole, so `START` is not
 | 1 | a personal invitation - spent by whoever uses it first |
 | any number | works that many times |
 
+A code can also carry a date it works until - the last day, to the end of it. A word given out for a weekend stops on its own rather than waiting to be remembered on Monday; an empty date means it never runs out by itself. A code that has run out of activations or out of days stays on the list, struck through, with the record of who came in through it.
+
 That number is the whole difference between the two, which is why there is one form for both. Press **Generate** for a word nobody could guess - ten characters with no `0`/`O` or `1`/`I` in them, since somebody will be typing it off a screen - or type a memorable one yourself.
 
 A tariff can have several words: a seasonal one beside the permanent one, or one per group of people. Any of them can be switched off on its own the moment it leaks, without touching the tariff or the other words. Switching a code off keeps the record of who came in through it; removing it from the list throws that away.

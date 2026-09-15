@@ -451,3 +451,40 @@ class DashboardFigures(PanelCase):
         finally:
             CLIENTS[0]["totalGB"] = 0
             CLIENTS[0]["traffic"] = {"up": 1, "down": 2}
+
+
+class CodeExpiryThroughTheForm(PanelCase):
+    """The date as the form speaks it: a day, counted to its end."""
+
+    def test_a_date_saved_from_the_form_lasts_all_that_day(self):
+        from datetime import datetime
+        response = self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "WEEKEND", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "2030-03-17", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        when = datetime.fromtimestamp(tariffs.get_code("WEEKEND")["expires_at"] / 1000)
+        self.assertEqual(when.strftime("%Y-%m-%d"), "2030-03-17")
+        # The end of that day, not its first second: "until the 17th" includes it.
+        self.assertGreaterEqual(when.hour, 23)
+
+    def test_an_empty_date_means_it_never_runs_out(self):
+        self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "FOREVER", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        self.assertEqual(tariffs.get_code("FOREVER")["expires_at"], 0)
+
+    def test_the_form_comes_back_with_the_date_in_it(self):
+        self.client.post("/tariffs/codes/save", data={
+            "was": "", "word": "WEEKEND", "tariff_id": self.tariff["id"],
+            "uses_left": "", "expires_on": "2030-03-17", "note": "", "enabled": "on",
+        }, follow_redirects=False)
+        self.assertIn('value="2030-03-17"', self.page("/tariffs/codes/WEEKEND/edit"))
+
+    def test_an_expired_code_says_so_rather_than_looking_open(self):
+        tariffs.save_code({"word": "GONE", "tariff_id": self.tariff["id"],
+                           "uses_left": None, "enabled": True,
+                           "expires_at": tariffs._now_ms() - 86400 * 1000})
+        body = self.page("/tariffs/codes/GONE")
+        self.assertIn("срок истёк", body)

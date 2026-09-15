@@ -98,6 +98,12 @@ def _clean_code(raw: dict) -> dict:
     word = str(raw.get("word") or "").strip()
     if not word:
         raise ValueError(i18n.t("the code word cannot be empty"))
+    # Milliseconds since the epoch, like every other time in this project and
+    # in 3x-ui. 0 means it never runs out on its own.
+    try:
+        expires_at = int(raw.get("expires_at") or 0)
+    except (TypeError, ValueError):
+        expires_at = 0
     uses_left = raw.get("uses_left")
     if uses_left is not None and str(uses_left).strip() != "":
         uses_left = max(int(uses_left), 0)
@@ -109,6 +115,9 @@ def _clean_code(raw: dict) -> dict:
         "enabled": raw.get("enabled") is not False,
         # None: unlimited. A number: how many registrations are left in it.
         "uses_left": uses_left,
+        # When it stops working by itself. A word handed out for a weekend
+        # should not have to be remembered and switched off on Monday.
+        "expires_at": max(expires_at, 0),
         "used_by": [str(x) for x in (raw.get("used_by") or [])],
         # What the code is for, in the administrator's own words. Never sent
         # anywhere — it is a note on a list, so that a page of codes is not ten
@@ -395,13 +404,20 @@ def delete_code(word: str) -> bool:
         return True
 
 
+def is_expired(code: dict, now_ms: int = None) -> bool:
+    """Whether a code has run out of time. A code with no date never does."""
+    if not code.get("expires_at"):
+        return False
+    return (now_ms if now_ms is not None else _now_ms()) > code["expires_at"]
+
+
 def match(word: str):
     """
     The (tariff, code) a word opens, or None.
 
-    A disabled code and a spent one answer to nothing: the word is then simply
-    not a word this installation knows, which is what somebody who got hold of
-    a revoked invitation should see.
+    A code that is switched off, used up or out of date answers to nothing: the
+    word is then simply not a word this installation knows, which is what
+    somebody who got hold of a spent invitation should see.
     """
     needle = normalise_word(word)
     with _lock:
@@ -411,6 +427,8 @@ def match(word: str):
             if not code["enabled"]:
                 return None
             if code["uses_left"] is not None and code["uses_left"] <= 0:
+                return None
+            if is_expired(code):
                 return None
             tariff = get(code["tariff_id"])
             return (tariff, dict(code)) if tariff else None
@@ -441,7 +459,8 @@ def live_words() -> list:
     """Every word a letter could carry, for the bot to look for."""
     with _lock:
         return [c["word"] for c in _state["codes"]
-                if c["enabled"] and (c["uses_left"] is None or c["uses_left"] > 0)]
+                if c["enabled"] and (c["uses_left"] is None or c["uses_left"] > 0)
+                and not is_expired(c)]
 
 
 def spend(word: str, email: str):

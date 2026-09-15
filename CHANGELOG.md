@@ -21,6 +21,9 @@ read as something a person wants to know before updating.
 - A tariff is read once, when a client is created. Editing one therefore
   changes nothing for anybody already registered, and the page says so rather
   than leaving you to wonder.
+- A code can be given a **date it works until** — the last day, counted to its
+  end. A word handed out for a weekend then stops on its own instead of waiting
+  to be remembered on Monday. Empty means it never runs out by itself.
 - **Code words are their own thing**, on a tab of their own beside the tariffs.
   A code is a word, the tariff it opens, how many activations are left in it,
   a note and a switch. Leave the activations empty and it is the word you hand

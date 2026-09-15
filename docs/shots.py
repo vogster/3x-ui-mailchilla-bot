@@ -94,6 +94,11 @@ _trial = _demo_tariff("Trial", 10, 7, [1])
 # A personal code on the trial tariff, so the page shows both shapes at once.
 tariffs.save_code({{"word": "K78QYYDNSZ", "tariff_id": _trial["id"],
                    "uses_left": 1, "note": "Для Лены", "enabled": True}})
+# A word handed out for a few days, so the page shows a code that runs out by
+# itself beside ones that do not.
+tariffs.save_code({{"word": "AURORA-WEEKEND", "tariff_id": _standard["id"],
+                   "uses_left": None, "note": "На выходные", "enabled": True,
+                   "expires_at": int(time.time() * 1000) + 3 * 86400 * 1000}})
 # Somebody has come in through the open word, so the code's card has a list to
 # show rather than an empty state.
 for _who in ("anna.bright@example.com", "ben@example.com", "g.parry@example.com",
