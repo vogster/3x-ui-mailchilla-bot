@@ -421,6 +421,26 @@ def match(word: str):
         return None
 
 
+def code_used_by(address: str):
+    """
+    The code somebody came in through, or None.
+
+    Looked up by address across every code's `used_by`. It is history and not a
+    setting: the answer does not change when the code is switched off, renamed
+    or when the client is moved to another tariff. Nothing has it for a client
+    registered before codes existed or added by hand in 3x-ui, and None is the
+    honest answer there rather than a guess from their tariff.
+    """
+    needle = str(address or "").strip().lower()
+    if not needle:
+        return None
+    with _lock:
+        for code in _state["codes"]:
+            if any(str(x).strip().lower() == needle for x in code["used_by"]):
+                return dict(code)
+        return None
+
+
 def live_words() -> list:
     """Every word a letter could carry, for the bot to look for."""
     with _lock:

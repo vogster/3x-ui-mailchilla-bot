@@ -4,6 +4,11 @@
 {% block nav_clients %}active{% endblock %}
 {% block content %}
 <style>
+    /* A link that keeps the panel's quiet manners: the browser's own blue
+       beside monospace text reads as a mistake. */
+    a.plain { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line); }
+    a.plain:hover { border-color: var(--fg-3); }
+
     /* The status sits on the same line as the tiles beside it and at the size
        the words among them use — 23px is for the figures. */
     .status-value .on { color: var(--ok); }
@@ -229,6 +234,17 @@
                     </tr>
                     <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
                     <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr>
+                        <td class="muted">{{ t("Came in through") }} {{ fields.help(t("The code word this client registered with. It says how they arrived, not what they have now — a client can be moved to another tariff afterwards, and the word stays what it was. Empty for anybody registered before code words were kept, or added by hand in 3x-ui.")) }}</td>
+                        <td class="mono">
+                            {% if came_by %}
+                            <a href="/tariffs/codes/{{ came_by.word }}" class="plain">{{ came_by.word }}</a>
+                            {% if came_by.tariff %}<span class="muted"> · {{ came_by.tariff }}</span>{% endif %}
+                            {% else %}
+                            <span class="muted">{{ t("not known") }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
 

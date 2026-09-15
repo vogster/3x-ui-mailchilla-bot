@@ -407,6 +407,17 @@ def _send_welcome(email_addr: str, sub_url: str, expire_days: int, limit_gb: int
         logger.error(f"Could not send the welcome letter to {email_addr}: {e}")
 
 
+def _came_by(client_obj: dict):
+    """The code a client registered through, shaped for the card."""
+    row = _client_row(client_obj)
+    code = (tariffs.code_used_by(row["bare_email"])
+            or tariffs.code_used_by(row["remark"]))
+    if not code:
+        return None
+    tariff = tariffs.get(code["tariff_id"])
+    return {"word": code["word"], "tariff": tariff["name"] if tariff else ""}
+
+
 @router.get("/clients/{client_uuid}", response_class=HTMLResponse)
 def client_detail(request: Request, client_uuid: str, created: str = "", sent: str = "", error: str = ""):
     auth_redirect = require_auth(request)
@@ -435,6 +446,10 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
                                      online, last_online),
             "online_known": online is not None,
             "last_seen_known": last_online is not None,
+            # Which word let them in, if it is known. A fact about how they
+            # arrived, not about what they have now — the two can differ, since
+            # a client can be moved to another tariff afterwards.
+            "came_by": _came_by(client_obj),
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
             "sent": sent,

@@ -54,6 +54,9 @@ read as something a person wants to know before updating.
 - The broadcast's recipient picker filters by tariff, including "without one",
   so "everybody on Trial whose traffic is running out" is two clicks.
 - `/status` names the client's tariff, unless they are on none.
+- A client's card says which code word they came in through, linking to that
+  code. It is how they arrived rather than what they have now: moving them to
+  another tariff, or switching the code off, leaves it as it was.
 - A client's card can move them to a tariff: pick one and the limit, the term
   (counted from today) and the inbounds fill themselves in, still editable, and
   nothing is saved until you press Save.

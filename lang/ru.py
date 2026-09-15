@@ -91,6 +91,9 @@ TEXTS = {
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
     "Groups without a tariff": "Группы без тарифа",
+    "Came in through": "Пришёл по коду",
+    "not known": "неизвестно",
+    "The code word this client registered with. It says how they arrived, not what they have now — a client can be moved to another tariff afterwards, and the word stays what it was. Empty for anybody registered before code words were kept, or added by hand in 3x-ui.": "Кодовое слово, по которому клиент зарегистрировался. Это про то, как он пришёл, а не про то, что у него сейчас: клиента можно перевести на другой тариф, а слово останется прежним. Пусто у всех, кто зарегистрировался до того, как коды начали запоминаться, и у заведённых руками в 3x-ui.",
     "The tariff {name} names inbounds that 3x-ui does not have:": "В тарифе {name} указаны inbound'ы, которых нет в 3x-ui:",
     "The 'tariff' line": "Строка «тариф»",
     "Left out for a client who is on no tariff — anybody registered before tariffs existed, or added by hand in 3x-ui.": "Не выводится, если клиент не на тарифе: так будет у всех, кто зарегистрировался до появления тарифов, и у заведённых руками в 3x-ui.",

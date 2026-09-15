@@ -79,6 +79,10 @@ class FakeXui:
         self.renamed = (old_name, new_name)
         return True
 
+    def update_client(self, client_uuid, **kwargs):
+        self.updated = {"uuid": client_uuid, **kwargs}
+        return True
+
     def login(self):
         return True
 
@@ -384,3 +388,38 @@ class ClientCardTariff(PanelCase):
         cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
         self.assertNotIn("Basic", cards)
         self.assertIn("не задан", cards)
+
+
+class CameInThrough(PanelCase):
+    """
+    Which word let a client in. History, not a setting: it survives the code
+    being switched off or renamed, and it does not follow the client when they
+    are moved to another tariff.
+    """
+
+    def test_the_card_names_the_code(self):
+        tariffs.spend("AURORA", "ben@example.com")
+        body = self.page("/clients/c0ffee01")
+        self.assertIn("AURORA", body)
+        self.assertIn("/tariffs/codes/AURORA", body)
+
+    def test_a_client_nobody_recorded_says_it_is_not_known(self):
+        # Everybody registered before this release, and anybody added by hand.
+        body = self.page("/clients/c0ffee02")
+        self.assertIn("неизвестно", body)
+
+    def test_it_survives_the_code_being_switched_off(self):
+        tariffs.spend("AURORA", "ben@example.com")
+        tariffs.set_code_enabled("AURORA", False)
+        self.assertIn("AURORA", self.page("/clients/c0ffee01"))
+
+    def test_it_does_not_follow_a_move_to_another_tariff(self):
+        # The client's group changes; the word they came in through does not.
+        tariffs.spend("AURORA", "ben@example.com")
+        other = tariffs.save_tariff({"name": "Family", "limit_gb": 500,
+                                     "expire_days": 365, "inbound_ids": [1]})
+        self.client.post("/clients/c0ffee01/edit", data={
+            "limit_gb": "500", "expire_days": "365", "enable": "on",
+            "keep_comment": "on", "tariff_id": other["id"], "inbound_ids": ["1"],
+        }, follow_redirects=False)
+        self.assertIn("AURORA", self.page("/clients/c0ffee01"))
