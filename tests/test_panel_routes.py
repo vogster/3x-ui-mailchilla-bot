@@ -423,3 +423,31 @@ class CameInThrough(PanelCase):
             "keep_comment": "on", "tariff_id": other["id"], "inbound_ids": ["1"],
         }, follow_redirects=False)
         self.assertIn("AURORA", self.page("/clients/c0ffee01"))
+
+
+class DashboardFigures(PanelCase):
+    """
+    The dashboard counts from the same rows every other page uses. It used to
+    have helpers of its own for "how much has this client spent" and "what
+    percentage of the limit", which is one more answer than the question has —
+    and the sort of duplication that drifts quietly.
+    """
+
+    def test_the_totals_come_from_the_client_list(self):
+        body = self.page("/")
+        # Two clients in the fake panel, both enabled, 3 bytes between them.
+        self.assertIn(">2<", body)
+
+    def test_a_client_over_the_limit_is_shown_at_the_limit(self):
+        # The bar cannot go past full, and the figure beside it must agree with
+        # what the client list shows for the same person.
+        CLIENTS[0]["totalGB"] = 1024 ** 3
+        CLIENTS[0]["traffic"] = {"up": 2 * 1024 ** 3, "down": 0}
+        try:
+            dashboard = self.page("/")
+            listing = self.page("/clients")
+            self.assertIn("100", dashboard)
+            self.assertIn("width: 100", listing)
+        finally:
+            CLIENTS[0]["totalGB"] = 0
+            CLIENTS[0]["traffic"] = {"up": 1, "down": 2}

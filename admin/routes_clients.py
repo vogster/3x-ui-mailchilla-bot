@@ -19,7 +19,7 @@ from xui_client import XuiClient, get_shared_client
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from admin.rows import GB_FACTOR, _fmt_gb, _fmt_last_seen, _fmt_ts, _client_row
+from admin.rows import GB_FACTOR, _fmt_gb, _fmt_last_seen, _fmt_ts, client_row
 
 
 def _attach_links(rows: list, links: list) -> list:
@@ -56,7 +56,7 @@ def _attach_links(rows: list, links: list) -> list:
 def _client_detail(client_obj: dict, inbounds: list, links: list = None,
                    online: set = None, last_online: dict = None) -> dict:
     """The fuller view of a client, for its own page."""
-    row = _client_row(client_obj, online, last_online)
+    row = client_row(client_obj, online, last_online)
     traffic_obj = client_obj.get("traffic") or {}
     up = int(traffic_obj.get("up") or client_obj.get("up") or 0)
     down = int(traffic_obj.get("down") or client_obj.get("down") or 0)
@@ -123,7 +123,7 @@ def clients_list(request: Request, q: str = ""):
     # Likewise one question for the whole table. An older panel does not know
     # the route, and the column is then left out rather than filled with dashes.
     last_online = xui.get_last_online()
-    rows = [_client_row(c, online, last_online) for c in all_clients]
+    rows = [client_row(c, online, last_online) for c in all_clients]
 
     query = (q or "").strip().lower()
     if query:
@@ -409,7 +409,7 @@ def _send_welcome(email_addr: str, sub_url: str, expire_days: int, limit_gb: int
 
 def _came_by(client_obj: dict):
     """The code a client registered through, shaped for the card."""
-    row = _client_row(client_obj)
+    row = client_row(client_obj)
     code = (tariffs.code_used_by(row["bare_email"])
             or tariffs.code_used_by(row["remark"]))
     if not code:
@@ -584,7 +584,7 @@ def client_edit_form(request: Request, client_uuid: str, error: str = ""):
     if not client_obj:
         raise HTTPException(status_code=404, detail=i18n.t("The client was not found"))
 
-    row = _client_row(client_obj)
+    row = client_row(client_obj)
     client_inbounds = [int(i) for i in (client_obj.get("inboundIds") or [])]
     inbounds = get_shared_client().get_inbounds()
     for ib in inbounds:

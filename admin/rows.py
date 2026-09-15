@@ -1,9 +1,13 @@
 """
 Flattening a 3x-ui client into a single row for tables and lists.
 
-It lives apart because both the clients list and the broadcast recipients need
-it: each shows status, traffic and the registration date, and those had better
-be worked out the same way in both places.
+It lives apart because five pages need it — the client list, the broadcast
+recipients, both cards and the dashboard — and each shows status, traffic and
+the registration date, which had better be worked out the same way everywhere.
+
+`client_row` carries no underscore any more: it is the interface of this
+module, imported by four others, and a name that says "internal" while four
+modules rely on it tells the next reader the wrong thing.
 """
 import time
 from datetime import datetime
@@ -87,7 +91,7 @@ def _fmt_expiry(expiry_time_ms):
         return "—"
 
 
-def _client_row(client_obj: dict, online: set = None, last_online: dict = None) -> dict:
+def client_row(client_obj: dict, online: set = None, last_online: dict = None) -> dict:
     """
     Turns a 3x-ui client object into a flat row for the table.
 

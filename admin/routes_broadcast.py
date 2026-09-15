@@ -12,7 +12,7 @@ import config
 import i18n
 import tariffs
 from admin.deps import templates, require_auth
-from admin.rows import _client_row
+from admin.rows import client_row
 from xui_client import get_shared_client
 
 # Reuse the sending logic that already exists in the bot's own module.
@@ -109,7 +109,7 @@ def broadcast_form(request: Request, error: str = ""):
     recipients = []
     skipped = 0
     for client_obj in all_clients:
-        row = _client_row(client_obj, online)
+        row = client_row(client_obj, online)
         if not row["bare_email"]:
             skipped += 1
             continue

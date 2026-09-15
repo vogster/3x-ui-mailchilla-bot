@@ -18,7 +18,7 @@ import config
 import i18n
 import tariffs
 from admin.deps import templates, require_auth
-from admin.rows import _client_row
+from admin.rows import client_row
 from xui_client import XuiClient, get_shared_client
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ def _clients_on(tariff_name: str) -> list:
     3x-ui's field, somebody may have changed it there, and a cached answer would
     be the one thing on the page that could be wrong.
     """
-    rows = [_client_row(c) for c in (get_shared_client().get_all_clients() or [])]
+    rows = [client_row(c) for c in (get_shared_client().get_all_clients() or [])]
     return sorted((r for r in rows if r["tariff"] == tariff_name),
                   key=lambda r: (not r["enable"], (r["remark"] or r["bare_email"]).lower()))
 
@@ -100,7 +100,7 @@ def _arrivals(code: dict) -> list:
     """
     known = {}
     for client in (get_shared_client().get_all_clients() or []):
-        row = _client_row(client)
+        row = client_row(client)
         # By address, and by the identifier 3x-ui holds as well: a client added
         # by hand may carry something that is not an address at all, and one
         # renamed since would otherwise read as deleted.
