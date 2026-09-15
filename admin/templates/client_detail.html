@@ -4,8 +4,8 @@
 {% block nav_clients %}active{% endblock %}
 {% block content %}
 <style>
-    /* The status sits on the same line as every other tile's value, because it
-       is the same kind of thing: a word at the tile's own size. */
+    /* The status sits on the same line as the tiles beside it and at the size
+       the words among them use — 23px is for the figures. */
     .status-value .on { color: var(--ok); }
     .status-value .off { color: var(--err); }
 </style>
@@ -66,7 +66,7 @@
            in a tile it came out both smaller than the figures beside it and
            four pixels lower than them. All it contributes here is a colour,
            and a colour does not need a box. #}
-        <div class="value status-value">
+        <div class="value status-value" style="font-size: 18px;">
             {% if client.enable %}
             <span class="on">{{ t("Active [badge]") }}</span>
             {% else %}
