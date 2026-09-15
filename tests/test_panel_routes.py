@@ -342,3 +342,29 @@ class BroadcastByTariff(PanelCase):
         # The one with no tariff carries an empty attribute rather than none:
         # "without a tariff" has to be selectable.
         self.assertIn('data-tariff=""', body)
+
+
+class DashboardWithoutTheInboundTable(PanelCase):
+    """
+    The inbound table left the dashboard when tariffs arrived: it is 3x-ui's own
+    list, and which inbounds a client gets is now a property of their tariff.
+    What could not leave with it is the fault it carried — a tariff naming an
+    inbound the panel does not have stops registration at that id, silently.
+    """
+
+    def test_the_table_is_gone(self):
+        body = self.page("/")
+        self.assertNotIn("Shadowsocks", body.split("new-client-dialog")[0])
+
+    def test_a_tariff_naming_a_missing_inbound_is_named(self):
+        tariffs.save_tariff({**self.tariff, "inbound_ids": [1, 99]})
+        body = self.page("/")
+        self.assertIn("Basic", body)
+        self.assertIn("99", body)
+
+    def test_an_unreachable_panel_does_not_accuse_every_tariff(self):
+        # With 3x-ui down the inbound list is empty, and judging tariffs by it
+        # would paint the whole page red for a fault that is elsewhere.
+        self.fake.get_inbounds = lambda: []
+        body = self.page("/")
+        self.assertNotIn("Registration breaks off", body)

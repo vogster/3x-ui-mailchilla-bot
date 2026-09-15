@@ -60,6 +60,11 @@ read as something a person wants to know before updating.
 
 ### Changed
 
+- The inbound table has left the dashboard. It is 3x-ui's own list, and which
+  inbounds a client gets is a property of their tariff now — the tariff's card
+  says it where it matters. What stayed is the fault the table carried: a
+  tariff naming an inbound the panel does not have breaks registration at that
+  id in silence, and the dashboard names such a tariff.
 - The single `CODEWORD` is gone from the settings, along with the traffic
   limit, the term and the inbound list. On the first start after the update
   they become a tariff called "Basic" with the same word, so nothing changes

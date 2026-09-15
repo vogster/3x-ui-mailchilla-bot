@@ -398,18 +398,27 @@ def dashboard(request: Request):
         })
     tariff_rows.sort(key=lambda r: (r["orphan"], -r["clients"], r["name"].lower()))
 
-    # Inbounds: how many clients are in each, and whether any tariff hands it
-    # out. An inbound no tariff uses is not a fault — it may belong to somebody
-    # else entirely — but one a tariff names and 3x-ui does not have is.
+    # The inbound list itself belongs to 3x-ui and to the tariff cards, not
+    # here; what is worth saying on a dashboard is the fault. A tariff naming an
+    # inbound the panel does not have breaks registration in silence — the panel
+    # adds the client down the list and stops at the first id that is not there,
+    # never reaching the rest — so each such tariff is named.
     from admin.routes_clients import default_tariff, tariff_choices
-    configured = {i for t in tariffs.all_tariffs() for i in t["inbound_ids"]}
     first = default_tariff()
     inbounds = xui.get_inbounds()
     for ib in inbounds:
-        ib["configured"] = ib["id"] in configured
         # the create dialog starts from the first tariff
         ib["selected"] = ib["id"] in set(first["inbound_ids"])
-    missing_inbounds = sorted(configured - {ib["id"] for ib in inbounds})
+    known_ids = {ib["id"] for ib in inbounds}
+    broken_tariffs = []
+    if inbounds:
+        # With 3x-ui unreachable the list comes back empty, and every tariff
+        # would look broken. Silence beats a page of false alarms.
+        for tariff in tariffs.all_tariffs():
+            missing = sorted(set(tariff["inbound_ids"]) - known_ids)
+            if missing:
+                broken_tariffs.append({"name": tariff["name"], "id": tariff["id"],
+                                       "missing": missing})
 
     # The machine behind the panel. None when it does not answer — the block
     # is then simply left out.
@@ -436,7 +445,7 @@ def dashboard(request: Request):
             "inbounds": inbounds,
             "server": server,
             "mail": _mail_block(),
-            "missing_inbounds": missing_inbounds,
+            "broken_tariffs": broken_tariffs,
             "problems": problems,
             "problems_total": problems_total,
             "tariffs": tariff_choices(),

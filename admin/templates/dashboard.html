@@ -255,6 +255,18 @@
         <h2>{{ t("Tariffs") }}</h2>
         <a href="/tariffs" class="btn small">{{ t("Configure") }}</a>
     </div>
+    {% if broken_tariffs %}
+    <div style="padding: 14px 20px 0 20px;">
+        {% for broken in broken_tariffs %}
+        <div class="flash error">
+            {{ t("The tariff {name} names inbounds that 3x-ui does not have:", name=broken.name) }}
+            <b class="mono">{{ broken.missing|join(", ") }}</b>.
+            {{ t("Registration breaks off on them.") }}
+            <a href="/tariffs/{{ broken.id }}/edit">{{ t("Edit") }}</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     <div class="tscroll">
         <table>
             <thead>
@@ -301,50 +313,6 @@
 </div>
 {% endif %}
 
-<div class="panel" style="margin-top: 20px;">
-    <div class="panel-head">
-        <h2>{{ t("Inbounds") }}</h2>
-        <a href="/settings" class="btn small">{{ t("Configure") }}</a>
-    </div>
-    {% if missing_inbounds %}
-    <div style="padding: 0 20px;">
-        <div class="flash error">
-            {{ t("The settings tick inbounds that do not exist:") }}
-            <b class="mono">{{ missing_inbounds|join(", ") }}</b>. {{ t("Registration breaks off on them.") }}
-        </div>
-    </div>
-    {% endif %}
-    {% if inbounds %}
-    <div class="tscroll">
-        <table>
-            <thead>
-                <tr><th>{{ t("Name") }}</th><th>{{ t("Protocol") }}</th><th>{{ t("Port") }}</th><th>{{ t("Clients") }}</th><th>{{ t("For registrations") }}</th></tr>
-            </thead>
-            <tbody>
-            {% for ib in inbounds %}
-                <tr>
-                    <td>{{ ib.remark }}
-                        {% if not ib.enable %}<span class="badge off" style="margin-left:6px;">{{ t("off") }}</span>{% endif %}
-                    </td>
-                    <td class="mono muted">{{ ib.protocol }}</td>
-                    <td class="mono muted">{{ ib.port }}</td>
-                    <td class="mono">{{ ib.clients }}</td>
-                    <td>
-                        {% if ib.configured %}
-                        <span class="badge on">{{ t("yes") }}</span>
-                        {% else %}
-                        <span class="muted">{{ t("no") }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="empty">{{ t("Could not fetch the inbound list") }}</div>
-    {% endif %}
-</div>
 {% include "_client_new_dialog.html" %}
 
 {% if server %}
