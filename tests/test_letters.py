@@ -218,12 +218,14 @@ class SupportAndInstructions(unittest.TestCase):
         self.assertIn("help@example.com", text)
         self.assertNotIn("mailto:", text)
 
-    def test_the_instructions_are_not_in_the_row_of_app_buttons(self):
-        # In one row with them it read as a third way to import a subscription,
-        # which is not what it is.
+    def test_the_instructions_come_after_every_way_of_setting_it_up(self):
+        # The order somebody actually goes through: try it — the button, the
+        # apps, the code, the link to copy — then read about it, then ask.
         config.MANUAL_URL = "https://example.com/howto"
+        config.SUPPORT_EMAIL = "help@example.com"
         config.WELCOME_MANUAL_ENABLED = True
         html = self.welcome().html
-        apps_row = html.split("btn-cell")
-        self.assertNotIn("https://example.com/howto", "".join(apps_row[:-1]))
-        self.assertIn("https://example.com/howto", html)
+        manual_at = html.index("https://example.com/howto")
+        self.assertLess(html.index("btn-cell"), manual_at)          # the app buttons
+        self.assertLess(html.index("welcome.manual_intro" and "sub/abc"), manual_at)
+        self.assertLess(manual_at, html.index("mailto:help@example.com"))

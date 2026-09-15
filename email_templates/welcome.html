@@ -13,7 +13,7 @@
 
 {{ ui.button(sub_url, t("welcome.button_main")) }}
 
-{% if apps or manual %}
+{% if apps %}
 <p style="margin: 24px 0 14px 0; color: #a0a0a8; font-size: 15px; text-align: center;">
     {{ t("welcome.apps_intro") | emph }}
 </p>
@@ -22,19 +22,6 @@
         {% for app in apps %}
         <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
         {% endfor %}
-    </tr>
-</table>
-{% endif %}
-
-{# The instructions stand apart from the app buttons. In one row with them
-   everything read as the same kind of thing — three ways to import a
-   subscription — while this one goes somewhere else entirely. #}
-{% if manual %}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 22px;">
-    <tr>
-        <td align="center">
-            <a href="{{ manual.url }}" style="color: #a0a0a8; font-size: 15px; text-decoration: underline;">{{ manual.button }}</a>
-        </td>
     </tr>
 </table>
 {% endif %}
@@ -64,6 +51,19 @@
 
 <p style="margin: 26px 0 8px 0;">{{ t("welcome.manual_intro") | emph }}</p>
 {{ ui.code(sub_url) }}
+
+{# After every way of setting the subscription up — the button, the apps, the
+   code, the link to copy — and before the address to write to. That is the
+   order somebody goes through: try it, read about it, ask about it. #}
+{% if manual %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 20px;">
+    <tr>
+        <td align="center">
+            <a href="{{ manual.url }}" style="color: #a0a0a8; font-size: 15px; text-decoration: underline;">{{ manual.button }}</a>
+        </td>
+    </tr>
+</table>
+{% endif %}
 
 {% if support %}
 {# Its own box rather than another grey paragraph: this is the line somebody
