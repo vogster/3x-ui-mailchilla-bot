@@ -89,6 +89,14 @@ def _text_groups():
     return groups
 
 
+def _cleanup_last() -> str:
+    """When the mailbox was last cleared out, for the line under the field."""
+    when = float(getattr(config, "MAIL_CLEANUP_LAST_AT", 0) or 0)
+    if not when:
+        return ""
+    return datetime.fromtimestamp(when).strftime("%d.%m.%Y %H:%M")
+
+
 def _build_context(request: Request, error: str = "", saved: str = ""):
     state = settings.describe()
     return {
@@ -99,6 +107,7 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "mail_lang": i18n.mail_lang(),
         "mail_lang_options": i18n.options(i18n.mail_lang()),
         "test_email": _default_test_email(),
+        "cleanup_last": _cleanup_last(),
         "state": state,
         "error": error,
         "saved": saved,
@@ -131,6 +140,8 @@ def settings_submit(
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
     poll_interval_seconds: str = Form("15"),
+    mail_cleanup_enabled: str = Form(""),
+    mail_cleanup_days: str = Form("30"),
     update_check_enabled: str = Form(""),
     xui_flow: str = Form(""),
     remark_include_name: str = Form(""),
@@ -161,6 +172,8 @@ def settings_submit(
         "SMTP_USER": smtp_user,
         "SMTP_PASSWORD": smtp_password,
         "POLL_INTERVAL_SECONDS": poll_interval_seconds,
+        "MAIL_CLEANUP_ENABLED": mail_cleanup_enabled == "on",
+        "MAIL_CLEANUP_DAYS": mail_cleanup_days,
         "XUI_FLOW": xui_flow,
         "GOTIFY_URL": gotify_url,
         "GOTIFY_TOKEN": gotify_token,

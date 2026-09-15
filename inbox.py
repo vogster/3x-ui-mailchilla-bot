@@ -201,6 +201,152 @@ MAX_ATTEMPTS = 3
 _attempts = {}
 
 
+# --- Clearing out the mailbox ---
+# Read letters go to the Trash rather than to nowhere: what a cleanup took can
+# still be looked at, and a mistake in a schedule is then a mistake and not a
+# loss. The folder is asked of the server rather than guessed, because its name
+# depends on the provider and on the language the mailbox was created in.
+
+# RFC 6154 marks the Trash with an attribute; these are the names to fall back
+# on when the server does not use it.
+TRASH_NAMES = ("Trash", "INBOX.Trash", "Deleted Items", "Deleted Messages",
+               "[Gmail]/Trash", "Корзина", "INBOX.Корзина", "Удалённые")
+
+# Letters are moved in batches: a mailbox left alone for a year holds thousands,
+# and one command carrying every uid of them is a line no server enjoys.
+CLEANUP_BATCH = 200
+
+
+def _folder_name(line) -> str:
+    """The mailbox name out of one LIST line, quotes and all removed."""
+    text = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else str(line)
+    # ( attributes ) "delimiter" "name" — the name is the tail, and it is the
+    # only part that may hold spaces, so splitting from the right is enough.
+    parts = text.rsplit('"', 2)
+    if len(parts) == 3 and parts[1]:
+        return parts[1]
+    return text.split()[-1].strip('"')
+
+
+def trash_folder(mail):
+    """
+    The mailbox's Trash folder, or an empty string when it has none.
+
+    Asked for by its special-use attribute first: the folder is called Корзина on
+    one provider and [Gmail]/Trash on another, and a list of names would be a
+    list of the providers somebody happened to try.
+    """
+    try:
+        status, lines = mail.list()
+    except Exception as e:
+        logger.warning(f"Could not list the mailbox folders: {e}")
+        return ""
+    if status != "OK" or not lines:
+        return ""
+
+    names = []
+    for line in lines or []:
+        if line is None:
+            continue
+        text = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else str(line)
+        name = _folder_name(line)
+        if "\\Trash" in text or "\\trash" in text.lower():
+            return name
+        names.append(name)
+
+    lowered = {name.lower(): name for name in names}
+    for candidate in TRASH_NAMES:
+        if candidate.lower() in lowered:
+            return lowered[candidate.lower()]
+    return ""
+
+
+def _move_to_trash(mail, uids, folder) -> int:
+    """Moves the letters to the folder, by MOVE where the server has it."""
+    quoted = '"%s"' % folder.replace('"', '\\"')
+    moved = 0
+    has_move = "MOVE" in (getattr(mail, "capabilities", ()) or ())
+    for start in range(0, len(uids), CLEANUP_BATCH):
+        batch = b",".join(uids[start:start + CLEANUP_BATCH]).decode("ascii")
+        try:
+            if has_move:
+                status, _ = mail.uid("MOVE", batch, quoted)
+            else:
+                # The old way, and still the only way on a server without
+                # RFC 6851: copy, flag, expunge. The copy has to succeed before
+                # anything is flagged, or the letters would be deleted from the
+                # Inbox without arriving anywhere.
+                status, _ = mail.uid("COPY", batch, quoted)
+                if status == "OK":
+                    mail.uid("STORE", batch, "+FLAGS", "(\\Deleted)")
+                    mail.expunge()
+        except Exception as e:
+            logger.error(f"Could not move letters to {folder}: {e}")
+            break
+        if status != "OK":
+            logger.error(f"The server refused to move letters to {folder}: {status}")
+            break
+        moved += len(uids[start:start + CLEANUP_BATCH])
+    return moved
+
+
+def cleanup_due(now=None) -> bool:
+    """Whether the mailbox is due for a clear-out."""
+    if not getattr(config, "MAIL_CLEANUP_ENABLED", False):
+        return False
+    last = float(getattr(config, "MAIL_CLEANUP_LAST_AT", 0) or 0)
+    if not last:
+        # Never run, which is also the first poll after somebody switched it on:
+        # the mailbox is cleared now rather than in a month's time.
+        return True
+    days = max(1, int(getattr(config, "MAIL_CLEANUP_DAYS", 30) or 1))
+    return (now or time.time()) - last >= days * 86400
+
+
+def cleanup(mail) -> int:
+    """
+    Moves the read letters to the Trash. Returns how many were moved.
+
+    Read means the bot has dealt with it: the flag is set after the handler has
+    finished, not before, so an unread letter is one still owed an answer — and
+    after an IMAP outage that may be a registration that has not happened yet.
+    Those are left where they are whatever the schedule says.
+    """
+    folder = trash_folder(mail)
+    if not folder:
+        logger.error("The mailbox has no Trash folder that can be found, so the "
+                     "cleanup did nothing. Nothing was deleted.")
+        return 0
+    try:
+        status, response = mail.uid("SEARCH", None, "SEEN")
+    except Exception as e:
+        logger.error(f"Could not search the mailbox for read letters: {e}")
+        return 0
+    if status != "OK":
+        logger.error(f"Could not search the mailbox for read letters: {status}")
+        return 0
+
+    uids = response[0].split() if response and response[0] else []
+    if not uids:
+        logger.info("Mailbox cleanup: nothing read to clear out.")
+        return 0
+
+    moved = _move_to_trash(mail, uids, folder)
+    logger.info(f"Mailbox cleanup: {moved} read letter(s) moved to {folder}.")
+    return moved
+
+
+def _remember_cleanup(when: float):
+    """Writes down when the cleanup ran, so a restart keeps the schedule."""
+    try:
+        import settings
+        settings.save({"MAIL_CLEANUP_LAST_AT": when})
+    except Exception as e:
+        # The letters are already moved; losing the timestamp costs one extra
+        # cleanup, which has nothing left to move anyway.
+        logger.warning(f"Could not write down when the mailbox was cleaned: {e}")
+
+
 def mail_health() -> dict:
     """How the mail loop is doing, for the dashboard."""
     return {
@@ -334,6 +480,14 @@ def check_mail(handle):
                                  f"so the loop can move on. Nothing was answered to it.")
                     _mark_seen(mail, num)
                     _attempts.pop(msg_id, None)
+
+        if cleanup_due():
+            # On the connection that is already open, and only once the letters
+            # of this cycle have been handled: a letter is moved after it has
+            # been answered, never instead.
+            phase = "clearing out the mailbox"
+            cleanup(mail)
+            _remember_cleanup(time.time())
 
         reached_the_end = True
         _last_ok_at = time.time()

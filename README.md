@@ -221,13 +221,15 @@ Everything that changes during normal use is set in the panel and applies on the
 | Tab | What is inside |
 |---|---|
 | **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions |
-| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, connection check |
+| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, clearing the mailbox out, connection check |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, notification text |
 | **Letters** | the language letters go out in, and every text of every letter |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
+
+The same tab can keep the mailbox tidy. Nobody reads it — every letter in it has been answered already — and after a year of registrations it holds thousands. Switched on, the bot moves the read letters to the Trash every so many days, on the connection it is polling with anyway. Only read ones: the flag is set after a letter has been dealt with, so an unread letter is one still owed an answer, which after a spell of the mailbox being unreachable may be a registration that has not happened yet. Nothing is deleted outright, so a schedule set too eagerly can be undone from the mail client until the Trash empties itself.
 
 Settings are kept in `settings.json`, the letter texts in `email_texts.json` and the tariffs in `tariffs.json`, all three beside the project. The mailbox is picked up on the next polling cycle.
 

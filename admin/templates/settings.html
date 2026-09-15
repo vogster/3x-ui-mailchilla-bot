@@ -172,6 +172,29 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("Clearing out the mailbox") }}</h2>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="mail_cleanup_enabled" name="mail_cleanup_enabled"
+                       {% if state.MAIL_CLEANUP_ENABLED.value %}checked{% endif %}>
+                <label for="mail_cleanup_enabled">{{ t("Clear the mailbox out by itself") }}
+                    {{ fields.help(t("Read letters are moved to the Trash of the mailbox — the ones the bot has already answered. An unread letter is never touched: it is one the bot has not dealt with yet, which after a spell of the mailbox being unreachable may be a registration still waiting to happen. Nothing is deleted outright, so a mistake here can be undone from the mail client until the Trash empties itself.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="mail_cleanup_days">{{ t("Cleanup interval, days") }} {{ fields.help(t("The mailbox is cleared this often, not the letters kept this long: every read letter goes at the next clear-out whenever it arrived. Switching it on clears the mailbox at the next poll, and after that the count starts from the last time it ran, restarts included.")) }}</label>
+                <input type="number" id="mail_cleanup_days" name="mail_cleanup_days"
+                       min="1" step="1" value="{{ state.MAIL_CLEANUP_DAYS.value }}">
+                {% if cleanup_last %}
+                <div class="hint">{{ t("Last cleared out: {when}", when=cleanup_last) }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("Check") }}</h2>
             <span class="muted">{{ t("on the values in the fields — saving is not required") }}</span>
             <button type="button" class="btn small" id="mail-check" style="margin-left:auto;">

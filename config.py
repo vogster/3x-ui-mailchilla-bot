@@ -38,6 +38,21 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "15"))
 
+# --- Clearing out the mailbox ---
+# The bot's mailbox is not read by anybody: every letter in it has been answered
+# already, and after a year of registrations it is thousands of them. The
+# cleanup moves the read ones to the Trash every so often.
+#
+# Off by default and never on by accident: throwing away somebody's mail is not
+# something an update should start doing on its own. Only read letters are
+# touched — an unread one is one the bot has not dealt with yet, which after an
+# IMAP outage may well be a registration still waiting to happen.
+MAIL_CLEANUP_ENABLED = False
+MAIL_CLEANUP_DAYS = 30
+# When it last ran, as a unix time. Written by the bot rather than by the panel,
+# so that a restart does not either lose the schedule or start the clock again.
+MAIL_CLEANUP_LAST_AT = 0.0
+
 # --- The seed of the first tariff ---
 # These three described what every new client got, back when there was one code
 # word and one set of limits. They belong to a tariff now (tariffs.json, the

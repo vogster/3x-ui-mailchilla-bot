@@ -12,6 +12,16 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Clearing the mailbox out by itself.** The bot's mailbox is not read by
+  anybody — every letter in it has been answered already — and after a year of
+  registrations it is thousands of them. The Mail tab can now move the read
+  letters to the Trash every so many days, on the connection the bot is polling
+  with anyway. Only the read ones: an unread letter is one the bot has not dealt
+  with yet, which after a spell of the mailbox being unreachable may be a
+  registration still waiting to happen. Nothing is deleted outright, so a
+  schedule set too eagerly can be undone from the mail client until the Trash
+  empties itself. Off until you switch it on.
+
 - **A support address and a link to the instructions**, both set on the General
   tab. The address goes into the footer of every letter and, in its own words,
   into the registration letter — where somebody is setting a connection up for
