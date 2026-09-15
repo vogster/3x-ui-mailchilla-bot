@@ -838,8 +838,25 @@
         .badge.off { color: var(--err); }
 
         /* Fill */
-        .bar { background: var(--surface-3); border-radius: 999px; height: 5px; width: 90px; overflow: hidden; display: inline-block; vertical-align: middle; }
-        .bar > div { background: var(--fg-2); height: 100%; border-radius: 999px; }
+        /* The traffic meter. Two things were wrong with it at 5px of grey on
+           grey: the track was almost invisible, so a short fill read as an
+           empty bar, and every fill looked the same whether it was a tenth or
+           the whole thing.
+           
+           The track is lighter now and the bar a pixel taller, and the fill
+           takes the colour of its state — the same three the server meters
+           above already use, and the same thresholds the client list sorts by.
+           Colour here means what it means everywhere else in this panel: a
+           state, not decoration. */
+        .bar { background: var(--surface-3); border-radius: 999px; height: 6px; width: 90px; overflow: hidden; display: inline-block; vertical-align: middle; }
+        .bar > div, .bar > i { background: var(--fg-2); height: 100%; border-radius: 999px; display: block; }
+        /* Past four fifths of the limit: worth noticing. */
+        .bar.near > div, .bar.near > i { background: #fbbf24; }
+        /* At the limit: the subscription has stopped working, in effect. */
+        .bar.full > div, .bar.full > i { background: #f87171; }
+        /* A hair of colour under the track, so an almost-empty bar still reads
+           as a bar rather than as a groove. */
+        .bar { box-shadow: inset 0 0 0 1px var(--line); }
 
         /* Buttons */
         .btn {

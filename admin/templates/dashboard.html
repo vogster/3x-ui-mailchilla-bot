@@ -185,7 +185,9 @@
                     <td><a href="/clients/{{ c.uuid }}" class="row-link mono">{{ c.email }}</a></td>
                     <td class="muted">{{ c.comment }}</td>
                     <td class="mono" style="white-space:nowrap;">{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}</td>
-                    <td style="width:120px;"><div class="bar" style="width:100%;"><div style="width: {{ c.percent }}%;"></div></div></td>
+                    <td style="width:120px;">
+                        <div class="bar {% if c.percent >= 100 %}full{% elif c.percent >= 80 %}near{% endif %}"
+                             style="width:100%;"><div style="width: {{ c.percent }}%;"></div></div></td>
                 </tr>
             {% endfor %}
             </tbody>

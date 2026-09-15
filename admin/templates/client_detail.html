@@ -130,7 +130,8 @@
     <div class="panel-head"><h2>{{ t("Traffic") }}</h2></div>
     <div style="padding: 20px;">
         {% if not client.unlimited %}
-        <div class="bar" style="width: 100%; height: 12px;">
+        <div class="bar {% if client.percent >= 100 %}full{% elif client.percent >= 80 %}near{% endif %}"
+             style="width: 100%; height: 12px;">
             <div style="width: {{ client.percent }}%;"></div>
         </div>
         <p class="muted" style="margin: 10px 0 16px 0;">{{ client.percent }}% {{ t("of the limit") }}</p>

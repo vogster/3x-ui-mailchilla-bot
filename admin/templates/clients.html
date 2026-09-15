@@ -161,7 +161,8 @@
                         <div class="mono">{{ c.used_gb }} {{ t("GB") }} <span class="muted">· {{ t("no limit") }}</span></div>
                         {% else %}
                         <div class="mono">{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}</div>
-                        <div class="bar" style="margin-top:5px;"><div style="width: {{ c.percent }}%;"></div></div>
+                        <div class="bar {% if c.percent >= 100 %}full{% elif c.percent >= 80 %}near{% endif %}"
+                             style="margin-top:5px;"><div style="width: {{ c.percent }}%;"></div></div>
                         {% endif %}
                     </td>
                     <td class="mono">{{ c.created }}</td>

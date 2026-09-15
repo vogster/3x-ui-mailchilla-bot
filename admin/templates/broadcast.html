@@ -346,7 +346,7 @@
                         </div>
                     </div>
                     {% if c.limit_bytes %}
-                    <div class="bar"><div style="width: {{ c.percent }}%;"></div></div>
+                    <div class="bar {% if c.percent >= 100 %}full{% elif c.percent >= 80 %}near{% endif %}"><div style="width: {{ c.percent }}%;"></div></div>
                     {% endif %}
                 </div>
             </label>
