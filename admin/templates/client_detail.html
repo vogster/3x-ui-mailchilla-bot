@@ -4,7 +4,10 @@
 {% block nav_clients %}active{% endblock %}
 {% block content %}
 <style>
-    .status-value .badge { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+    /* The status sits on the same line as every other tile's value, because it
+       is the same kind of thing: a word at the tile's own size. */
+    .status-value .on { color: var(--ok); }
+    .status-value .off { color: var(--err); }
 </style>
 <a href="/clients" class="back">← {{ t("Back to the list") }}</a>
 
@@ -58,14 +61,16 @@
 <div class="cards">
     <div class="card">
         <div class="label">{{ t("Status") }}</div>
-        {# The badge carries its own 12px, which is right in a table row and too
-           quiet in a tile beside figures set at 23px. Here it takes the tile's
-           size — this is the first thing anybody reads on the card. #}
+        {# Plain text rather than the badge used everywhere else. The badge is
+           an inline-flex box carrying its own 12px and its own line-height, so
+           in a tile it came out both smaller than the figures beside it and
+           four pixels lower than them. All it contributes here is a colour,
+           and a colour does not need a box. #}
         <div class="value status-value">
             {% if client.enable %}
-            <span class="badge on nodot">{{ t("Active [badge]") }}</span>
+            <span class="on">{{ t("Active [badge]") }}</span>
             {% else %}
-            <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
+            <span class="off">{{ t("Disabled [badge]") }}</span>
             {% endif %}
         </div>
     </div>
