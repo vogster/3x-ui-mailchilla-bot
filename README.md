@@ -80,6 +80,14 @@ The recipient list has search, filters (active, disabled, limit spent, traffic r
 
 And something completely unserious: the **Roulette** button rolls the visible recipients past like a CS:GO case opening, rarity colours and all, and leaves exactly one of them ticked. Rarity comes from traffic spent, so gold goes to the hungriest.
 
+**📮 The mailbox**
+
+The bot's own mailbox, from the panel: Inbox, Sent and Trash, with search by address, name or subject. Beside an open letter stands the client who wrote it - status, tariff, traffic, expiry and the word they came in through, a click away from their card - or a plain "not a client". In the list itself a client's letters carry their tariff, so the people you already serve stand out from the rest at a glance.
+
+It only looks. Opening a letter does not mark it read, because an unread letter is how the bot knows it still owes somebody an answer. An HTML letter is drawn in a sealed frame where nothing in it runs, and pictures from other servers stay hidden until you ask for them - each one tells the sender the letter was opened. Attachments are downloaded, never opened in the panel.
+
+SMTP keeps no copy of what it sends, so the bot now puts one of every letter into the Sent folder itself - unless the provider has already filed it, as Gmail does. Letters sent before the update are not there.
+
 **💌 The letters**
 
 ![Welcome letter](docs/screenshots/email-welcome.png)
@@ -346,6 +354,7 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `email_bot.py` | what a letter means: the commands, registrations, the letters sent back |
 | `mailer.py` | sending: the MIME message, SMTP, the Gotify push |
 | `inbox.py` | reading: the IMAP poll loop and the health of it |
+| `mailfolders.py` | the mailbox as the panel shows it: folders, letters, copies of sent ones |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |
 | `email_texts.py` | the editable letter texts, one set per language |

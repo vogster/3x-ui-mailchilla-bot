@@ -13,6 +13,7 @@ import config
 import email_bot
 import email_texts
 import i18n
+import mailfolders
 import settings as app_settings
 import tariffs
 import updater
@@ -151,6 +152,7 @@ from admin.routes_tariffs import router as tariffs_router  # noqa: E402
 from admin.routes_broadcast import router as broadcast_router  # noqa: E402
 from admin.routes_settings import router as settings_router  # noqa: E402
 from admin.routes_logs import router as logs_router  # noqa: E402
+from admin.routes_mail import router as mail_router  # noqa: E402
 from admin.routes_setup import router as setup_router  # noqa: E402
 
 app.include_router(clients_router)
@@ -158,6 +160,7 @@ app.include_router(tariffs_router)
 app.include_router(broadcast_router)
 app.include_router(settings_router)
 app.include_router(logs_router)
+app.include_router(mail_router)
 app.include_router(setup_router)
 
 
@@ -168,13 +171,8 @@ GB = 1024 * 1024 * 1024
 
 
 def _size(value: int) -> str:
-    """Bytes as the shortest unit that still reads as a number."""
-    value = float(value or 0)
-    for unit in ("B", "KB", "MB", "GB"):
-        if value < 1024 or unit == "GB":
-            break
-        value /= 1024
-    return f"{value:.0f} {unit}" if unit in ("B", "KB") else f"{value:.1f} {unit}"
+    """Bytes as the shortest unit that still reads as a number, up to GB."""
+    return mailfolders.format_size(value, ceiling="GB")
 
 
 def _size_pair(section: dict) -> str:

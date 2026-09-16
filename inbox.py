@@ -13,6 +13,7 @@ otherwise depend on the commands, and the commands already depend on this.
 The letter is marked read only after the handler has dealt with it. It used to
 be the other way round, and the gap between the two cost whole registrations.
 """
+import base64
 import email
 import imaplib
 import logging
@@ -211,10 +212,26 @@ _attempts = {}
 # on when the server does not use it.
 TRASH_NAMES = ("Trash", "INBOX.Trash", "Deleted Items", "Deleted Messages",
                "[Gmail]/Trash", "Корзина", "INBOX.Корзина", "Удалённые")
+# The same for the folder sent letters are kept in, which the panel reads and
+# the copies of the bot's own letters are put into.
+SENT_NAMES = ("Sent", "INBOX.Sent", "Sent Items", "Sent Messages", "Sent Mail",
+              "[Gmail]/Sent Mail", "Отправленные", "INBOX.Отправленные")
 
 # Letters are moved in batches: a mailbox left alone for a year holds thousands,
 # and one command carrying every uid of them is a line no server enjoys.
 CLEANUP_BATCH = 200
+
+
+def quote_astring(value: str) -> str:
+    """
+    A string as an IMAP quoted string: backslash and double quote escaped.
+
+    Shared by every command in this project that names a folder, a search term
+    or a Message-ID by hand — `mailfolders.py` reuses this rather than keeping
+    its own copy, which is what let it and `_move_to_trash` below disagree on
+    the escaping until this was written once.
+    """
+    return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _folder_name(line) -> str:
@@ -228,13 +245,49 @@ def _folder_name(line) -> str:
     return text.split()[-1].strip('"')
 
 
-def trash_folder(mail):
+def decode_folder_name(name: str) -> str:
     """
-    The mailbox's Trash folder, or an empty string when it has none.
+    A folder name as a person reads it, out of IMAP's modified UTF-7.
 
-    Asked for by its special-use attribute first: the folder is called Корзина on
+    The server never says "Корзина": it says "&BBoEPgRABDcEOAQ9BDA-". A list of
+    fallback names compared against the raw form could therefore only ever match
+    the Latin ones, which is how the Cyrillic entries above sat there for a
+    release doing nothing. Only for comparing and showing — the raw name is
+    what a SELECT has to be given back.
+    """
+    out = []
+    i = 0
+    while i < len(name):
+        if name[i] != "&":
+            out.append(name[i])
+            i += 1
+            continue
+        end = name.find("-", i)
+        if end == -1:
+            out.append(name[i:])
+            break
+        chunk = name[i + 1:end]
+        if not chunk:
+            out.append("&")
+        else:
+            b64 = chunk.replace(",", "/")
+            b64 += "=" * (-len(b64) % 4)
+            try:
+                out.append(base64.b64decode(b64).decode("utf-16-be"))
+            except Exception:
+                out.append(name[i:end + 1])
+        i = end + 1
+    return "".join(out)
+
+
+def special_folder(mail, attribute: str, names) -> str:
+    """
+    The folder carrying an RFC 6154 attribute, or one of the names, or "".
+
+    Asked for by its special-use attribute first: the Trash is called Корзина on
     one provider and [Gmail]/Trash on another, and a list of names would be a
-    list of the providers somebody happened to try.
+    list of the providers somebody happened to try. The attribute is looked for
+    among the attributes only — a folder somebody named "\\Sent" is not one.
     """
     try:
         status, lines = mail.list()
@@ -244,26 +297,41 @@ def trash_folder(mail):
     if status != "OK" or not lines:
         return ""
 
-    names = []
+    wanted = attribute.lower()
+    names_seen = []
     for line in lines or []:
         if line is None:
             continue
         text = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else str(line)
         name = _folder_name(line)
-        if "\\Trash" in text or "\\trash" in text.lower():
+        flags = text[text.find("(") + 1:text.find(")")].lower().split() if "(" in text else []
+        if wanted in flags:
             return name
-        names.append(name)
+        names_seen.append(name)
 
-    lowered = {name.lower(): name for name in names}
-    for candidate in TRASH_NAMES:
-        if candidate.lower() in lowered:
-            return lowered[candidate.lower()]
+    by_name = {}
+    for name in names_seen:
+        by_name.setdefault(name.lower(), name)
+        by_name.setdefault(decode_folder_name(name).lower(), name)
+    for candidate in names:
+        if candidate.lower() in by_name:
+            return by_name[candidate.lower()]
     return ""
+
+
+def trash_folder(mail):
+    """The mailbox's Trash folder, or an empty string when it has none."""
+    return special_folder(mail, "\\Trash", TRASH_NAMES)
+
+
+def sent_folder(mail):
+    """The folder sent letters are kept in, or an empty string when it has none."""
+    return special_folder(mail, "\\Sent", SENT_NAMES)
 
 
 def _move_to_trash(mail, uids, folder) -> int:
     """Moves the letters to the folder, by MOVE where the server has it."""
-    quoted = '"%s"' % folder.replace('"', '\\"')
+    quoted = quote_astring(folder)
     moved = 0
     has_move = "MOVE" in (getattr(mail, "capabilities", ()) or ())
     for start in range(0, len(uids), CLEANUP_BATCH):

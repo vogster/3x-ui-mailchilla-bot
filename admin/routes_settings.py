@@ -580,7 +580,10 @@ def settings_texts_test(request: Request, group: str = Form(...), email: str = F
     subject, message = sample
     logger.info(f"Panel: test letter {group!r} to {address}.")
     try:
-        email_bot.send_email_reply(address, subject, message)
+        # keep_copy=False: this is a preview of the wording, not a letter to
+        # anybody — it must not turn up in the Mail panel's Sent folder beside
+        # real registrations and replies.
+        email_bot.send_email_reply(address, subject, message, keep_copy=False)
     except Exception as e:
         logger.error(f"The test letter {group!r} did not go out: {e}")
         return JSONResponse({"ok": False, "error": i18n.t("Could not send it")}, status_code=502)

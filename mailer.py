@@ -155,17 +155,48 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
             server.quit()
         except Exception:
             pass
+    return msg
 
-def send_email_reply(to_email: str, subject: str, message):
-    """Sends a letter over SMTP using the settings from config."""
+def send_email_reply(to_email: str, subject: str, message, keep_copy: bool = True):
+    """
+    Sends a letter over SMTP using the settings from config.
+
+    :param keep_copy: False for a letter that only exists to be looked at, not
+        answered — the sample sends on the Settings > Letters tab, say. Those
+        share this function because they want the same logging and error
+        handling as a real letter, but they are not correspondence, and the
+        Sent folder in the Mail panel should not fill up with them.
+    """
     try:
-        send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
-                       config.SMTP_USER, config.SMTP_PASSWORD,
-                       to_email, subject, message)
+        msg = send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
+                             config.SMTP_USER, config.SMTP_PASSWORD,
+                             to_email, subject, message)
         logger.info(f"Letter sent to {to_email}. Subject: {subject}")
     except Exception as e:
         logger.error(f"Could not send the letter to {to_email}. Error: {e}")
         raise
+    if keep_copy:
+        _keep_copy(msg)
+
+
+def _keep_copy(msg):
+    """
+    Hands the letter just sent to the Sent folder, without waiting on it.
+
+    SMTP keeps nothing, so without this the panel's Sent folder would show only
+    what the provider happened to file by itself. The copy is queued, never
+    awaited: the letter has already gone, and neither a slow mailbox nor a
+    failing one has any business with whether a registration succeeded.
+    Imported here rather than at the top, because this module is otherwise
+    only about sending and the folders are a reading concern.
+    """
+    if msg is None:
+        return
+    try:
+        import mailfolders
+        mailfolders.save_sent_copy(msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Could not queue a copy of the letter for the Sent folder: {e}")
 
 class _SafeFormat(dict):
     """An unknown substitution stays in the text rather than breaking the send."""

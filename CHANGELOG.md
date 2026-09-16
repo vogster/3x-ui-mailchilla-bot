@@ -12,6 +12,23 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **The mailbox in the panel.** A new Mail page shows the bot's Inbox, Sent
+  and Trash, with search and pages, and opens any letter in them. Beside the
+  letter stands the client who wrote it — status, tariff, traffic, expiry, the
+  word they came in through — or a plain "not a client", and in the list a
+  client's letters carry their tariff. It only looks: opening a letter does not
+  mark it read, so the bot still answers it. HTML letters are drawn in a sealed
+  frame with nothing in them running, and pictures from other servers stay
+  hidden until you press the button — each one tells the sender the letter was
+  opened. Attachments are downloaded rather than opened.
+
+- **Sent letters are kept in the Sent folder.** SMTP keeps no copy of what it
+  sends, so the bot now puts one there itself, a few seconds after each letter
+  goes out and without holding the letter up. A provider that files its own
+  copy, as Gmail does, is noticed by the letter's Message-ID and not doubled.
+  Letters sent before this version are not there, and a mailbox with no Sent
+  folder the bot can find simply keeps none, and the log says so.
+
 - **The registration letter names the tariff**, beside the term and the traffic
   limit it gave. It answers the question the numbers do not — somebody who would
   otherwise write back asking which one they are on was told in the first
@@ -134,6 +151,14 @@ read as something a person wants to know before updating.
   the bot writes back asking which one is meant.
 - The first-run wizard asks for the first tariff instead of "the rules for new
   clients".
+
+### Fixed
+
+- **A Trash folder named in Cyrillic is found.** Folder names travel in IMAP's
+  own encoding, and the list of names to fall back on was compared against that
+  encoded form — so «Корзина» could never match, and a server that does not mark
+  its Trash with the standard attribute left the cleanup with nowhere to move
+  letters. The names are decoded before they are compared now.
 
 ## [0.1.5] - 2026-09-15
 

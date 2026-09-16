@@ -1,0 +1,182 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Mail") }}{% endblock %}
+{% block nav_mail %}active{% endblock %}
+{% block content %}
+<style>
+    /* The folders as links rather than buttons: each is its own address, so
+       the back button and a bookmark both land where they should. */
+    .segmented a {
+        display: inline-flex; align-items: center; padding: 6px 14px;
+        font-size: 12.5px; color: var(--fg-3); text-decoration: none;
+        border-right: 1px solid var(--line);
+    }
+    .segmented a:last-child { border-right: none; }
+    .segmented a:hover { color: var(--fg-2); background: var(--surface-2); }
+    .segmented a.on { color: var(--fg); background: var(--surface-3); }
+
+    .mail-search { display: flex; gap: 8px; margin-left: auto; }
+    .mail-search input { width: 240px; max-width: 100%; }
+    @media (max-width: 640px) {
+        .mail-search { margin-left: 0; width: 100%; }
+        .mail-search input { flex: 1; width: auto; }
+    }
+
+    table.letters td { padding-top: 9px; padding-bottom: 9px; }
+    table.letters tr { cursor: pointer; }
+    table.letters a { color: inherit; text-decoration: none; }
+    .letters .who { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+    .letters .who .addr { font-size: 12px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; }
+    .letters .subj { width: 100%; min-width: 220px; }
+    .letters .subj .none { color: var(--fg-3); font-style: italic; }
+    .letters .when { white-space: nowrap; text-align: right; color: var(--fg-2); }
+    /* Unread in the Inbox means the bot has not answered it yet — worth seeing
+       at a glance, the way every mail client shows it. */
+    .letters tr.unread .subj-text, .letters tr.unread .who .name { font-weight: 600; color: var(--fg); }
+    .letters .udot {
+        display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+        background: var(--link); vertical-align: middle;
+    }
+    .letters .clip { color: var(--fg-3); margin-left: 6px; font-size: 12px; }
+    .letters .dir { color: var(--fg-3); font-size: 11.5px; margin-right: 4px; }
+
+    .client-chip {
+        display: inline-block; font-size: 11px; line-height: 1.5; margin-left: 6px;
+        padding: 0 6px; border-radius: 5px; vertical-align: 1px;
+        color: var(--ok); background: rgba(69,184,102,0.09);
+        border: 1px solid rgba(69,184,102,0.35);
+    }
+    .client-chip.off { color: var(--err); background: rgba(239,83,80,0.08); border-color: rgba(239,83,80,0.35); }
+
+    /* On a phone the table becomes the list every mail app shows: who and
+       when on the first line, the subject under them. A sideways-scrolling
+       table would hide exactly the two columns that say what a letter is. */
+    @media (max-width: 640px) {
+        table.letters thead { display: none; }
+        table.letters, table.letters tbody { display: block; }
+        table.letters tr {
+            display: grid; grid-template-columns: 12px minmax(0, 1fr) auto;
+            column-gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft);
+        }
+        table.letters tbody tr:last-child { border-bottom: none; }
+        /* The cells no longer touch, so the highlight belongs to the row. */
+        table.letters tbody tr:hover td { background: transparent; }
+        table.letters tbody tr:hover { background: var(--surface-2); }
+        table.letters td { display: block; padding: 0; border: none; }
+        table.letters td:first-child { grid-row: 1 / span 2; padding-top: 6px; }
+        .letters .who { grid-column: 2; max-width: none; }
+        .letters .when { grid-column: 3; grid-row: 1; font-size: 12px; }
+        .letters .subj { grid-column: 2 / span 2; min-width: 0; margin-top: 3px;
+                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    }
+
+    .pager {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 11px 18px; border-top: 1px solid var(--line-soft);
+    }
+    .pager .muted { font-size: 12px; }
+    .pager .btns { margin-left: auto; display: flex; gap: 8px; }
+</style>
+
+<h1 style="margin: 0 0 6px 0;">{{ t("Mail") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0;">
+    {{ t("The bot's mailbox, read-only. Opening a letter here does not mark it read, so the bot still answers it.") }}
+</p>
+
+<div class="panel">
+    <div class="panel-head">
+        <div class="segmented">
+            {% for tab in tabs %}
+            <a href="/mail?folder={{ tab.key }}" class="{% if tab.key == folder %}on{% endif %}">{{ tab.label }}</a>
+            {% endfor %}
+        </div>
+        <form method="get" action="/mail" class="mail-search">
+            <input type="hidden" name="folder" value="{{ folder }}">
+            <input type="text" name="q" value="{{ q }}" placeholder="{{ t('Address, name or subject…') }}">
+            <button type="submit" class="btn small">{{ t("Find") }}</button>
+            {% if q %}<a href="/mail?folder={{ folder }}" class="btn small">{{ t("Reset") }}</a>{% endif %}
+        </form>
+    </div>
+
+    {% if error %}
+    <div class="empty" style="color: var(--err);">{{ error }}</div>
+    {% elif listing and listing.rows %}
+    <div class="tscroll">
+        <table class="letters">
+            <thead>
+                <tr>
+                    <th style="width: 1%;"></th>
+                    <th>{% if folder == "inbox" %}{{ t("From") }}{% elif folder == "sent" %}{{ t("To") }}{% else %}{{ t("From / to") }}{% endif %}</th>
+                    <th>{{ t("Subject") }}</th>
+                    <th style="text-align: right;">{{ t("Date") }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in listing.rows %}
+                {% set href = "/mail/" ~ folder ~ "/" ~ row.uid ~ return_query %}
+                <tr class="{% if not row.seen and not row.outgoing %}unread{% endif %}" data-href="{{ href }}">
+                    <td style="padding-right: 0;">
+                        {% if not row.seen and not row.outgoing %}
+                        <span class="udot" title="{{ t('Unread — the bot has not handled it yet') }}"></span>
+                        {% endif %}
+                    </td>
+                    <td class="who">
+                        <a href="{{ href }}">
+                            <div>
+                                {% if row.outgoing and folder != "sent" %}<span class="dir">{{ t("to:") }}</span>{% endif %}
+                                <span class="name">{{ row.person.name or row.person.address or "—" }}</span>
+                                {% if row.client %}
+                                <span class="client-chip {% if not row.client.enable %}off{% endif %}"
+                                      title="{{ t('A client') }}{% if row.client.tariff %} · {{ row.client.tariff }}{% endif %}">{{ row.client.tariff or t("client [chip]") }}</span>
+                                {% endif %}
+                            </div>
+                            {% if row.person.name %}<div class="addr mono">{{ row.person.address }}</div>{% endif %}
+                        </a>
+                    </td>
+                    <td class="subj">
+                        <a href="{{ href }}">
+                            {% if row.subject %}<span class="subj-text">{{ row.subject }}</span>
+                            {% else %}<span class="none">{{ t("(no subject)") }}</span>{% endif %}
+                            {% if row.attachment %}<span class="clip" title="{{ t('Has attachments') }}">📎</span>{% endif %}
+                        </a>
+                    </td>
+                    <td class="when mono" title="{{ row.when_full }}">{{ row.when }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="pager">
+        {% set first = (listing.page - 1) * listing.per_page + 1 %}
+        {% set last = [listing.page * listing.per_page, listing.total]|min %}
+        <span class="muted">{{ t("{first}–{last} of {total}", first=first, last=last, total=listing.total) }}</span>
+        {% if listing.pages > 1 %}
+        <div class="btns">
+            {% if listing.page > 1 %}
+            <a class="btn small" href="/mail?folder={{ folder }}&page={{ listing.page - 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">← {{ t("Newer") }}</a>
+            {% endif %}
+            {% if listing.page < listing.pages %}
+            <a class="btn small" href="/mail?folder={{ folder }}&page={{ listing.page + 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ t("Older") }} →</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty">
+        {% if q %}{{ t("Nothing matched this search") }}
+        {% elif folder == "sent" %}{{ t("No sent letters yet. Copies are kept from this version on, so letters sent before the update are not here.") }}
+        {% else %}{{ t("The folder is empty") }}{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // The whole row opens the letter, not only the two links in it. A click
+    // with a modifier is left to the link underneath, so a new tab still works.
+    document.querySelectorAll("table.letters tr[data-href]").forEach(function (tr) {
+        tr.addEventListener("click", function (ev) {
+            if (ev.target.closest("a") || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+            window.location.href = tr.dataset.href;
+        });
+    });
+</script>
+{% endblock %}

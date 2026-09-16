@@ -1,0 +1,269 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ (letter.subject if letter and letter.subject else t("Letter")) }}{% endblock %}
+{% block nav_mail %}active{% endblock %}
+{% block content %}
+<style>
+    .letter-layout {
+        display: grid; gap: 20px; align-items: start;
+        grid-template-columns: minmax(0, 1fr) 300px;
+    }
+    /* On a narrow screen the client goes first: who wrote is what decides how
+       the letter is read, and below a long letter it would never be reached. */
+    @media (max-width: 900px) {
+        .letter-layout { grid-template-columns: minmax(0, 1fr); }
+        .letter-layout .client-side { order: -1; }
+    }
+
+    .letter-meta { padding: 14px 18px; display: grid; gap: 4px; border-bottom: 1px solid var(--line-soft); }
+    .letter-meta .row { display: flex; gap: 10px; font-size: 13px; min-width: 0; }
+    .letter-meta .k { flex: 0 0 64px; color: var(--fg-3); }
+    .letter-meta .v { min-width: 0; overflow-wrap: anywhere; }
+    .letter-meta .v .addr { color: var(--fg-3); }
+
+    .letter-note {
+        padding: 9px 18px; font-size: 12.5px; color: var(--fg-2);
+        border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .letter-note .btn { margin-left: auto; }
+
+    .attachments { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--line-soft); }
+    .attachments a {
+        display: inline-flex; gap: 8px; align-items: center; max-width: 100%;
+        padding: 5px 10px; border-radius: var(--radius-sm);
+        border: 1px solid var(--line); background: var(--surface-2);
+        color: var(--fg); text-decoration: none; font-size: 12.5px;
+    }
+    .attachments a:hover { border-color: var(--fg-3); }
+    .attachments .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .attachments .s { color: var(--fg-3); white-space: nowrap; }
+
+    .view-tabs { display: flex; gap: 0; padding: 0 18px; border-bottom: 1px solid var(--line-soft); }
+    .view-tabs button {
+        background: none; border: none; border-bottom: 2px solid transparent;
+        color: var(--fg-3); padding: 9px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+    }
+    .view-tabs button:hover { color: var(--fg-2); }
+    .view-tabs button.on { color: var(--fg); border-bottom-color: var(--fg); }
+
+    /* A letter is designed for a white page; drawing it on the panel's dark
+       ground would turn most of them unreadable. */
+    .letter-frame-wrap { background: #fff; }
+    .letter-frame { display: block; width: 100%; height: 240px; border: 0; background: #fff; }
+    .letter-text {
+        margin: 0; padding: 16px 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+        font-family: inherit; font-size: 13.5px; line-height: 1.6; color: var(--fg);
+    }
+
+    /* Links in the panel's quieter manner, as on the client card: the browser's
+       own blue among these muted lines reads as a mistake. */
+    .client-side a.plain { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line); }
+    .client-side a.plain:hover { border-color: var(--fg-3); }
+    .client-side .panel-head a { margin-left: auto; font-size: 12px; }
+    .client-body { padding: 14px 18px; display: grid; gap: 12px; }
+    .client-body .who .addr { overflow-wrap: anywhere; }
+    .client-body .kv { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13px; }
+    .client-body .kv .k { color: var(--fg-3); }
+    .client-body .kv .v { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+    .client-body .on { color: var(--ok); }
+    .client-body .off { color: var(--err); }
+    .client-body .bar { width: 100%; height: 6px; }
+</style>
+
+<a href="{{ back }}" class="back">← {{ t("Back to the folder") }}</a>
+
+{% if error %}
+<div class="flash error" style="margin-top: 14px;">{{ error }}</div>
+{% else %}
+
+<h1 style="margin: 14px 0 20px 0; overflow-wrap: anywhere;">
+    {% if letter.subject %}{{ letter.subject }}{% else %}<span class="muted">{{ t("(no subject)") }}</span>{% endif %}
+</h1>
+
+{% macro people(list) -%}
+    {% for p in list %}{% if p.name %}{{ p.name }} <span class="addr mono">&lt;{{ p.address }}&gt;</span>{% else %}<span class="mono">{{ p.address }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{%- endmacro %}
+
+<div class="letter-layout">
+    <div class="panel">
+        <div class="letter-meta">
+            <div class="row"><span class="k">{{ t("From") }}</span><span class="v">{{ people(letter.from) or "—" }}</span></div>
+            <div class="row"><span class="k">{{ t("To") }}</span><span class="v">{{ people(letter.to) or "—" }}</span></div>
+            {% if letter.cc %}
+            <div class="row"><span class="k">{{ t("Copy [cc]") }}</span><span class="v">{{ people(letter.cc) }}</span></div>
+            {% endif %}
+            {% if letter.reply_to and letter.reply_to != letter.from %}
+            <div class="row"><span class="k">{{ t("Reply to") }}</span><span class="v">{{ people(letter.reply_to) }}</span></div>
+            {% endif %}
+            <div class="row"><span class="k">{{ t("Date") }}</span><span class="v mono">{{ letter.when_full or "—" }}</span></div>
+        </div>
+
+        {% if folder == "inbox" and not seen %}
+        <div class="letter-note">
+            <span class="udot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--link);"></span>
+            {{ t("Unread: the bot has not handled this letter yet. Opening it here leaves it unread.") }}
+        </div>
+        {% endif %}
+
+        {% if letter.attachments %}
+        <div class="attachments">
+            {% for a in letter.attachments %}
+            <a href="/mail/{{ folder }}/{{ uid }}/attachments/{{ a.index }}" title="{{ a.type }}">
+                <span>📎</span><span class="n">{{ a.name }}</span><span class="s">{{ a.size }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if letter.html and letter.has_remote %}
+        {# Built as a list and joined, rather than a chain of prefixed/suffixed
+           "&"s: with zero, one or two of {page, q} present, a hand-placed
+           separator either duplicates or is missing one — a list has no such
+           edge. #}
+        {% set qs = [] %}
+        {% if page and page > 1 %}{% set _ = qs.append("page=" ~ page) %}{% endif %}
+        {% if q %}{% set _ = qs.append("q=" ~ q|urlencode) %}{% endif %}
+        <div class="letter-note">
+            {% if letter.remote_shown %}
+            {{ t("Remote images are shown. The sender can see that the letter was opened.") }}
+            <a class="btn small" href="?{{ qs|join('&') }}">{{ t("Hide them") }}</a>
+            {% else %}
+            {{ t("Remote images are hidden: loading them tells the sender the letter was opened.") }}
+            <a class="btn small" href="?{{ (["images=1"] + qs)|join('&') }}">{{ t("Show images") }}</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if letter.html and letter.text %}
+        <div class="view-tabs" id="view-tabs">
+            <button type="button" class="on" data-view="html">{{ t("Formatted") }}</button>
+            <button type="button" data-view="text">{{ t("Text") }}</button>
+        </div>
+        {% endif %}
+
+        {% if letter.html %}
+        <div class="letter-frame-wrap" data-pane="html">
+            {# No allow-scripts, so nothing in the letter runs. allow-same-origin is
+               there only so this page can measure the letter and size the frame
+               to it — without scripts of its own the letter cannot use it. The
+               policy inside srcdoc keeps it from loading anything remote. #}
+            <iframe class="letter-frame" id="letter-frame"
+                    sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                    referrerpolicy="no-referrer"
+                    title="{{ t('Letter') }}"
+                    srcdoc="{{ letter.html }}"></iframe>
+        </div>
+        {% endif %}
+        {% if letter.text %}
+        <pre class="letter-text" data-pane="text" {% if letter.html %}hidden{% endif %}>{{ letter.text|linkify }}</pre>
+        {% endif %}
+        {% if not letter.html and not letter.text %}
+        <div class="empty">{{ t("The letter has no text") }}</div>
+        {% endif %}
+    </div>
+
+    <aside class="client-side">
+        <div class="panel">
+            <div class="panel-head">
+                <h2>{{ t("Client") }}</h2>
+                {% if client %}<a href="/clients/{{ client.uuid }}" class="plain">{{ t("Open the card") }} →</a>{% endif %}
+            </div>
+            <div class="client-body">
+                {% if client %}
+                <div class="who">
+                    <div>{{ client.comment or t("no name") }}</div>
+                    <div class="addr mono muted">{{ client.remark or client.bare_email }}</div>
+                </div>
+                <div class="kv">
+                    <span class="k">{{ t("Status") }}</span>
+                    <span class="v">{% if client.enable %}<span class="on">{{ t("Active [badge]") }}</span>{% else %}<span class="off">{{ t("Disabled [badge]") }}</span>{% endif %}</span>
+
+                    <span class="k">{{ t("Tariff") }}</span>
+                    <span class="v">{% if client.tariff %}{{ client.tariff }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</span>
+
+                    <span class="k">{{ t("Used") }}</span>
+                    <span class="v mono">{{ client.used_gb }}{% if client.unlimited %} {{ t("GB") }} <span class="muted">· {{ t("no limit") }}</span>{% else %} / {{ client.limit_gb }} {{ t("GB") }}{% endif %}</span>
+                </div>
+                {% if not client.unlimited %}
+                <div class="bar {% if client.percent >= 100 %}full{% elif client.percent >= 80 %}near{% endif %}">
+                    <div style="width: {{ client.percent }}%;"></div>
+                </div>
+                {% endif %}
+                <div class="kv">
+                    <span class="k">{{ t("Valid until") }}</span>
+                    <span class="v mono">{{ client.expiry }}</span>
+
+                    <span class="k">{{ t("Days left") }}</span>
+                    <span class="v mono" {% if client.expired %}style="color:#f87171;"{% endif %}>{% if client.days_left is none %}∞{% else %}{{ client.days_left }}{% endif %}</span>
+
+                    <span class="k">{{ t("Registered") }}</span>
+                    <span class="v mono">{{ client.created }}</span>
+
+                    <span class="k">{{ t("Came in through") }}</span>
+                    <span class="v">{% if client.came_by %}<a href="/tariffs/codes/{{ client.came_by.word|urlencode }}" class="mono plain">{{ client.came_by.word }}</a>{% else %}<span class="muted">{{ t("not known") }}</span>{% endif %}</span>
+                </div>
+                {% elif is_admin %}
+                <div class="muted">{{ t("This is the administrator's address.") }}</div>
+                {% elif not clients_known %}
+                <div class="muted">{{ t("3x-ui did not answer, so whether this is a client is not known.") }}</div>
+                {% elif person %}
+                <div class="who">
+                    {% if person.name %}<div>{{ person.name }}</div>{% endif %}
+                    <div class="addr mono muted">{{ person.address }}</div>
+                </div>
+                <div class="muted">{{ t("Not a client: there is nobody with this address in 3x-ui.") }}</div>
+                {% else %}
+                <div class="muted">{{ t("The letter names no address.") }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </aside>
+</div>
+
+<script>
+    (function () {
+        var frame = document.getElementById("letter-frame");
+        if (frame) {
+            // The frame takes the letter's own height, so the page scrolls once
+            // rather than a box scrolling inside it. Measured again as pictures
+            // arrive and the width changes.
+            var fit = function () {
+                try {
+                    var doc = frame.contentDocument;
+                    if (!doc || !doc.documentElement) return;
+                    // The html element's own height, not scrollHeight: that one
+                    // never reports less than the frame already is, so a frame
+                    // could grow to a long letter and never shrink to a short one.
+                    var height = Math.ceil(doc.documentElement.getBoundingClientRect().height);
+                    frame.style.height = Math.max(height, 120) + "px";
+                } catch (e) { /* the frame is not ours to measure; keep the default */ }
+            };
+            frame.addEventListener("load", function () {
+                fit();
+                try {
+                    if (window.ResizeObserver) {
+                        new ResizeObserver(fit).observe(frame.contentDocument.documentElement);
+                    }
+                    frame.contentDocument.querySelectorAll("img").forEach(function (img) {
+                        img.addEventListener("load", fit);
+                    });
+                } catch (e) { }
+            });
+            window.addEventListener("resize", fit);
+        }
+
+        var tabs = document.getElementById("view-tabs");
+        if (tabs) {
+            tabs.addEventListener("click", function (ev) {
+                var btn = ev.target.closest("button[data-view]");
+                if (!btn) return;
+                tabs.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b === btn); });
+                document.querySelectorAll("[data-pane]").forEach(function (pane) {
+                    pane.hidden = pane.dataset.pane !== btn.dataset.view;
+                });
+            });
+        }
+    })();
+</script>
+{% endif %}
+{% endblock %}
