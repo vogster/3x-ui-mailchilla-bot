@@ -108,6 +108,14 @@ class PanelCase(unittest.TestCase):
         config.ADMIN_PANEL_PASSWORD = cls.saved_password
 
     def setUp(self):
+        # The panel language is a setting, and a developer's own settings.json
+        # sets it: these tests read strings off the page, so they have to know
+        # which language the page is in. English needs no catalogue, so it is
+        # the one that cannot drift. (This was found by CI, where there is no
+        # settings.json at all and the pages therefore came out English while
+        # the assertions expected Russian.)
+        self.saved_lang = config.PANEL_LANG
+        config.PANEL_LANG = "en"
         self.dir = tempfile.mkdtemp(prefix="mailchilla-routes-")
         self.real_path = tariffs.TARIFFS_PATH
         tariffs.TARIFFS_PATH = os.path.join(self.dir, "tariffs.json")
@@ -137,6 +145,7 @@ class PanelCase(unittest.TestCase):
         self.assertIn(response.status_code, (200, 302, 303))
 
     def tearDown(self):
+        config.PANEL_LANG = self.saved_lang
         xui_client.get_shared_client = self.real_shared
         for module, original in self.patched:
             module.get_shared_client = original
@@ -398,7 +407,7 @@ class ClientCardTariff(PanelCase):
         body = self.page("/clients/c0ffee02")
         cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
         self.assertNotIn("Basic", cards)
-        self.assertIn("не задан", cards)
+        self.assertIn("not set", cards)
 
 
 class CameInThrough(PanelCase):
@@ -417,7 +426,7 @@ class CameInThrough(PanelCase):
     def test_a_client_nobody_recorded_says_it_is_not_known(self):
         # Everybody registered before this release, and anybody added by hand.
         body = self.page("/clients/c0ffee02")
-        self.assertIn("неизвестно", body)
+        self.assertIn("not known", body)
 
     def test_it_survives_the_code_being_switched_off(self):
         tariffs.spend("AURORA", "ben@example.com")
@@ -498,7 +507,7 @@ class CodeExpiryThroughTheForm(PanelCase):
                            "uses_left": None, "enabled": True,
                            "expires_at": tariffs._now_ms() - 86400 * 1000})
         body = self.page("/tariffs/codes/GONE")
-        self.assertIn("срок истёк", body)
+        self.assertIn("out of date", body)
 
 
 class DatesTypedByHand(PanelCase):
