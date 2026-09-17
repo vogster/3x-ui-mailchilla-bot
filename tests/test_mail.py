@@ -65,6 +65,122 @@ class WithMailbox(unittest.TestCase):
         self.assertEqual(self.box.unpeeked_fetches, [], "a body was fetched without PEEK")
 
 
+class Accounts(unittest.TestCase):
+    """The bot's own mailbox and Support are read from config at call time,
+    through the same Account shape, distinguished only by their key prefix."""
+
+    def setUp(self):
+        self.saved = (config.IMAP_USER, config.IMAP_PASSWORD, config.SMTP_USER,
+                     config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD, config.SUPPORT_SMTP_USER)
+
+    def tearDown(self):
+        (config.IMAP_USER, config.IMAP_PASSWORD, config.SMTP_USER,
+         config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD, config.SUPPORT_SMTP_USER) = self.saved
+
+    def test_a_setting_saved_from_the_panel_is_seen_at_once(self):
+        # No caching: Account reads config attributes live, so a value changed
+        # mid-process (exactly what settings.save() does) is picked up by the
+        # very next call — no restart, matching every other setting.
+        config.SUPPORT_IMAP_USER = "one@example.com"
+        self.assertEqual(mailfolders.SUPPORT.imap_user, "one@example.com")
+        config.SUPPORT_IMAP_USER = "two@example.com"
+        self.assertEqual(mailfolders.SUPPORT.imap_user, "two@example.com")
+
+    def test_configured_needs_both_imap_fields(self):
+        config.SUPPORT_IMAP_USER = ""
+        config.SUPPORT_IMAP_PASSWORD = ""
+        self.assertFalse(mailfolders.SUPPORT.configured)
+        config.SUPPORT_IMAP_USER = "s@example.com"
+        self.assertFalse(mailfolders.SUPPORT.configured)
+        config.SUPPORT_IMAP_PASSWORD = "secret"
+        self.assertTrue(mailfolders.SUPPORT.configured)
+
+    def test_own_addresses_reads_its_own_prefix_only(self):
+        config.IMAP_USER, config.SMTP_USER = "bot@example.com", "bot-smtp@example.com"
+        config.SUPPORT_IMAP_USER, config.SUPPORT_SMTP_USER = "s@example.com", "s-smtp@example.com"
+        self.assertEqual(mailfolders.BOT.own_addresses(), {"bot@example.com", "bot-smtp@example.com"})
+        self.assertEqual(mailfolders.SUPPORT.own_addresses(), {"s@example.com", "s-smtp@example.com"})
+
+    def test_the_bot_account_is_always_available_support_only_once_set_up(self):
+        config.SUPPORT_IMAP_USER = ""
+        config.SUPPORT_IMAP_PASSWORD = ""
+        self.assertEqual([a.key for a in mailfolders.accounts_available()], ["bot"])
+        config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD = "s@example.com", "secret"
+        self.assertEqual([a.key for a in mailfolders.accounts_available()], ["bot", "support"])
+
+
+class ReplyBuilding(unittest.TestCase):
+    def test_re_is_added_once(self):
+        self.assertEqual(mailfolders.reply_subject("Help"), "Re: Help")
+        self.assertEqual(mailfolders.reply_subject("Re: Help"), "Re: Help")
+        self.assertEqual(mailfolders.reply_subject("RE:Help"), "RE:Help")
+        self.assertEqual(mailfolders.reply_subject(""), "Re:")
+
+    def test_the_quote_carries_the_sender_and_the_original_text(self):
+        parsed = mailfolders.parse_letter(letter(
+            formataddr(("Vera", "vera@example.com")), "Не работает", "Что делать?"))
+        quoted = mailfolders.quote_body(parsed)
+        self.assertIn("Vera", quoted)
+        self.assertIn(parsed["when_full"], quoted)
+        self.assertIn("> Что делать?", quoted)
+
+    def test_a_letter_with_no_sender_is_quoted_without_one(self):
+        quoted = mailfolders.quote_body({"from": [], "text": "hi", "when_full": ""})
+        self.assertIn("hi", quoted)  # does not raise, names nobody in particular
+
+
+class SendingAReply(WithMailbox):
+    def setUp(self):
+        super().setUp()
+        self.saved_support = (config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD, config.SUPPORT_SMTP_USER)
+
+    def tearDown(self):
+        (config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD,
+         config.SUPPORT_SMTP_USER) = self.saved_support
+        super().tearDown()
+
+    def test_a_reply_is_threaded_quoted_and_filed_as_a_sent_copy(self):
+        config.SUPPORT_IMAP_USER = BOT
+        config.SUPPORT_IMAP_PASSWORD = "secret"
+        config.SUPPORT_SMTP_USER = BOT
+        original = mailfolders.parse_letter(letter(
+            "vera@example.com", "Не работает", "Что делать?", message_id="<orig@example.com>"))
+
+        sent = {}
+
+        def fake_send_via(server_host, port, user, password, to_email, subject, message,
+                          service_name=None, extra_headers=None):
+            msg = mailer.build_message(to_email, subject, message, smtp_user=user,
+                                       service_name=service_name, extra_headers=extra_headers)
+            sent["msg"] = msg
+            sent["extra_headers"] = extra_headers
+            return msg
+
+        saved_send = mailer.send_email_via
+        saved_copy = mailfolders.save_sent_copy
+        queued = []
+        mailer.send_email_via = fake_send_via
+        mailfolders.save_sent_copy = lambda account_key, message_id, raw: queued.append(
+            (account_key, message_id, raw))
+        try:
+            mailfolders.send_reply(mailfolders.SUPPORT, original, "vera@example.com", "Проверьте кабель.")
+        finally:
+            mailer.send_email_via = saved_send
+            mailfolders.save_sent_copy = saved_copy
+
+        self.assertEqual(sent["extra_headers"]["In-Reply-To"], "<orig@example.com>")
+        self.assertEqual(sent["extra_headers"]["References"], "<orig@example.com>")
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(queued[0][0], "support")
+
+    def test_refuses_without_credentials(self):
+        config.SUPPORT_IMAP_USER = ""
+        config.SUPPORT_IMAP_PASSWORD = ""
+        original = mailfolders.parse_letter(letter("vera@example.com", "hi", "text"))
+        with self.assertRaises(mailfolders.MailboxNotSetUp):
+            mailfolders.send_reply(mailfolders.SUPPORT, original, "vera@example.com", "text")
+
+
 class FolderNames(unittest.TestCase):
     def test_modified_utf7_comes_back_as_text(self):
         self.assertEqual(inbox.decode_folder_name("&BBoEPgRABDcEOAQ9BDA-"), "Корзина")
@@ -99,7 +215,7 @@ class TheList(WithMailbox):
     def test_newest_first_with_the_flags_as_they_are(self):
         self.box.add("INBOX", letter("ann@example.com", "first"), flags=["\\Seen"])
         self.box.add("INBOX", letter("ben@example.com", "second"))
-        listing = mailfolders.list_letters("inbox")
+        listing = mailfolders.list_letters(mailfolders.BOT, "inbox")
         self.assertEqual([r["subject"] for r in listing["rows"]], ["second", "first"])
         self.assertEqual([r["seen"] for r in listing["rows"]], [False, True])
         # And the unread one is still unread on the server.
@@ -108,7 +224,7 @@ class TheList(WithMailbox):
     def test_the_other_side_of_a_letter_we_sent_is_its_recipient(self):
         self.box.add("Trash", letter(formataddr(("Mailchilla", BOT)), "welcome", to="ann@example.com"))
         self.box.add("Trash", letter("ben@example.com", "hello"))
-        rows = mailfolders.list_letters("trash")["rows"]
+        rows = mailfolders.list_letters(mailfolders.BOT, "trash")["rows"]
         self.assertEqual((rows[0]["person"]["address"], rows[0]["outgoing"]), ("ben@example.com", False))
         self.assertEqual((rows[1]["person"]["address"], rows[1]["outgoing"]), ("ann@example.com", True))
 
@@ -117,56 +233,56 @@ class TheList(WithMailbox):
         # a recipient back out of. It must not read as an unanswered letter
         # from ourselves, which is what "outgoing" decides in the template.
         self.box.add("Trash", letter(BOT, "no To header", to=None))
-        row = mailfolders.list_letters("trash")["rows"][0]
+        row = mailfolders.list_letters(mailfolders.BOT, "trash")["rows"][0]
         self.assertTrue(row["outgoing"])
         self.assertEqual(row["person"]["address"], "")
 
     def test_a_letter_with_an_attachment_is_marked(self):
         self.box.add("INBOX", letter("ann@example.com", "files", attachments=[("a.pdf", b"%PDF")]))
         self.box.add("INBOX", letter("ann@example.com", "plain"))
-        rows = mailfolders.list_letters("inbox")["rows"]
+        rows = mailfolders.list_letters(mailfolders.BOT, "inbox")["rows"]
         self.assertEqual([r["attachment"] for r in rows], [False, True])
 
     def test_pages(self):
         for n in range(7):
             self.box.add("INBOX", letter(f"p{n}@example.com", f"letter {n}"))
-        listing = mailfolders.list_letters("inbox", page=2, per_page=3)
+        listing = mailfolders.list_letters(mailfolders.BOT, "inbox", page=2, per_page=3)
         self.assertEqual((listing["total"], listing["pages"], listing["page"]), (7, 3, 2))
         self.assertEqual([r["subject"] for r in listing["rows"]], ["letter 3", "letter 2", "letter 1"])
         # A page past the end is the last page, not an empty one.
-        self.assertEqual(mailfolders.list_letters("inbox", page=9, per_page=3)["page"], 3)
+        self.assertEqual(mailfolders.list_letters(mailfolders.BOT, "inbox", page=9, per_page=3)["page"], 3)
 
     def test_search_by_address_and_by_a_cyrillic_word(self):
         self.box.add("INBOX", letter("ann@example.com", "Подписка не работает"))
         self.box.add("INBOX", letter("ben@example.com", "hello"))
-        found = mailfolders.list_letters("inbox", query="ann@")["rows"]
+        found = mailfolders.list_letters(mailfolders.BOT, "inbox", query="ann@")["rows"]
         self.assertEqual([r["person"]["address"] for r in found], ["ann@example.com"])
-        found = mailfolders.list_letters("inbox", query="подписка")["rows"]
+        found = mailfolders.list_letters(mailfolders.BOT, "inbox", query="подписка")["rows"]
         self.assertEqual([r["person"]["address"] for r in found], ["ann@example.com"])
 
     def test_no_such_folder(self):
         del self.box.folders["Trash"]
         with self.assertRaises(mailfolders.FolderMissing):
-            mailfolders.list_letters("trash")
+            mailfolders.list_letters(mailfolders.BOT, "trash")
 
     def test_no_mailbox_at_all(self):
         config.IMAP_USER = ""
         with self.assertRaises(mailfolders.MailboxNotSetUp):
-            mailfolders.list_letters("inbox")
+            mailfolders.list_letters(mailfolders.BOT, "inbox")
 
 
 class OneLetter(WithMailbox):
     def test_opening_it_leaves_it_unread(self):
         uid = self.box.add("INBOX", letter("ann@example.com", "START"))
-        raw, flags = mailfolders.fetch_raw("inbox", str(uid))
+        raw, flags = mailfolders.fetch_raw(mailfolders.BOT, "inbox", str(uid))
         self.assertIn(b"START", raw)
         self.assertNotIn("\\Seen", flags)
         self.assertEqual(self.box.folders["INBOX"][1][0].flags, set())
 
     def test_an_unknown_uid(self):
         self.box.add("INBOX", letter("ann@example.com", "START"))
-        self.assertIsNone(mailfolders.fetch_raw("inbox", "99"))
-        self.assertIsNone(mailfolders.fetch_raw("inbox", "1 OR 2"))
+        self.assertIsNone(mailfolders.fetch_raw(mailfolders.BOT, "inbox", "99"))
+        self.assertIsNone(mailfolders.fetch_raw(mailfolders.BOT, "inbox", "1 OR 2"))
 
 
 class Parsing(unittest.TestCase):
@@ -265,7 +381,7 @@ class Parsing(unittest.TestCase):
 class SentCopies(WithMailbox):
     def test_a_letter_goes_into_the_sent_folder_read(self):
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<one@example.com>")
-        self.assertEqual(mailfolders.append_copies([("<one@example.com>", raw)]), 1)
+        self.assertEqual(mailfolders.append_copies(mailfolders.BOT, [("<one@example.com>", raw)]), 1)
         stored = self.box.folders["Sent"][1]
         self.assertEqual(len(stored), 1)
         self.assertIn("\\Seen", stored[0].flags)
@@ -273,19 +389,19 @@ class SentCopies(WithMailbox):
     def test_one_the_provider_already_filed_is_not_filed_again(self):
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<one@example.com>")
         self.box.add("Sent", raw, flags=["\\Seen"])
-        self.assertEqual(mailfolders.append_copies([("<one@example.com>", raw)]), 0)
+        self.assertEqual(mailfolders.append_copies(mailfolders.BOT, [("<one@example.com>", raw)]), 0)
         self.assertEqual(len(self.box.folders["Sent"][1]), 1)
 
     def test_no_sent_folder_means_no_copy_and_no_error(self):
         del self.box.folders["Sent"]
         raw = letter(BOT, "welcome", to="ann@example.com")
-        self.assertEqual(mailfolders.append_copies([("<x@example.com>", raw)]), 0)
+        self.assertEqual(mailfolders.append_copies(mailfolders.BOT, [("<x@example.com>", raw)]), 0)
         self.assertEqual(self.box.appended, [])
 
     def test_nothing_is_queued_without_a_mailbox(self):
         config.IMAP_USER = ""
         before = mailfolders._copies.qsize()
-        mailfolders.save_sent_copy("<x@example.com>", b"letter")
+        mailfolders.save_sent_copy("bot", "<x@example.com>", b"letter")
         self.assertEqual(mailfolders._copies.qsize(), before)
 
     def test_a_select_failure_still_appends_and_says_why_it_could_not_check(self):
@@ -294,7 +410,7 @@ class SentCopies(WithMailbox):
         self.box.fail_select.add("Sent")
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<x@example.com>")
         with self.assertLogs("mailfolders", level="WARNING") as logs:
-            appended = mailfolders.append_copies([("<x@example.com>", raw)])
+            appended = mailfolders.append_copies(mailfolders.BOT, [("<x@example.com>", raw)])
         self.assertEqual(appended, 1)
         self.assertTrue(any("duplicate" in m for m in logs.output))
 
@@ -302,7 +418,7 @@ class SentCopies(WithMailbox):
         self.box.fail_search.add("Sent")
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<y@example.com>")
         with self.assertLogs("mailfolders", level="WARNING") as logs:
-            appended = mailfolders.append_copies([("<y@example.com>", raw)])
+            appended = mailfolders.append_copies(mailfolders.BOT, [("<y@example.com>", raw)])
         self.assertEqual(appended, 1)
         self.assertTrue(any("duplicate" in m for m in logs.output))
 
@@ -311,7 +427,8 @@ class TheSendKeepsACopy(unittest.TestCase):
     def setUp(self):
         self.saved = (mailer.send_email_via, mailfolders.save_sent_copy)
         self.queued = []
-        mailfolders.save_sent_copy = lambda message_id, raw: self.queued.append((message_id, raw))
+        mailfolders.save_sent_copy = (
+            lambda account_key, message_id, raw: self.queued.append((account_key, message_id, raw)))
 
     def tearDown(self):
         mailer.send_email_via, mailfolders.save_sent_copy = self.saved
@@ -322,7 +439,8 @@ class TheSendKeepsACopy(unittest.TestCase):
         mailer.send_email_via = sent
         mailer.send_email_reply("ann@example.com", "welcome", "<p>hi</p>")
         self.assertEqual(len(self.queued), 1)
-        message_id, raw = self.queued[0]
+        account_key, message_id, raw = self.queued[0]
+        self.assertEqual(account_key, "bot")
         self.assertTrue(message_id.startswith("<"))
         self.assertIn(message_id.encode(), raw)
 
@@ -344,7 +462,7 @@ class TheSendKeepsACopy(unittest.TestCase):
     def test_a_broken_queue_does_not_fail_the_send(self):
         mailer.send_email_via = lambda *a, **k: mailer.build_message("a@example.com", "s", "<p>x</p>")
 
-        def broken(message_id, raw):
+        def broken(account_key, message_id, raw):
             raise RuntimeError("queue is gone")
         mailfolders.save_sent_copy = broken
         mailer.send_email_reply("a@example.com", "s", "<p>x</p>")
@@ -369,7 +487,7 @@ class TheWorkerThread(WithMailbox):
 
     def test_a_queued_copy_reaches_the_sent_folder_on_its_own(self):
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<via-worker@example.com>")
-        mailfolders.save_sent_copy("<via-worker@example.com>", raw)
+        mailfolders.save_sent_copy("bot", "<via-worker@example.com>", raw)
 
         deadline = time.time() + 5
         while time.time() < deadline and not self.box.folders["Sent"][1]:

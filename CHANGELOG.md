@@ -12,6 +12,17 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **A Support mailbox, with replies.** The Mail page can now hold a second
+  account, set up on its own tab in Settings — a mailbox a person answers
+  from, as against the bot's own. Once both its halves (IMAP and SMTP) are
+  filled in, a Support tab appears beside the bot's on the Mail page, and every
+  letter there carries a plain-text reply box the bot's own mailbox does not
+  offer. A reply threads itself under the letter it answers (In-Reply-To,
+  References), quotes the original underneath what was typed, and is filed
+  into Support's own Sent folder the same way every other letter this project
+  sends is. Left empty, nothing changes: the Mail page shows only the bot's
+  mailbox, exactly as before.
+
 - **The mailbox in the panel.** A new Mail page shows the bot's Inbox, Sent
   and Trash, with search and pages, and opens any letter in them. Beside the
   letter stands the client who wrote it — status, tariff, traffic, expiry, the

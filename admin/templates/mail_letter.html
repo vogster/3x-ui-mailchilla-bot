@@ -68,9 +68,30 @@
     .client-body .on { color: var(--ok); }
     .client-body .off { color: var(--err); }
     .client-body .bar { width: 100%; height: 6px; }
+
+    .reply-box { padding: 16px 18px; border-top: 1px solid var(--line-soft); }
+    .reply-box textarea { width: 100%; min-height: 110px; resize: vertical; line-height: 1.6; }
+    /* .row rather than .bar: base_admin.html already owns .bar for the traffic
+       meter (height: 6px, width: 90px, display: inline-block) - reusing that
+       name here left the button squeezed into a 6px strip since .reply-box
+       .bar only overrode display, not the height/width the bare rule set. */
+    .reply-box .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .reply-box .to { color: var(--fg-3); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .reply-box .btn { margin-left: auto; flex: 0 0 auto; }
 </style>
 
 <a href="{{ back }}" class="back">← {{ t("Back to the folder") }}</a>
+
+{% if replied %}
+<script>
+    window.addEventListener("DOMContentLoaded", function () {
+        window.showToast({{ (t("The reply is on its way") ~ " — " ~ t("the result is in the logs"))|tojson }});
+        if (window.history && history.replaceState) {
+            history.replaceState(null, "", window.location.pathname);
+        }
+    });
+</script>
+{% endif %}
 
 {% if error %}
 <div class="flash error" style="margin-top: 14px;">{{ error }}</div>
@@ -108,7 +129,7 @@
         {% if letter.attachments %}
         <div class="attachments">
             {% for a in letter.attachments %}
-            <a href="/mail/{{ folder }}/{{ uid }}/attachments/{{ a.index }}" title="{{ a.type }}">
+            <a href="/mail/{{ account }}/{{ folder }}/{{ uid }}/attachments/{{ a.index }}" title="{{ a.type }}">
                 <span>📎</span><span class="n">{{ a.name }}</span><span class="s">{{ a.size }}</span>
             </a>
             {% endfor %}
@@ -159,6 +180,48 @@
         {% endif %}
         {% if not letter.html and not letter.text %}
         <div class="empty">{{ t("The letter has no text") }}</div>
+        {% endif %}
+
+        {% if can_reply and reply_to %}
+        {# novalidate: with the browser's own "required" validation left on, a
+           click on Send when the box is empty never reaches the submit event
+           at all — our handler below is skipped along with it, so the button
+           does nothing and says nothing. required stays on the field itself
+           for a screen reader; novalidate only turns off the popup. #}
+        <form method="post" action="/mail/{{ account }}/{{ folder }}/{{ uid }}/reply"
+              class="reply-box" id="reply-form" novalidate>
+            <label for="reply-body" class="muted" style="display:block; margin-bottom:8px;">
+                {{ t("Reply") }}
+            </label>
+            <textarea id="reply-body" name="body" required
+                      placeholder="{{ t('Write the answer here…') }}"></textarea>
+            <div class="row">
+                <span class="to">{{ t("To:") }} {{ reply_to.name or reply_to.address }}</span>
+                <button type="submit" class="btn primary">{{ t("Send") }}</button>
+            </div>
+        </form>
+        <script>
+            // The empty case has `required` for a screen reader and a keyboard
+            // user, but the browser's own validation message is easy to miss —
+            // silence here reads as a broken button rather than as "write
+            // something first". A toast is the same feedback every other form
+            // on this page already gives.
+            (function () {
+                var form = document.getElementById("reply-form");
+                var body = document.getElementById("reply-body");
+                form.addEventListener("submit", function (ev) {
+                    if (!body.value.trim()) {
+                        ev.preventDefault();
+                        window.showToast({{ t("Write something first")|tojson }}, "error");
+                        body.focus();
+                        return;
+                    }
+                    var btn = form.querySelector("button[type=submit]");
+                    btn.disabled = true;
+                    btn.textContent = {{ t("Sending…")|tojson }};
+                });
+            })();
+        </script>
         {% endif %}
     </div>
 

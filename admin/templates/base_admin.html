@@ -1185,7 +1185,7 @@
             <a href="/tariffs" class="{% block nav_tariffs %}{% endblock %}" title="{{ t("Tariffs") }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.8 14.2 7.4a1.4 1.4 0 0 1 0 2l-4.8 4.8a1.4 1.4 0 0 1-2 0L1.8 8.6V3.2a1.4 1.4 0 0 1 1.4-1.4z"/><circle cx="5.2" cy="5.2" r="1.1"/></svg><span class="lbl">{{ t("Tariffs") }}</span>
             </a>
-            <a href="/mail" class="{% block nav_mail %}{% endblock %}" title="{{ t("Mail") }}">
+            <a href="/mail/bot" class="{% block nav_mail %}{% endblock %}" title="{{ t("Mail") }}">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 9.2h3.4l1 1.8h3.6l1-1.8h3.4"/><path d="M3.9 3.2h8.2l2.1 6v3.4a1.2 1.2 0 0 1-1.2 1.2H3a1.2 1.2 0 0 1-1.2-1.2V9.2z"/></svg><span class="lbl">{{ t("Mail") }}</span>
             </a>
             <a href="/broadcast" class="{% block nav_broadcast %}{% endblock %}" title="{{ t("Broadcast") }}">
@@ -1477,11 +1477,10 @@
 </script>
 <script>
     // The mail check: logging in over IMAP and SMTP, then a letter to the admin.
+    // One function, called once for the bot's own mailbox and once for the
+    // Support one — the two forms differ only in their field-id prefix, the
+    // endpoint, and which set of DOM ids belongs to the button and the result.
     (function () {
-        var btn = document.getElementById("mail-check");
-        if (!btn) return;
-        var box = document.getElementById("mail-check-result");
-        var idle = document.getElementById("mail-check-idle");
         var UNCHANGED = {{ unchanged_marker|tojson }};
 
         function val(id) {
@@ -1497,63 +1496,73 @@
             return el.dataset.masked === "1" ? UNCHANGED : el.value;
         }
 
-        function render(steps) {
-            box.textContent = "";
-            steps.forEach(function (s) {
-                var li = document.createElement("li");
-                var mark = document.createElement("span");
-                mark.className = "mark " + (s.ok ? "ok" : (s.skipped ? "skip" : "bad"));
-                mark.textContent = s.ok ? "✓" : (s.skipped ? "–" : "✕");
+        function wireMailCheck(prefix, endpoint) {
+            var btn = document.getElementById(prefix + "mail-check");
+            if (!btn) return;
+            var box = document.getElementById(prefix + "mail-check-result");
+            var idle = document.getElementById(prefix + "mail-check-idle");
 
-                var text = document.createElement("span");
-                var name = document.createElement("b");
-                name.textContent = s.name + " — ";
-                var detail = document.createElement("span");
-                detail.className = "detail";
-                // The text comes from a mail server, hence textContent only.
-                detail.textContent = s.detail;
-                text.appendChild(name);
-                text.appendChild(detail);
+            function render(steps) {
+                box.textContent = "";
+                steps.forEach(function (s) {
+                    var li = document.createElement("li");
+                    var mark = document.createElement("span");
+                    mark.className = "mark " + (s.ok ? "ok" : (s.skipped ? "skip" : "bad"));
+                    mark.textContent = s.ok ? "✓" : (s.skipped ? "–" : "✕");
 
-                li.appendChild(mark);
-                li.appendChild(text);
-                box.appendChild(li);
+                    var text = document.createElement("span");
+                    var name = document.createElement("b");
+                    name.textContent = s.name + " — ";
+                    var detail = document.createElement("span");
+                    detail.className = "detail";
+                    // The text comes from a mail server, hence textContent only.
+                    detail.textContent = s.detail;
+                    text.appendChild(name);
+                    text.appendChild(detail);
+
+                    li.appendChild(mark);
+                    li.appendChild(text);
+                    box.appendChild(li);
+                });
+                box.hidden = false;
+                idle.hidden = true;
+            }
+
+            btn.addEventListener("click", function () {
+                var was = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = {{ t("Checking…")|tojson }};
+                fetch(endpoint, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                    body: new URLSearchParams({
+                        imap_server: val(prefix + "imap_server"),
+                        imap_port: val(prefix + "imap_port"),
+                        imap_user: val(prefix + "imap_user"),
+                        imap_password: secretVal(prefix + "imap_password"),
+                        smtp_server: val(prefix + "smtp_server"),
+                        smtp_port: val(prefix + "smtp_port"),
+                        smtp_user: val(prefix + "smtp_user"),
+                        smtp_password: secretVal(prefix + "smtp_password"),
+                        service_name: val("service_name")
+                    }).toString()
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d || !d.steps) throw new Error();
+                        render(d.steps);
+                        window.showToast(d.ok ? {{ t("The mail settings are correct")|tojson }}
+                                              : {{ t("The check did not pass")|tojson }},
+                                         d.ok ? "" : "error");
+                    })
+                    .catch(function () { window.showToast({{ t("The request did not go through")|tojson }}, "error"); })
+                    .then(function () { btn.disabled = false; btn.textContent = was; });
             });
-            box.hidden = false;
-            idle.hidden = true;
         }
 
-        btn.addEventListener("click", function () {
-            var was = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = {{ t("Checking…")|tojson }};
-            fetch("/settings/mail/test", {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-                body: new URLSearchParams({
-                    imap_server: val("imap_server"),
-                    imap_port: val("imap_port"),
-                    imap_user: val("imap_user"),
-                    imap_password: secretVal("imap_password"),
-                    smtp_server: val("smtp_server"),
-                    smtp_port: val("smtp_port"),
-                    smtp_user: val("smtp_user"),
-                    smtp_password: secretVal("smtp_password"),
-                    service_name: val("service_name")
-                }).toString()
-            })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (!d || !d.steps) throw new Error();
-                    render(d.steps);
-                    window.showToast(d.ok ? {{ t("The mail settings are correct")|tojson }}
-                                          : {{ t("The check did not pass")|tojson }},
-                                     d.ok ? "" : "error");
-                })
-                .catch(function () { window.showToast({{ t("The request did not go through")|tojson }}, "error"); })
-                .then(function () { btn.disabled = false; btn.textContent = was; });
-        });
+        wireMailCheck("", "/settings/mail/test");
+        wireMailCheck("support_", "/settings/support/test");
     })();
 </script>
     <script>

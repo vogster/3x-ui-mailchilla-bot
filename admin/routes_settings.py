@@ -146,6 +146,14 @@ def settings_submit(
     smtp_port: str = Form("465"),
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
+    support_imap_server: str = Form(""),
+    support_imap_port: str = Form("993"),
+    support_imap_user: str = Form(""),
+    support_imap_password: str = Form(""),
+    support_smtp_server: str = Form(""),
+    support_smtp_port: str = Form("465"),
+    support_smtp_user: str = Form(""),
+    support_smtp_password: str = Form(""),
     poll_interval_seconds: str = Form("15"),
     mail_cleanup_enabled: str = Form(""),
     mail_cleanup_days: str = Form("30"),
@@ -178,6 +186,14 @@ def settings_submit(
         "SMTP_PORT": smtp_port,
         "SMTP_USER": smtp_user,
         "SMTP_PASSWORD": smtp_password,
+        "SUPPORT_IMAP_SERVER": support_imap_server,
+        "SUPPORT_IMAP_PORT": support_imap_port,
+        "SUPPORT_IMAP_USER": support_imap_user,
+        "SUPPORT_IMAP_PASSWORD": support_imap_password,
+        "SUPPORT_SMTP_SERVER": support_smtp_server,
+        "SUPPORT_SMTP_PORT": support_smtp_port,
+        "SUPPORT_SMTP_USER": support_smtp_user,
+        "SUPPORT_SMTP_PASSWORD": support_smtp_password,
         "POLL_INTERVAL_SECONDS": poll_interval_seconds,
         "MAIL_CLEANUP_ENABLED": mail_cleanup_enabled == "on",
         "MAIL_CLEANUP_DAYS": mail_cleanup_days,
@@ -259,37 +275,19 @@ def _clean(value) -> str:
     return text if len(text) <= 160 else text[:157] + "…"
 
 
-@router.post("/settings/mail/test")
-def settings_mail_test(
-    request: Request,
-    imap_server: str = Form(""),
-    imap_port: str = Form("993"),
-    imap_user: str = Form(""),
-    imap_password: str = Form(""),
-    smtp_server: str = Form(""),
-    smtp_port: str = Form("465"),
-    smtp_user: str = Form(""),
-    smtp_password: str = Form(""),
-    service_name: str = Form(""),
-):
+def _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                   smtp_server, smtp_port, smtp_user, smtp_password, service_name):
     """
-    Checks the mailbox login over IMAP and SMTP and, when an administrator
-    address is set, sends a letter to it.
+    Checks a mailbox login over IMAP and SMTP and, when an administrator
+    address is set, sends a letter to it. Shared by the bot's own connection
+    check and the Support one — the steps and the wording are the same
+    checklist either way, only the credentials differ.
 
-    It checks the values in the form fields rather than the saved ones:
-    otherwise the button could not confirm new settings before they were applied
-    to the whole bot. Nothing is saved along the way.
+    Checks the values passed in rather than anything saved: otherwise the
+    button could not confirm new settings before they were applied to the
+    whole bot. Nothing is saved along the way, and nothing is sent that was
+    not already going to be sent — this cannot fail a registration or a reply.
     """
-    auth_redirect = require_auth(request)
-    if auth_redirect:
-        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
-
-    # A field left untouched arrives as the marker — substitute the stored value.
-    if imap_password == settings.UNCHANGED:
-        imap_password = settings.secret("IMAP_PASSWORD")
-    if smtp_password == settings.UNCHANGED:
-        smtp_password = settings.secret("SMTP_PASSWORD")
-
     steps = []
 
     def step(name, ok, detail, skipped=False):
@@ -353,6 +351,62 @@ def settings_mail_test(
             step(i18n.t("Letter"), False, _short_error(e))
 
     ok = all(s["ok"] or s["skipped"] for s in steps)
+    return ok, steps
+
+
+@router.post("/settings/mail/test")
+def settings_mail_test(
+    request: Request,
+    imap_server: str = Form(""),
+    imap_port: str = Form("993"),
+    imap_user: str = Form(""),
+    imap_password: str = Form(""),
+    smtp_server: str = Form(""),
+    smtp_port: str = Form("465"),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    service_name: str = Form(""),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
+
+    # A field left untouched arrives as the marker — substitute the stored value.
+    if imap_password == settings.UNCHANGED:
+        imap_password = settings.secret("IMAP_PASSWORD")
+    if smtp_password == settings.UNCHANGED:
+        smtp_password = settings.secret("SMTP_PASSWORD")
+
+    ok, steps = _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                               smtp_server, smtp_port, smtp_user, smtp_password, service_name)
+    return JSONResponse({"ok": ok, "steps": steps})
+
+
+@router.post("/settings/support/test")
+def settings_support_test(
+    request: Request,
+    imap_server: str = Form(""),
+    imap_port: str = Form("993"),
+    imap_user: str = Form(""),
+    imap_password: str = Form(""),
+    smtp_server: str = Form(""),
+    smtp_port: str = Form("465"),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    service_name: str = Form(""),
+):
+    """The same check as /settings/mail/test, against the Support mailbox's fields."""
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
+
+    if imap_password == settings.UNCHANGED:
+        imap_password = settings.secret("SUPPORT_IMAP_PASSWORD")
+    if smtp_password == settings.UNCHANGED:
+        smtp_password = settings.secret("SUPPORT_SMTP_PASSWORD")
+
+    ok, steps = _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                               smtp_server, smtp_port, smtp_user, smtp_password, service_name)
     return JSONResponse({"ok": ok, "steps": steps})
 
 

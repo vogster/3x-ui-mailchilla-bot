@@ -56,11 +56,14 @@ def _sender_domain(smtp_user: str = None) -> str:
     return domain or "localhost"
 
 def build_message(to_email: str, subject: str, message,
-                  smtp_user: str = None, service_name: str = None):
+                  smtp_user: str = None, service_name: str = None, extra_headers: dict = None):
     """
     Assembles the finished MIME letter.
 
     :param message: a templates.Email (text plus HTML), or a string of HTML.
+    :param extra_headers: set after everything else, so a caller building a
+        reply can add In-Reply-To/References — the two headers that thread it
+        under the letter it answers in the recipient's own mail client.
 
     Inside multipart/alternative the parts run from plain to rich: the client
     takes the last one it can display. The text part is not only for such
@@ -90,6 +93,9 @@ def build_message(to_email: str, subject: str, message,
     # What sent it is ordinary courtesy, and a clue when a complaint is looked
     # into. The version is not decoration: without it XM_UA_NO_VERSION fires.
     msg['X-Mailer'] = f"{config.APP_NAME} {config.APP_VERSION}"
+    for name, value in (extra_headers or {}).items():
+        if value:
+            msg[name] = value
 
     # quoted-printable instead of base64 for both parts: MIME_BASE64_TEXT fires
     # on HTML too, and the letter stays readable in its source.
@@ -133,16 +139,19 @@ def probe_smtp(server_host: str, port: int, user: str, password: str):
             pass
 
 def send_email_via(server_host: str, port: int, user: str, password: str,
-                   to_email: str, subject: str, message, service_name: str = None):
+                   to_email: str, subject: str, message, service_name: str = None,
+                   extra_headers: dict = None):
     """
     Sends a letter with the parameters given, bypassing config.
 
     The panel's connection check needs this: it works with whatever is typed in
     the fields, and must neither save those values nor swap config out for the
-    duration — the bot is alive in its own thread alongside.
+    duration — the bot is alive in its own thread alongside. The Support
+    mailbox's replies use it for the same reason: a second identity, sent
+    without ever touching config.SMTP_*, which stays the bot's alone.
     """
     msg = build_message(to_email, subject, message,
-                        smtp_user=user, service_name=service_name)
+                        smtp_user=user, service_name=service_name, extra_headers=extra_headers)
     # The envelope carries the plain address: with a display name the server
     # would refuse it.
     _, envelope = parseaddr(user or "")
@@ -194,7 +203,7 @@ def _keep_copy(msg):
         return
     try:
         import mailfolders
-        mailfolders.save_sent_copy(msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
+        mailfolders.save_sent_copy("bot", msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
     except Exception as e:
         logger.warning(f"Could not queue a copy of the letter for the Sent folder: {e}")
 

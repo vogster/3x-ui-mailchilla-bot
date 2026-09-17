@@ -88,6 +88,8 @@ It only looks. Opening a letter does not mark it read, because an unread letter 
 
 SMTP keeps no copy of what it sends, so the bot now puts one of every letter into the Sent folder itself - unless the provider has already filed it, as Gmail does. Letters sent before the update are not there.
 
+A second mailbox can join it: Support, set up on its own tab in Settings. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Left unset, nothing about the Mail page changes.
+
 **💌 The letters**
 
 ![Welcome letter](docs/screenshots/email-welcome.png)

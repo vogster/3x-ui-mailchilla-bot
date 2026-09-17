@@ -79,21 +79,30 @@
 
 <h1 style="margin: 0 0 6px 0;">{{ t("Mail") }}</h1>
 <p class="muted" style="margin: 0 0 20px 0;">
-    {{ t("The bot's mailbox, read-only. Opening a letter here does not mark it read, so the bot still answers it.") }}
+    {% if account == "support" %}{{ t("The Support mailbox. Opening a letter here does not mark it read.") }}
+    {% else %}{{ t("The bot's mailbox, read-only. Opening a letter here does not mark it read, so the bot still answers it.") }}{% endif %}
 </p>
+
+{% if accounts|length > 1 %}
+<div class="segmented" style="display: inline-flex; margin-bottom: 14px;">
+    {% for a in accounts %}
+    <a href="/mail/{{ a.key }}" class="{% if a.key == account %}on{% endif %}">{{ a.label }}</a>
+    {% endfor %}
+</div>
+{% endif %}
 
 <div class="panel">
     <div class="panel-head">
         <div class="segmented">
             {% for tab in tabs %}
-            <a href="/mail?folder={{ tab.key }}" class="{% if tab.key == folder %}on{% endif %}">{{ tab.label }}</a>
+            <a href="/mail/{{ account }}?folder={{ tab.key }}" class="{% if tab.key == folder %}on{% endif %}">{{ tab.label }}</a>
             {% endfor %}
         </div>
-        <form method="get" action="/mail" class="mail-search">
+        <form method="get" action="/mail/{{ account }}" class="mail-search">
             <input type="hidden" name="folder" value="{{ folder }}">
             <input type="text" name="q" value="{{ q }}" placeholder="{{ t('Address, name or subject…') }}">
             <button type="submit" class="btn small">{{ t("Find") }}</button>
-            {% if q %}<a href="/mail?folder={{ folder }}" class="btn small">{{ t("Reset") }}</a>{% endif %}
+            {% if q %}<a href="/mail/{{ account }}?folder={{ folder }}" class="btn small">{{ t("Reset") }}</a>{% endif %}
         </form>
     </div>
 
@@ -112,7 +121,7 @@
             </thead>
             <tbody>
             {% for row in listing.rows %}
-                {% set href = "/mail/" ~ folder ~ "/" ~ row.uid ~ return_query %}
+                {% set href = "/mail/" ~ account ~ "/" ~ folder ~ "/" ~ row.uid ~ return_query %}
                 <tr class="{% if not row.seen and not row.outgoing %}unread{% endif %}" data-href="{{ href }}">
                     <td style="padding-right: 0;">
                         {% if not row.seen and not row.outgoing %}
@@ -152,10 +161,10 @@
         {% if listing.pages > 1 %}
         <div class="btns">
             {% if listing.page > 1 %}
-            <a class="btn small" href="/mail?folder={{ folder }}&page={{ listing.page - 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">← {{ t("Newer") }}</a>
+            <a class="btn small" href="/mail/{{ account }}?folder={{ folder }}&page={{ listing.page - 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">← {{ t("Newer") }}</a>
             {% endif %}
             {% if listing.page < listing.pages %}
-            <a class="btn small" href="/mail?folder={{ folder }}&page={{ listing.page + 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ t("Older") }} →</a>
+            <a class="btn small" href="/mail/{{ account }}?folder={{ folder }}&page={{ listing.page + 1 }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ t("Older") }} →</a>
             {% endif %}
         </div>
         {% endif %}

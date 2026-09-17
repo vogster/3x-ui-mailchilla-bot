@@ -33,6 +33,11 @@ MANAGED_KEYS = (
     "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
     "POLL_INTERVAL_SECONDS",
     "MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS", "MAIL_CLEANUP_LAST_AT",
+    # Support — a second mailbox, answered by a person rather than the bot.
+    # Empty by default, which is also how the Mail page tells whether to offer
+    # it at all.
+    "SUPPORT_IMAP_SERVER", "SUPPORT_IMAP_PORT", "SUPPORT_IMAP_USER", "SUPPORT_IMAP_PASSWORD",
+    "SUPPORT_SMTP_SERVER", "SUPPORT_SMTP_PORT", "SUPPORT_SMTP_USER", "SUPPORT_SMTP_PASSWORD",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
@@ -50,14 +55,16 @@ MANAGED_KEYS = (
 
 # These values never reach the page markup in full: a mask goes instead, and
 # the real value can be asked for separately with the reveal button.
-SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN"})
+SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN",
+                          "SUPPORT_IMAP_PASSWORD", "SUPPORT_SMTP_PASSWORD"})
 
 # Of those, the ones shown as dots and nothing else. Seeing a few characters at
 # either end helps when a value has to be told apart from another one — which
 # is the case for a token, of which there may be several. A password is worth
 # nothing to recognise and something to leak: over a shoulder, in a screenshot,
 # on a shared screen. The reveal button is there for when it is really needed.
-FULLY_MASKED = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD"})
+FULLY_MASKED = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD",
+                          "SUPPORT_IMAP_PASSWORD", "SUPPORT_SMTP_PASSWORD"})
 
 # The form sends this in place of a secret the user did not touch.
 UNCHANGED = "•••unchanged•••"
@@ -134,18 +141,19 @@ def _coerce(key, value):
         return address
     if key == "MANUAL_URL":
         return str(value or "").strip().rstrip("/")
-    if key in ("IMAP_SERVER", "SMTP_SERVER"):
+    if key in ("IMAP_SERVER", "SMTP_SERVER", "SUPPORT_IMAP_SERVER", "SUPPORT_SMTP_SERVER"):
         # Empty means the bot simply will not reach for the mailbox, and says
-        # as much in the log.
+        # as much in the log. For the support pair, empty is also the ordinary
+        # state — the Mail page has no Support tab until both are set.
         return str(value or "").strip()
-    if key in ("IMAP_USER", "SMTP_USER"):
+    if key in ("IMAP_USER", "SMTP_USER", "SUPPORT_IMAP_USER", "SUPPORT_SMTP_USER"):
         return str(value or "").strip()
     if key in SECRET_KEYS:
         # Spaces at the edges are almost always debris from the clipboard.
         return str(value or "").strip()
-    if key == "IMAP_PORT":
+    if key in ("IMAP_PORT", "SUPPORT_IMAP_PORT"):
         return _port(value, "IMAP")
-    if key == "SMTP_PORT":
+    if key in ("SMTP_PORT", "SUPPORT_SMTP_PORT"):
         return _port(value, "SMTP")
     if key in ("HAPP_URL", "INCY_URL"):
         # Empty simply leaves that app's button out of the letter.

@@ -35,7 +35,9 @@ from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from html.parser import HTMLParser
 
 import config
+import i18n
 import inbox
+import mailer
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,79 @@ class FolderMissing(Exception):
     """The server has no folder of this kind that can be found."""
 
 
+class Account:
+    """
+    One mailbox's credentials, read from config at call time rather than kept
+    on the instance — a setting saved from the panel must take effect on the
+    very next request, with no restart, the same rule as everywhere else in
+    this project.
+
+    There are exactly two: the bot's own (config.IMAP_*/SMTP_*, `prefix=""`)
+    and Support (config.SUPPORT_IMAP_*/SUPPORT_SMTP_*). `key` is the URL
+    segment and the word queued sent-copies are tagged with; nothing else in
+    this module hardcodes which accounts exist.
+    """
+
+    def __init__(self, key: str, prefix: str):
+        self.key = key
+        self.prefix = prefix
+
+    def _cfg(self, name):
+        return getattr(config, f"{self.prefix}{name}")
+
+    @property
+    def imap_server(self): return self._cfg("IMAP_SERVER")
+
+    @property
+    def imap_port(self): return self._cfg("IMAP_PORT")
+
+    @property
+    def imap_user(self): return self._cfg("IMAP_USER")
+
+    @property
+    def imap_password(self): return self._cfg("IMAP_PASSWORD")
+
+    @property
+    def smtp_server(self): return self._cfg("SMTP_SERVER")
+
+    @property
+    def smtp_port(self): return self._cfg("SMTP_PORT")
+
+    @property
+    def smtp_user(self): return self._cfg("SMTP_USER")
+
+    @property
+    def smtp_password(self): return self._cfg("SMTP_PASSWORD")
+
+    @property
+    def configured(self) -> bool:
+        """Whether there is a mailbox to read at all."""
+        return bool(self.imap_user and self.imap_password)
+
+    def own_addresses(self) -> set:
+        """The addresses this account writes from, for telling outgoing from incoming."""
+        found = set()
+        for value in (self.imap_user, self.smtp_user):
+            _, address = parseaddr(value or "")
+            if address:
+                found.add(address.strip().lower())
+        return found
+
+
+BOT = Account("bot", "")
+SUPPORT = Account("support", "SUPPORT_")
+# Order matters here too: it is the order the Mail page offers the tabs in,
+# and Support is left out of that order whenever it has nothing configured —
+# see accounts_available().
+ACCOUNTS = {account.key: account for account in (BOT, SUPPORT)}
+
+
+def accounts_available() -> list:
+    """The accounts worth a tab on the Mail page: the bot's always, Support
+    only once both halves of it are set up."""
+    return [a for a in (BOT, SUPPORT) if a.key == "bot" or a.configured]
+
+
 # ---------------------------------------------------------------------------
 # The connection
 # ---------------------------------------------------------------------------
@@ -76,12 +151,12 @@ class FolderMissing(Exception):
 _quote = inbox.quote_astring
 
 
-def _connect():
-    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+def _connect(account: Account):
+    if not account.configured:
         raise MailboxNotSetUp()
-    mail = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=inbox.IMAP_TIMEOUT)
+    mail = imaplib.IMAP4_SSL(account.imap_server, account.imap_port, timeout=inbox.IMAP_TIMEOUT)
     try:
-        mail.login(config.IMAP_USER, config.IMAP_PASSWORD)
+        mail.login(account.imap_user, account.imap_password)
     except Exception:
         inbox._disconnect(mail, graceful=False)
         raise
@@ -253,16 +328,6 @@ def _when(msg, fallback=None):
     return stamp
 
 
-def own_addresses() -> set:
-    """The addresses the bot writes from, for telling outgoing from incoming."""
-    found = set()
-    for value in (config.IMAP_USER, config.SMTP_USER):
-        _, address = parseaddr(value or "")
-        if address:
-            found.add(address.strip().lower())
-    return found
-
-
 def correspondent(sender: list, recipients: list, own: set):
     """
     The other side of a letter: whoever wrote it, unless that was us.
@@ -363,14 +428,15 @@ def parse_list_row(meta: str, header_bytes: bytes, own: set) -> dict:
     }
 
 
-def list_letters(folder: str, page: int = 1, query: str = "", per_page: int = PER_PAGE) -> dict:
+def list_letters(account: Account, folder: str, page: int = 1, query: str = "",
+                 per_page: int = PER_PAGE) -> dict:
     """
     One page of a folder, newest first.
 
     Raises MailboxNotSetUp, FolderMissing, or whatever the connection throws;
     the route turns each into words.
     """
-    mail = _connect()
+    mail = _connect(account)
     graceful = False
     try:
         _examine(mail, folder)
@@ -393,7 +459,7 @@ def list_letters(folder: str, page: int = 1, query: str = "", per_page: int = PE
             status, data = mail.uid("FETCH", b",".join(chunk).decode("ascii"), _LIST_FETCH)
             if status != "OK":
                 raise RuntimeError(f"the letters could not be fetched: {status}")
-            own = own_addresses()
+            own = account.own_addresses()
             for meta, literal_bytes in _fetch_records(data):
                 try:
                     rows.append(parse_list_row(meta, literal_bytes, own))
@@ -607,6 +673,9 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
         "reply_to": _addresses(msg, "Reply-To"),
         "when_full": stamp.strftime("%d.%m.%Y %H:%M") if stamp else "",
         "message_id": _text_header(msg, "Message-ID").strip(),
+        # Carried along only so a reply can thread itself under this letter —
+        # References grows by one Message-ID per hop of a conversation.
+        "references": _text_header(msg, "References").strip(),
         "text": text,
         "html": framed_html(markup, inline, remote_images) if markup else "",
         "has_remote": remote,
@@ -626,11 +695,11 @@ def attachment_from(raw: bytes, index: int):
     return name, part.get_content_type(), part.get_payload(decode=True) or b""
 
 
-def fetch_raw(folder: str, uid: str):
+def fetch_raw(account: Account, folder: str, uid: str):
     """(raw bytes, flags) of one letter, or None when there is no such uid."""
     if not str(uid).isdigit():
         return None
-    mail = _connect()
+    mail = _connect(account)
     graceful = False
     try:
         _examine(mail, folder)
@@ -645,6 +714,74 @@ def fetch_raw(folder: str, uid: str):
         return raw, _meta(meta)["flags"]
     finally:
         inbox._disconnect(mail, graceful=graceful)
+
+
+# ---------------------------------------------------------------------------
+# Replying
+# ---------------------------------------------------------------------------
+# Only the Support account offers this — the bot's own mailbox is view-only,
+# on purpose: a person replying from inside the bot's own conversation with
+# itself would only confuse whoever reads it next. Nothing here enforces that;
+# it is the route's job not to call send_reply for the "bot" account.
+
+_RE_PREFIX = re.compile(r"(?i)^re\s*:\s*")
+
+
+def reply_subject(original_subject: str) -> str:
+    """"Re: <subject>", without piling up a second "Re:" on a reply to a reply."""
+    subject = (original_subject or "").strip()
+    if _RE_PREFIX.match(subject):
+        return subject
+    return f"Re: {subject}" if subject else "Re:"
+
+
+def quote_body(letter: dict) -> str:
+    """
+    The original letter, quoted the way a mail client does it under a typed
+    reply: "On <date>, <who> wrote:" and every line prefixed with "> ".
+
+    Built entirely from what parse_letter already extracted — the plain-text
+    part, or html_to_text's rendering of the HTML one — so quoting a letter
+    touches neither the network nor the letter's raw bytes again.
+    """
+    sender = letter["from"][0] if letter.get("from") else None
+    who = (sender.get("name") or sender.get("address")) if sender else i18n.t("somebody")
+    when = letter.get("when_full") or ""
+    header = (i18n.t("On {when}, {who} wrote:", when=when, who=who) if when
+             else i18n.t("{who} wrote:", who=who))
+    body = letter.get("text") or ""
+    quoted = "\n".join(f"> {line}" for line in body.splitlines()) or ">"
+    return f"{header}\n{quoted}"
+
+
+def send_reply(account: Account, letter: dict, to_address: str, body_text: str,
+               service_name: str = None):
+    """
+    Sends a plain-text reply to a letter and, like every other letter this
+    project sends, files a copy of it once it is gone.
+
+    Threaded under the original by In-Reply-To and References, the two
+    headers a mail client reads to place a reply in the same conversation
+    rather than opening a new one, with the typed text above a quoted copy of
+    what it answers — the shape a reply usually takes.
+    """
+    if not account.configured:
+        raise MailboxNotSetUp()
+    subject = reply_subject(letter.get("subject", ""))
+    body = (body_text or "").rstrip("\n") + "\n\n" + quote_body(letter)
+    headers = {}
+    if letter.get("message_id"):
+        headers["In-Reply-To"] = letter["message_id"]
+    references = " ".join(part for part in (letter.get("references", ""),
+                                            letter.get("message_id", "")) if part)
+    if references:
+        headers["References"] = references
+
+    msg = mailer.send_email_via(
+        account.smtp_server, account.smtp_port, account.smtp_user, account.smtp_password,
+        to_address, subject, body, service_name=service_name, extra_headers=headers,
+    )
+    save_sent_copy(account.key, msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -665,18 +802,19 @@ _worker = None
 _worker_lock = threading.Lock()
 
 
-def save_sent_copy(message_id: str, raw: bytes):
+def save_sent_copy(account_key: str, message_id: str, raw: bytes):
     """
-    Queues a letter that has just gone out for the Sent folder.
+    Queues a letter that has just gone out for that account's Sent folder.
 
     Returns at once: the send has already happened, and whatever befalls the
     copy — an unreachable mailbox, a server with no Sent folder — must not cost
     the send anything, nor slow a broadcast down to IMAP's pace.
     """
-    if not config.IMAP_USER or not config.IMAP_PASSWORD or not raw:
+    account = ACCOUNTS.get(account_key)
+    if not account or not account.configured or not raw:
         return
     try:
-        _copies.put_nowait((message_id or "", raw))
+        _copies.put_nowait((account_key, message_id or "", raw))
     except queue.Full:
         logger.warning("Too many sent letters are waiting to be copied to the Sent folder; "
                        "this one will not be.")
@@ -702,22 +840,34 @@ def _work():
                 batch.append(_copies.get_nowait())
             except queue.Empty:
                 break
-        try:
-            append_copies(batch)
-        except Exception as e:
-            logger.warning(f"Could not copy {len(batch)} sent letter(s) to the Sent folder: {e}")
+        # A batch drained in one pass can hold letters from both accounts —
+        # the bot's own and Support's, queued moments apart — and each goes
+        # into its own Sent folder, so they are grouped before appending.
+        by_account = {}
+        for account_key, message_id, raw in batch:
+            by_account.setdefault(account_key, []).append((message_id, raw))
+        for account_key, items in by_account.items():
+            account = ACCOUNTS.get(account_key)
+            if not account:
+                continue
+            try:
+                append_copies(account, items)
+            except Exception as e:
+                logger.warning(f"Could not copy {len(items)} sent letter(s) to {account_key}'s "
+                               f"Sent folder: {e}")
 
 
-def append_copies(batch, mail=None) -> int:
+def append_copies(account: Account, batch, mail=None) -> int:
     """
-    Puts the letters into the Sent folder. Returns how many were appended.
+    Puts the letters into the account's Sent folder. Returns how many were
+    appended.
 
     A letter the provider has already filed — found by its Message-ID — is left
     alone. `mail` is for the tests; the worker opens its own connection.
     """
     own = mail is None
     if own:
-        mail = _connect()
+        mail = _connect(account)
     graceful = False
     try:
         folder = inbox.sent_folder(mail)
