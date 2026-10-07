@@ -208,6 +208,9 @@ class PagesOpen(PanelCase):
         for name in ("notify_registration", "notify_payment", "notify_xui_down", "notify_mail_down"):
             self.assertIn(f'name="{name}"', body)
 
+    def test_the_deliverability_check_is_on_the_page(self):
+        self.assertIn('id="deliver-check"', self.page("/settings"))
+
     def test_the_support_forwarding_switch_is_on_the_page(self):
         self.assertIn('name="support_forward_enabled"', self.page("/settings"))
 

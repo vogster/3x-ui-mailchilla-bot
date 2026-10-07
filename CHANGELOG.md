@@ -12,6 +12,16 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Will the letters arrive?** The Mail tab has a deliverability check, and
+  `mailchilla check` runs its DNS half. It reads the sending domain's SPF and
+  DMARC and says what is missing or wrong — no record, two records, +all, an
+  SPF that does not mention the server the bot sends through — and then sends
+  a probe letter to the bot's own mailbox and reads back what that server
+  concluded about SPF, DKIM and DMARC: the verdict a client's server reaches
+  too. A probe that does not reach the Inbox is most likely in Spam, and so
+  are some clients' letters. A new dependency, dnspython, is installed by
+  `mailchilla update`.
+
 - **Keeping abuse down.** An email address costs nothing to make, so the
   Registration tab has three limits. Letters answered per hour from one
   address (10 by default): past it a letter is read and not answered, since

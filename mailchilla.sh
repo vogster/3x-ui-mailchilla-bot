@@ -204,7 +204,9 @@ declare -A MSG=(
 [ru.tun_then]="затем откройте"
 
 [en.c_checking]="Signing in to 3x-ui..."
+[en.c_dns]="The mail domain (SPF, DMARC):"
 [ru.c_checking]="Входим в 3x-ui..."
+[ru.c_dns]="Почтовый домен (SPF, DMARC):"
 [en.c_ok]="3x-ui answers, the credentials are accepted. Inbounds: {0}."
 [ru.c_ok]="3x-ui отвечает, доступы приняты. Inbound'ов: {0}."
 [en.c_auth]="3x-ui refused the credentials (HTTP {0}). Check XUI_API_TOKEN, or the username and password, in {1}."
@@ -518,6 +520,39 @@ for t in all_tariffs:
     done <<EOF
 $out
 EOF
+
+    # Whether the bot's letters reach an Inbox rather than Spam. DNS only:
+    # the panel's check also sends a probe letter, which a command run from a
+    # terminal has no business doing.
+    out="$(cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/python" -B -c '
+import sys
+sys.path.insert(0, ".")
+import logging
+logging.disable(logging.CRITICAL)
+import settings
+settings.load()
+import deliverability
+for f in deliverability.check_dns():
+    print(f.level, " ".join(f.text.split()))
+' 2>/dev/null)" || out=""
+    if [ -n "$out" ]; then
+        printf '\n'
+        dim "$(t c_dns)"
+        local level text
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            level="${line%% *}"
+            text="${line#"$level"}"
+            text="${text# }"
+            case "$level" in
+                ok)  good "$text" ;;
+                bad) bad "$text" ;;
+                *)   warn "$text" ;;
+            esac
+        done <<EOF
+$out
+EOF
+    fi
     printf '\n'
 }
 

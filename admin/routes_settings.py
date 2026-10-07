@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 
 import config
 import email_bot
+import deliverability
 import email_texts
 import expiry
 import i18n
@@ -517,6 +518,21 @@ def settings_gotify_test(request: Request):
         logger.error(f"The test notification to Gotify did not go out: {e}")
         return JSONResponse({"ok": False, "error": i18n.t("It did not go out")}, status_code=502)
     return JSONResponse({"ok": True})
+
+
+@router.post("/settings/mail/deliverability")
+def settings_deliverability(request: Request):
+    """
+    SPF and DMARC from DNS, then a probe letter to the bot's own mailbox read
+    back for its verdicts. On the saved settings: the probe goes out through
+    the same SMTP the bot uses, and that is the point of it.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    logger.info("Panel: checking deliverability.")
+    findings = deliverability.check_dns() + deliverability.probe()
+    return JSONResponse({"findings": [{"level": f.level, "text": f.text} for f in findings]})
 
 
 @router.post("/settings/payments/test/{provider_id}")

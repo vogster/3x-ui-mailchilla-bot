@@ -217,6 +217,22 @@
         </div>
     </div>
 
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Will the letters arrive?") }}</h2>
+            <span class="muted">{{ t("on the saved settings") }}</span>
+            <button type="button" class="btn small" id="deliver-check" style="margin-left:auto;">
+                {{ t("Check deliverability") }}
+            </button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div class="hint" id="deliver-idle">
+                {{ t("Reads SPF and DMARC of the sending domain, then sends a letter to the bot's own mailbox and reads back what its server concluded about SPF, DKIM and DMARC — the verdict a client's server reaches too. Takes up to half a minute.") }}
+            </div>
+            <ul class="check-list" id="deliver-result" hidden></ul>
+        </div>
+    </div>
+
     {% if state.IMAP_USER.isset %}
     {# Hidden until there is a mailbox to read: without one the button could only
        ever answer that there is nothing to look in. #}
@@ -730,6 +746,40 @@
             refresh();
             form.addEventListener("input", refresh);
             form.addEventListener("change", refresh);
+        }
+
+        // The deliverability check: one request, up to half a minute, a list back.
+        var deliver = document.getElementById("deliver-check");
+        if (deliver) {
+            deliver.addEventListener("click", function () {
+                var box = document.getElementById("deliver-result");
+                var was = deliver.textContent.trim();
+                deliver.disabled = true;
+                deliver.textContent = {{ t("Checking…")|tojson }};
+                fetch("/settings/mail/deliverability", { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        box.textContent = "";
+                        (d.findings || []).forEach(function (f) {
+                            var li = document.createElement("li");
+                            var mark = document.createElement("span");
+                            var good = f.level === "ok", bad = f.level === "bad";
+                            mark.className = "mark " + (good ? "ok" : (bad ? "bad" : "skip"));
+                            mark.textContent = good ? "✓" : (bad ? "✕" : (f.level === "warn" ? "!" : "i"));
+                            var text = document.createElement("span");
+                            text.className = "detail";
+                            // DNS records and server verdicts: text, never markup.
+                            text.textContent = f.text;
+                            li.appendChild(mark);
+                            li.appendChild(text);
+                            box.appendChild(li);
+                        });
+                        box.hidden = false;
+                        document.getElementById("deliver-idle").hidden = true;
+                    })
+                    .catch(function () { deliver.textContent = {{ t("The request failed")|tojson }}; })
+                    .then(function () { deliver.textContent = was; deliver.disabled = false; });
+            });
         }
 
         // The check buttons of the ways of paying: one request each, with the

@@ -49,6 +49,31 @@ class Templates(unittest.TestCase):
         self.assertEqual(sorted(set(missing)), [])
 
 
+class PythonCalls(unittest.TestCase):
+    """
+    i18n.t() in the Python code, read with the parser rather than a pattern.
+
+    The pattern above misses a string broken across lines, which is how most
+    long hints and log-facing texts are written — a whole module of them went
+    untranslated before this was added.
+    """
+
+    def test_every_string_passed_to_t_is_translated(self):
+        import ast
+        missing = []
+        for path in (glob.glob(os.path.join(ROOT, "*.py")) + glob.glob(os.path.join(ROOT, "admin", "*.py"))
+                     + glob.glob(os.path.join(ROOT, "providers", "*.py"))):
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "t"
+                        and node.args and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)
+                        and node.args[0].value not in TEXTS):
+                    missing.append(f"{os.path.basename(path)}: {node.args[0].value}")
+        self.assertEqual(sorted(set(missing)), [])
+
+
 class LetterTexts(unittest.TestCase):
     """Every editable string ships in both languages, or a Russian letter would
     come out half English."""
