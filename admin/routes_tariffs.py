@@ -38,6 +38,7 @@ def _code_row(code: dict, tariff_names: dict) -> dict:
         "used_trimmed": code["used_total"] > len(code["used_by"]),
         "used_kept": len(code["used_by"]),
         "unlimited": code["uses_left"] is None,
+        "discount_text": tariffs.discount_text(code),
         "created": datetime.fromtimestamp(code["created_at"] / 1000).strftime("%d.%m.%Y"),
         "expires": (datetime.fromtimestamp(code["expires_at"] / 1000).strftime("%d.%m.%Y")
                     if code["expires_at"] else ""),
@@ -356,7 +357,9 @@ def code_save(request: Request,
               uses_left: str = Form(""),
               expires_on: str = Form(""),
               note: str = Form(""),
-              enabled: str = Form("")):
+              enabled: str = Form(""),
+              discount: str = Form(""),
+              discount_unit: str = Form("%")):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
@@ -374,6 +377,8 @@ def code_save(request: Request,
         "uses_left": (uses_left or "").strip() or None,
         "note": note,
         "enabled": enabled == "on",
+        "discount": (discount or "").strip() or 0,
+        "discount_unit": discount_unit,
     }
     try:
         saved = tariffs.save_code(values, was=was or None)

@@ -25,7 +25,7 @@
             </div>
         </div>
         <div>
-            <label for="tariff_id">{{ t("Opens the tariff") }} {{ fields.help(t("What somebody writing this word gets: its traffic, its term, its inbounds.")) }}</label>
+            <label for="tariff_id">{{ t("Opens the tariff") }} {{ fields.help(t("What somebody writing this word gets: its traffic, its term, its inbounds. With a discount below, they get an offer to buy it for less instead.")) }}</label>
             <select id="tariff_id" name="tariff_id">
                 {% for tariff in tariff_options %}
                 <option value="{{ tariff.id }}" {% if tariff.id == code.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
@@ -37,6 +37,18 @@
             <input type="number" id="uses_left" name="uses_left" min="0" step="1"
                    value="{% if code.uses_left is not none %}{{ code.uses_left }}{% endif %}"
                    placeholder="{{ t('empty = no limit') }}">
+        </div>
+        <div>
+            <label for="discount">{{ t("Discount") }} {{ fields.help(t("Empty: the word registers on the tariff for free. A discount turns it into a promo code: whoever writes it gets a letter offering the tariff for less, and nobody is registered until they pay. An activation is spent on each purchase. The tariff needs a price.")) }}</label>
+            <div style="display:flex; gap:8px;">
+                <input type="number" id="discount" name="discount" min="0" step="1"
+                       value="{% if code.discount %}{{ code.discount }}{% endif %}"
+                       placeholder="{{ t('empty = free registration') }}" style="flex:1;">
+                <select name="discount_unit" aria-label="{{ t('Discount unit') }}" style="width:auto;">
+                    <option value="%" {% if code.discount_unit != '₽' %}selected{% endif %}>%</option>
+                    <option value="₽" {% if code.discount_unit == '₽' %}selected{% endif %}>₽</option>
+                </select>
+            </div>
         </div>
         <div>
             <label for="expires_on">{{ t("Works until") }} {{ fields.help(t("The last day the code works, to the end of it. Empty means it never runs out on its own. Use it for a word you hand out for a weekend — it stops on its own rather than waiting to be remembered on Monday.")) }}</label>

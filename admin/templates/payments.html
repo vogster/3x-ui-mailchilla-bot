@@ -73,7 +73,10 @@
                     </td>
                     <td><a href="/clients?q={{ o.email | urlencode }}">{{ o.email }}</a></td>
                     <td>{{ o.tariff.name }}</td>
-                    <td class="mono">{{ o.amount }} ₽</td>
+                    <td class="mono">
+                        {{ o.amount }} ₽
+                        {% if o.code %}<div class="muted" style="font-family: inherit;">{{ t("{word}, instead of {full} ₽", word=o.code, full=o.full_price) }}</div>{% endif %}
+                    </td>
                     <td>{{ o.provider_title }}</td>
                     <td>
                         <span class="badge nodot {% if o.status == 'applied' %}on{% endif %}"

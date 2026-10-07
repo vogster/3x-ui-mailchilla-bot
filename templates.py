@@ -24,6 +24,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
 import email_texts
+import tariffs
 
 logger = logging.getLogger(__name__)
 
@@ -311,11 +312,12 @@ def get_inactivity_email(email, days) -> Email:
     return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
-def get_offer_email(blocks) -> Email:
+def get_offer_email(blocks, code=None) -> Email:
     """
     The tariffs for sale and a way to pay each, as purchases.build_offer made them.
 
     The links are invoices already created; the letter only lays them out.
+    `code` is the word with a discount the letter answers, if any.
     """
     details = (getattr(config, "PAYMENT_MANUAL_DETAILS", "") or "").strip()
     laid_out = []
@@ -323,7 +325,10 @@ def get_offer_email(blocks) -> Email:
         tariff = block["tariff"]
         laid_out.append({
             "name": tariff["name"],
-            "price_text": text("offer.value_price", price=tariff["price"]),
+            "price_text": (text("offer.value_price", price=tariff["price"])
+                           if block.get("price", tariff["price"]) == tariff["price"]
+                           else text("offer.value_discounted", price=block["price"],
+                                     full=tariff["price"])),
             "term_text": (text("welcome.value_forever") if not tariff["expire_days"]
                           else text("welcome.value_days", days=tariff["expire_days"])),
             "limit_text": (text("welcome.value_unlimited") if not tariff["limit_gb"]
@@ -339,7 +344,9 @@ def get_offer_email(blocks) -> Email:
     return _render(
         "offer",
         title=text("offer.subject"),
-        intro=_split(text("offer.intro")),
+        intro=_split(text("offer.intro")) + (
+            _split(text("offer.code_line", word=code["word"],
+                        discount=tariffs.discount_text(code))) if code else []),
         blocks=laid_out,
         valid=text("offer.valid", hours=hours),
     )

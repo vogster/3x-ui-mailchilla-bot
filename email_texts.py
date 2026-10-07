@@ -176,6 +176,11 @@ GROUPS = [
             ("offer.label_term", "Caption: term", LINE, ""),
             ("offer.label_limit", "Caption: traffic", LINE, ""),
             ("offer.value_price", "Price", LINE, "Substitution: {price}, in rubles."),
+            ("offer.value_discounted", "Price with a discount", LINE,
+             "Substitutions: {price} — what is paid, {full} — the price without the discount."),
+            ("offer.code_line", "The word with a discount", TEXT,
+             "Added to the introduction when the letter answers a code word that "
+             "carries a discount. Substitutions: {word}, {discount}."),
             ("offer.button", "Pay button", LINE,
              "Substitution: {provider}, the name of the way of paying."),
             ("offer.manual", "Paying by transfer", TEXT,
@@ -325,6 +330,8 @@ DEFAULTS_BY_LANG = {
         "offer.label_term": "Term",
         "offer.label_limit": "Traffic",
         "offer.value_price": "{price} ₽",
+        "offer.value_discounted": "{price} ₽ instead of {full} ₽",
+        "offer.code_line": "The word **{word}** gives you **{discount}** off.",
         "offer.button": "Pay: {provider}",
         "offer.manual":
             "**By transfer:** {details}\n"
@@ -470,6 +477,8 @@ DEFAULTS_BY_LANG = {
         "offer.label_term": "Срок",
         "offer.label_limit": "Трафик",
         "offer.value_price": "{price} ₽",
+        "offer.value_discounted": "{price} ₽ вместо {full} ₽",
+        "offer.code_line": "Слово **{word}** даёт скидку **{discount}**.",
         "offer.button": "Оплатить: {provider}",
         "offer.manual":
             "**Переводом:** {details}\n"

@@ -205,6 +205,18 @@ class PagesOpen(PanelCase):
     def test_the_tariff_form_asks_for_a_price(self):
         self.assertIn('name="price"', self.page(f"/tariffs/{self.tariff['id']}/edit"))
 
+    def test_the_code_form_offers_a_discount(self):
+        body = self.page("/tariffs/codes/AURORA/edit")
+        self.assertIn('name="discount"', body)
+        self.assertIn('name="discount_unit"', body)
+
+    def test_a_code_with_a_discount_shows_it(self):
+        tariffs.save_tariff({**self.tariff, "price": 300})
+        tariffs.save_code({"word": "SPRING", "tariff_id": self.tariff["id"],
+                           "uses_left": None, "enabled": True, "discount": 20})
+        self.assertIn("20%", self.page("/tariffs/codes/SPRING"))
+        self.assertIn("20%", self.page("/tariffs"))
+
     def test_the_payments_page_says_why_nothing_is_on_sale(self):
         # No tariff has a price in the fixture, and nothing is switched on.
         body = self.page("/payments")
@@ -302,6 +314,16 @@ class RoutesThatChangeThings(PanelCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Family", response.text)
         self.assertEqual(tariffs.get(self.tariff["id"])["name"], "Basic")
+
+    def test_saving_a_code_with_a_discount(self):
+        tariffs.save_tariff({**self.tariff, "price": 300})
+        response = self.client.post("/tariffs/codes/save", data={
+            "word": "SPRING", "tariff_id": self.tariff["id"], "enabled": "on",
+            "discount": "50", "discount_unit": "₽",
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        code = tariffs.get_code("SPRING")
+        self.assertEqual((code["discount"], code["discount_unit"]), (50, "₽"))
 
     def test_saving_a_code(self):
         response = self.client.post("/tariffs/codes/save", data={

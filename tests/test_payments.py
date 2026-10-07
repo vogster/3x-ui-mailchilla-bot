@@ -234,6 +234,22 @@ class ApplyingAPayment(OrdersCase):
         self.assertFalse(purchases.apply(order_id))
         self.assertEqual(len(xui.updates), 1)
 
+    def test_the_word_is_spent_when_the_purchase_is_applied_not_before(self):
+        spent = []
+        real_spend = purchases.tariffs.spend
+        purchases.tariffs.spend = lambda word, email: spent.append((word, email))
+        try:
+            self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "expiryTime": 0}))
+            code = {"word": "SPRING", "discount": 20, "discount_unit": "%"}
+            order = payments.create("ann@example.com", TARIFF, "manual", code=code)
+            self.assertEqual(spent, [])
+            payments.mark_paid(order["id"], "admin")
+            self.assertEqual(spent, [])
+            purchases.apply(order["id"])
+            self.assertEqual(spent, [("SPRING", "ann@example.com")])
+        finally:
+            purchases.tariffs.spend = real_spend
+
     def test_an_unpaid_order_is_not_applied(self):
         xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "expiryTime": 0}))
         order = payments.create("ann@example.com", TARIFF, "manual")
@@ -317,6 +333,22 @@ class TheOffer(OrdersCase):
         purchases.send_offer("ann@example.com")
         self.assertEqual(self.sent[0][1], templates.notice_subject("not_for_sale"))
         self.assertEqual(payments.all_orders(), [])
+
+    def test_a_word_with_a_discount_offers_its_tariff_alone_for_less(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        code = {"word": "SPRING", "tariff_id": "t1", "discount": 20, "discount_unit": "%"}
+        real_get = purchases.tariffs.get
+        purchases.tariffs.get = lambda tid: dict(TARIFF) if tid == "t1" else None
+        try:
+            purchases.send_offer("ann@example.com", code)
+        finally:
+            purchases.tariffs.get = real_get
+        order = payments.all_orders()[0]
+        self.assertEqual((order["amount"], order["full_price"], order["code"]), (240, 300, "SPRING"))
+        letter = self.sent[0][2]
+        self.assertIn("240", letter.text)
+        self.assertIn("SPRING", letter.text)
 
     def test_paying_by_transfer_needs_the_details(self):
         from providers.manual import Manual

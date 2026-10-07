@@ -94,6 +94,10 @@ def _clean(raw: dict) -> dict:
             "inbound_ids": [int(i) for i in (raw.get("tariff") or {}).get("inbound_ids") or []],
         },
         "amount": int(raw.get("amount") or 0),
+        # The price before the discount, and the word that gave it. Equal to
+        # the amount, and empty, for an order bought at the full price.
+        "full_price": int(raw.get("full_price") or raw.get("amount") or 0),
+        "code": str(raw.get("code") or ""),
         "currency": str(raw.get("currency") or "RUB"),
         "provider": str(raw.get("provider") or ""),
         # The provider's own id for the invoice, and the link to pay it.
@@ -164,8 +168,13 @@ def load():
 
 
 def create(email: str, tariff: dict, provider: str, offer_id: str = "",
-           hours: int = 24) -> dict:
-    """A new pending order for one tariff, paid one way. Not yet an invoice."""
+           hours: int = 24, code: dict = None) -> dict:
+    """
+    A new pending order for one tariff, paid one way. Not yet an invoice.
+
+    `code` is the word the offer came through, when it carries a discount. The
+    price is worked out here, once, like everything else the order copies.
+    """
     with _lock:
         now = _now_ms()
         order = _clean({
@@ -173,7 +182,9 @@ def create(email: str, tariff: dict, provider: str, offer_id: str = "",
             "offer_id": offer_id,
             "email": email,
             "tariff": tariff,
-            "amount": tariff["price"],
+            "amount": tariffs.discounted_price(tariff["price"], code),
+            "full_price": tariff["price"],
+            "code": (code or {}).get("word", "") if (code or {}).get("discount") else "",
             "provider": provider,
             "created_at": now,
             "expires_at": now + max(int(hours), 1) * 3600 * 1000,

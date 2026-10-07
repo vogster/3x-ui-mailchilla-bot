@@ -483,7 +483,12 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
                          templates.get_notice("ambiguous", words=", ".join(hits)))
     elif hits:
         matched = tariffs.match(hits[0])
-        if matched:
+        if matched and matched[1].get("discount"):
+            # A word with a discount is an offer, not a way in: nobody is
+            # registered until they pay. It works on its own, the same as a
+            # registration word — "/buy" beside it changes nothing.
+            purchases.send_offer(from_email, matched[1])
+        elif matched:
             handle_registration(from_email, sender_name, matched[0], matched[1])
         else:
             # Between the scan and the lookup the code was revoked or spent.
@@ -493,11 +498,16 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
         # nothing to choose and it still means "let me in", which is how it
         # behaved before tariffs existed; with several, only a word can say
         # which one is meant.
+        #
+        # It stands in for a word, so it needs one: a live, free word of that
+        # tariff. It used to let anybody in whatever the codes said, which
+        # quietly undid switching every code off — and, once a tariff could be
+        # sold, handed it out for nothing.
         only = tariffs.all_tariffs()
-        if len(only) == 1:
-            code = tariffs.match(next(iter(tariffs.live_words()), "")) if tariffs.live_words() else None
-            handle_registration(from_email, sender_name, only[0],
-                                code[1] if code and code[0]["id"] == only[0]["id"] else None)
+        free = tariffs.live_words(free_only=True)
+        code = tariffs.match(free[0]) if len(only) == 1 and free else None
+        if code and code[0]["id"] == only[0]["id"]:
+            handle_registration(from_email, sender_name, only[0], code[1])
         else:
             handle_unknown(from_email, subject_clean)
     elif contains_word(text, "/buy"):

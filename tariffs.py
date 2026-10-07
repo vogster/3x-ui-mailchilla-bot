@@ -52,6 +52,10 @@ USED_BY_KEPT = 200
 GENERATED_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 GENERATED_LENGTH = 10
 
+# What a code's discount is counted in.
+PERCENT, RUBLES = "%", "₽"
+DISCOUNT_UNITS = (PERCENT, RUBLES)
+
 _lock = threading.RLock()
 
 # {"tariffs": [...], "codes": [...]}, as held in the file.
@@ -118,6 +122,16 @@ def _clean_code(raw: dict) -> dict:
         expires_at = int(raw.get("expires_at") or 0)
     except (TypeError, ValueError):
         expires_at = 0
+    try:
+        discount = max(int(raw.get("discount") or 0), 0)
+    except (TypeError, ValueError):
+        raise ValueError(i18n.t("the discount must be a whole number"))
+    unit = raw.get("discount_unit") if raw.get("discount_unit") in DISCOUNT_UNITS else PERCENT
+    if unit == PERCENT and discount >= 100:
+        # A hundred per cent off is the tariff for free, which is what a code
+        # without a discount already is — and it would skip the payment
+        # providers with an invoice for nothing.
+        raise ValueError(i18n.t("a discount of 100% or more is a free tariff: leave the discount empty instead"))
     uses_left = raw.get("uses_left")
     if uses_left is not None and str(uses_left).strip() != "":
         uses_left = max(int(uses_left), 0)
@@ -143,6 +157,11 @@ def _clean_code(raw: dict) -> dict:
         # anywhere — it is a note on a list, so that a page of codes is not ten
         # anonymous strings.
         "note": str(raw.get("note") or "").strip(),
+        # 0: the word registers on the tariff for free, as every code did
+        # before payments. Anything else: the word is an offer to buy the
+        # tariff for less, and nobody gets in until they pay.
+        "discount": discount,
+        "discount_unit": unit,
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
 
@@ -374,8 +393,19 @@ def save_code(values: dict, was: str = None) -> dict:
     """
     with _lock:
         code = _clean_code(values)
-        if not get(code["tariff_id"]):
+        tariff = get(code["tariff_id"])
+        if not tariff:
             raise ValueError(i18n.t("the tariff was not found"))
+        if code["discount"]:
+            # A discount is off a price, and a tariff without one is not sold.
+            if not tariff["price"]:
+                raise ValueError(i18n.t("the tariff {name} has no price, so there is nothing to discount",
+                                        name=tariff["name"]))
+            # Compared before discounted_price's floor of a ruble, which
+            # would otherwise hide a discount that eats the whole price.
+            if code["discount_unit"] == RUBLES and code["discount"] >= tariff["price"]:
+                raise ValueError(i18n.t("the discount is the whole price of {name}: leave the discount empty to give it for free",
+                                        name=tariff["name"]))
 
         previous = get_code(was) if was else None
         clash = word_owner(code["word"])
@@ -430,6 +460,30 @@ def delete_code(word: str) -> bool:
         return True
 
 
+def discounted_price(price: int, code: dict = None) -> int:
+    """
+    What the tariff costs through this code, in whole rubles.
+
+    Never below a ruble: the tariff's price may have dropped since the code
+    was saved, and an invoice for nothing is not one any provider takes.
+    """
+    if not code or not code.get("discount"):
+        return price
+    if code.get("discount_unit") == RUBLES:
+        cut = code["discount"]
+    else:
+        cut = round(price * code["discount"] / 100)
+    return max(price - cut, 1)
+
+
+def discount_text(code: dict) -> str:
+    """The discount as people say it: "20%", "100 ₽"."""
+    if not code or not code.get("discount"):
+        return ""
+    unit = code.get("discount_unit")
+    return f"{code['discount']}%" if unit == PERCENT else f"{code['discount']} ₽"
+
+
 def is_expired(code: dict, now_ms: int = None) -> bool:
     """Whether a code has run out of time. A code with no date never does."""
     if not code.get("expires_at"):
@@ -481,12 +535,20 @@ def code_used_by(address: str):
         return None
 
 
-def live_words() -> list:
-    """Every word a letter could carry, for the bot to look for."""
+def live_words(free_only: bool = False) -> list:
+    """
+    Every word a letter could carry, for the bot to look for.
+
+    `free_only` leaves out the words that carry a discount — the ones that
+    sell a tariff rather than open it. /start stands in for a registration
+    word and must never pick one of those: it would register somebody for
+    free and spend somebody else's discount doing it.
+    """
     with _lock:
         return [c["word"] for c in _state["codes"]
                 if c["enabled"] and (c["uses_left"] is None or c["uses_left"] > 0)
-                and not is_expired(c)]
+                and not is_expired(c)
+                and not (free_only and c["discount"])]
 
 
 def spend(word: str, email: str):

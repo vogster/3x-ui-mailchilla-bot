@@ -294,6 +294,35 @@ class Dispatch(StorageCase):
         self.make(name="Family", word="FAMILY")
         self.assertEqual([c[0] for c in self.letter("/start")], ["unknown"])
 
+    def test_start_needs_a_live_word(self):
+        # It stands in for a word. With every code switched off it used to
+        # register anybody all the same, which undid the switch.
+        self.make(word="AURORA")
+        tariffs._state["codes"][0]["enabled"] = False
+        self.assertEqual([c[0] for c in self.letter("/start")], ["unknown"])
+
+    def test_a_word_with_a_discount_is_an_offer_not_a_registration(self):
+        tariff = tariffs.save_tariff({**self.make(word=""), "price": 300})
+        tariffs.save_code({"word": "SPRING", "tariff_id": tariff["id"], "uses_left": None,
+                           "enabled": True, "discount": 20})
+        offers = []
+        real = email_bot.purchases.send_offer
+        email_bot.purchases.send_offer = lambda addr, code=None: offers.append(code["word"])
+        try:
+            self.assertEqual(self.letter("SPRING"), [])
+            self.assertEqual(self.letter("/buy SPRING"), [])
+        finally:
+            email_bot.purchases.send_offer = real
+        self.assertEqual(offers, ["SPRING", "SPRING"])
+
+    def test_start_never_takes_a_word_with_a_discount(self):
+        # It would register somebody for free on a tariff that is sold, and
+        # spend a promo code doing it.
+        tariff = tariffs.save_tariff({**self.make(word=""), "price": 300})
+        tariffs.save_code({"word": "SPRING", "tariff_id": tariff["id"], "uses_left": None,
+                           "enabled": True, "discount": 20})
+        self.assertEqual([c[0] for c in self.letter("/start")], ["unknown"])
+
     def test_a_revoked_word_registers_nobody(self):
         self.make(word="AURORA")
         tariffs._state["codes"][0]["enabled"] = False
@@ -654,3 +683,41 @@ class TheListOfArrivalsIsBounded(StorageCase):
                                     was="AURORA")
         self.assertEqual(renamed["used_total"], 3)
         self.assertEqual(len(renamed["used_by"]), 3)
+
+
+class Discounts(StorageCase):
+    def setUp(self):
+        super().setUp()
+        self.tariff = tariffs.save_tariff({**self.make(word=""), "price": 300})
+
+    def code(self, **over):
+        return tariffs.save_code({"word": "SPRING", "tariff_id": self.tariff["id"],
+                                  "uses_left": None, "enabled": True, **over})
+
+    def test_a_percentage(self):
+        self.assertEqual(tariffs.discounted_price(300, self.code(discount=20)), 240)
+
+    def test_rubles(self):
+        self.assertEqual(tariffs.discounted_price(300, self.code(discount=50, discount_unit="₽")), 250)
+
+    def test_no_discount_is_the_full_price(self):
+        self.assertEqual(tariffs.discounted_price(300, self.code()), 300)
+
+    def test_never_below_a_ruble_when_the_price_drops_later(self):
+        code = self.code(discount=250, discount_unit="₽")
+        self.assertEqual(tariffs.discounted_price(100, code), 1)
+
+    def test_a_discount_needs_a_price(self):
+        free = self.make(name="Trial", word="")
+        with self.assertRaises(ValueError):
+            tariffs.save_code({"word": "X1", "tariff_id": free["id"], "discount": 10})
+
+    def test_the_whole_price_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.code(discount=100)
+        with self.assertRaises(ValueError):
+            self.code(discount=300, discount_unit="₽")
+
+    def test_an_older_code_has_no_discount(self):
+        code = tariffs._clean_code({"word": "OLD", "tariff_id": self.tariff["id"]})
+        self.assertEqual((code["discount"], code["discount_unit"]), (0, "%"))

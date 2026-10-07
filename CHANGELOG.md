@@ -22,6 +22,12 @@ read as something a person wants to know before updating.
   page. Online providers come next. Nothing is sold until a tariff has a price
   and a way of paying is switched on on the new Payments tab of the settings.
 
+- **A code word can carry a discount**, in per cent or in rubles. Such a word
+  is a promo code: whoever writes it — on its own, the same as a registration
+  word, or after /buy — gets a letter offering its tariff for less, and is
+  registered only once they pay. Its activations and its date work as they do
+  for any code, and an activation is spent on each purchase.
+
 - **The registration letter names the tariff**, beside the term and the traffic
   limit it gave. It answers the question the numbers do not — somebody who would
   otherwise write back asking which one they are on was told in the first
@@ -129,6 +135,12 @@ read as something a person wants to know before updating.
   the log.
 
 ### Changed
+
+- **/start needs a working code word now.** With a single tariff it used to
+  register anybody whatever the codes said — switching every code off did not
+  stop it, and once a tariff can be sold it would have handed that tariff out
+  for nothing. It now registers only while that tariff has a free word that is
+  switched on, not used up and not out of date.
 
 - Dates are picked in a calendar of the panel's own making rather than the
   browser's. The native one paints itself, cannot be themed, and shows the date

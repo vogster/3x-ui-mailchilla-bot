@@ -55,15 +55,23 @@ def _now_ms() -> int:
 
 # --- The offer -------------------------------------------------------------
 
-def build_offer(email: str):
+def build_offer(email: str, code: dict = None):
     """
     Creates the invoices for one offer letter.
 
     Returns a list of {"tariff": …, "ways": [...]}, one per tariff for sale,
     or None when there is nothing to offer — no tariff has a price, or no way
     of paying is switched on.
+
+    With a code — a word carrying a discount — the letter offers that word's
+    tariff alone, at the lower price. Listing the others at full price beside
+    it would bury the one thing the reader wrote in for.
     """
-    for_sale = tariffs.for_sale()
+    if code:
+        tariff = tariffs.get(code["tariff_id"])
+        for_sale = [tariff] if tariff and tariff["price"] else []
+    else:
+        for_sale = tariffs.for_sale()
     ways = providers.enabled()
     if not for_sale or not ways:
         return None
@@ -74,7 +82,8 @@ def build_offer(email: str):
     for tariff in for_sale:
         entries = []
         for provider in ways:
-            order = payments.create(email, tariff, provider.id, offer_id=offer_id, hours=hours)
+            order = payments.create(email, tariff, provider.id, offer_id=offer_id,
+                                    hours=hours, code=code)
             try:
                 invoice = provider.create(order)
             except Exception as e:
@@ -89,13 +98,17 @@ def build_offer(email: str):
                 "url": invoice.url,
             })
         if entries:
-            blocks.append({"tariff": tariff, "ways": entries})
+            blocks.append({"tariff": tariff, "ways": entries,
+                           "price": tariffs.discounted_price(tariff["price"], code)})
     return blocks or None
 
 
-def send_offer(email: str):
-    """The answer to /buy: the tariffs for sale with a way to pay each."""
-    blocks = build_offer(email)
+def send_offer(email: str, code: dict = None):
+    """
+    The answer to /buy, or to a word carrying a discount: the tariffs for sale
+    with a way to pay each.
+    """
+    blocks = build_offer(email, code)
     if not blocks:
         logger.info(f"{email} asked to buy, but there is nothing on sale "
                     f"(tariffs with a price: {len(tariffs.for_sale())}, "
@@ -104,8 +117,9 @@ def send_offer(email: str):
                                 templates.get_notice("not_for_sale"))
         return
     mailer.send_email_reply(email, templates.text("offer.subject"),
-                            templates.get_offer_email(blocks))
-    logger.info(f"Offer sent to {email}: {len(blocks)} tariff(s).")
+                            templates.get_offer_email(blocks, code))
+    logger.info(f"Offer sent to {email}: {len(blocks)} tariff(s)"
+                + (f", word {code['word']!r} at {tariffs.discount_text(code)} off." if code else "."))
 
 
 # --- Watching the invoices -------------------------------------------------
@@ -212,6 +226,11 @@ def apply(order_id: str) -> bool:
         return False
 
     payments.update(order_id, status=payments.APPLIED, applied_at=_now_ms(), error="")
+    # The word is spent only now, once the purchase has happened — the same
+    # rule as a registration: a code burned on a payment that never reached
+    # 3x-ui would be worse than one used twice.
+    if order["code"]:
+        tariffs.spend(order["code"], email)
     logger.info(f"Order {order_id} applied: {email} is on {tariff['name']!r} until "
                 f"{_fmt_date(target) or 'no end'}.")
     _tell(order, target, created)

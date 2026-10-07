@@ -51,8 +51,14 @@
         <div class="label">{{ t("Activations left") }}</div>
         <div class="value">{% if code.unlimited %}∞{% else %}{{ code.uses_left }}{% endif %}</div>
     </div>
+    {% if code.discount_text %}
     <div class="card">
-        <div class="label">{{ t("Came in through it") }}</div>
+        <div class="label">{{ t("Discount") }}</div>
+        <div class="value">{{ code.discount_text }}</div>
+    </div>
+    {% endif %}
+    <div class="card">
+        <div class="label">{% if code.discount_text %}{{ t("Bought through it") }}{% else %}{{ t("Came in through it") }}{% endif %}</div>
         <div class="value">{{ code.used_count }}</div>
     </div>
     <div class="card">
