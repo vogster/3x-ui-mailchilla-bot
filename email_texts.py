@@ -250,6 +250,10 @@ GROUPS = [
             ("notice.not_for_sale_text", "Nothing for sale — text", TEXT,
              "Sent in answer to /buy when no tariff has a price or no way of paying "
              "is switched on. Every line is a paragraph."),
+            ("notice.purchase_barred_subject", "Purchase refused — subject", LINE, ""),
+            ("notice.purchase_barred_text", "Purchase refused — text", TEXT,
+             "Sent in answer to /buy from a client switched off by hand in 3x-ui. "
+             "Every line is a paragraph."),
             ("notice.broadcast_done_subject", "Broadcast report — subject", LINE, ""),
             ("notice.broadcast_done_text", "Broadcast report — text", TEXT, "Substitution: {count}"),
             ("notice.broadcast_empty_subject", "Empty broadcast — subject", LINE, ""),
@@ -402,6 +406,10 @@ DEFAULTS_BY_LANG = {
         "notice.not_for_sale_text":
             "Subscriptions cannot be bought by letter at the moment. Write to the "
             "administrator if you need one.",
+        "notice.purchase_barred_subject": "Buying is not available",
+        "notice.purchase_barred_text":
+            "A subscription cannot be bought for this address. Write to the "
+            "administrator if you think this is a mistake.",
         "notice.broadcast_done_subject": "The broadcast is finished",
         "notice.broadcast_done_text": "Letters sent: {count}.\nThe text of the broadcast:",
         "notice.broadcast_empty_subject": "The broadcast was not sent",
@@ -547,6 +555,10 @@ DEFAULTS_BY_LANG = {
         "notice.not_for_sale_subject": "Сейчас купить нельзя",
         "notice.not_for_sale_text":
             "Купить подписку письмом сейчас не получится. Если она нужна, напишите "
+            "администратору.",
+        "notice.purchase_barred_subject": "Покупка недоступна",
+        "notice.purchase_barred_text":
+            "Для этого адреса купить подписку нельзя. Если это ошибка, напишите "
             "администратору.",
         "notice.broadcast_done_subject": "Рассылка завершена",
         "notice.broadcast_done_text": "Отправлено писем: {count}.\nТекст рассылки:",

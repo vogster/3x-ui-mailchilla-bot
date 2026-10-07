@@ -53,6 +53,10 @@ class FakeXui:
         self.resets.append(remark)
         return True
 
+    def set_client_inbounds(self, key, inbound_ids, client_obj=None):
+        self.inbounds = list(inbound_ids)
+        return True
+
     def add_client(self, **kwargs):
         if self.fail:
             return None, []
@@ -92,8 +96,9 @@ class OrdersCase(unittest.TestCase):
         self.saved = (payments._orders, payments._broken)
         payments._orders, payments._broken = [], False
 
-        self.real_now = purchases._now_ms
+        self.real_now = purchases._now_ms, payments._now_ms
         purchases._now_ms = lambda: NOW_MS
+        payments._now_ms = lambda: NOW_MS
 
         self.sent = []
         self.real_send = purchases.mailer.send_email_reply
@@ -102,12 +107,14 @@ class OrdersCase(unittest.TestCase):
         purchases.mailer.send_gotify_notification = lambda title, message: None
 
         self.real_shared = purchases.get_shared_client
+        # Never the real 3x-ui: send_offer asks it whether the sender may buy.
+        self.use_xui(FakeXui(None))
         self.real_all = providers.ALL, providers._BY_ID
 
     def tearDown(self):
         payments.PAYMENTS_PATH = self.real_path
         payments._orders, payments._broken = self.saved
-        purchases._now_ms = self.real_now
+        purchases._now_ms, payments._now_ms = self.real_now
         purchases.mailer.send_email_reply = self.real_send
         purchases.mailer.send_gotify_notification = self.real_push
         purchases.get_shared_client = self.real_shared
@@ -159,6 +166,23 @@ class TheStore(OrdersCase):
         self.assertEqual(payments.get(order["id"])["status"], payments.EXPIRED)
         self.assertTrue(payments.mark_paid(order["id"], "fake"))
 
+    def test_paid_orders_are_never_trimmed(self):
+        # They are what the takings on the Payments page are added up from.
+        saved = payments.CLOSED_KEPT
+        payments.CLOSED_KEPT = 1
+        try:
+            paid = [payments.create("a@example.com", TARIFF, "manual") for _ in range(3)]
+            for o in paid:
+                payments.update(o["id"], status=payments.APPLIED)
+            for _ in range(3):
+                o = payments.create("b@example.com", TARIFF, "manual")
+                payments.update(o["id"], status=payments.EXPIRED)
+            statuses = [o["status"] for o in payments.all_orders()]
+            self.assertEqual(statuses.count(payments.APPLIED), 3)
+            self.assertEqual(statuses.count(payments.EXPIRED), 1)
+        finally:
+            payments.CLOSED_KEPT = saved
+
     def test_closed_orders_are_trimmed_and_open_ones_never(self):
         saved = payments.CLOSED_KEPT
         payments.CLOSED_KEPT = 2
@@ -192,6 +216,24 @@ class ApplyingAPayment(OrdersCase):
         self.assertEqual(xui.updates[0]["group"], "Month")
         self.assertEqual(xui.updates[0]["total_gb"], 100)
         self.assertEqual(xui.resets, ["ann@example.com"])
+
+    def test_a_subscription_without_an_end_keeps_it(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "expiryTime": 0}))
+        purchases.apply(self.paid_order())
+        self.assertEqual(xui.updates[0]["expiry_ms"], 0)
+
+    def test_a_term_not_yet_started_is_added_to(self):
+        # 3x-ui's negative expiry: ten days counted from the first connection.
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com",
+                                    "expiryTime": -10 * DAY_MS}))
+        purchases.apply(self.paid_order())
+        self.assertEqual(xui.updates[0]["expiry_ms"], NOW_MS + 40 * DAY_MS)
+
+    def test_the_client_gets_the_tariffs_inbounds(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com",
+                                    "expiryTime": NOW_MS, "inboundIds": [7]}))
+        purchases.apply(self.paid_order())
+        self.assertEqual(xui.inbounds, [1])
 
     def test_an_expired_subscription_counts_from_today(self):
         xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com",
@@ -349,6 +391,54 @@ class TheOffer(OrdersCase):
         letter = self.sent[0][2]
         self.assertIn("240", letter.text)
         self.assertIn("SPRING", letter.text)
+
+    def test_asking_again_sends_the_same_links(self):
+        from providers.manual import Manual
+        self.use_providers(Manual(), PollingProvider())
+        self.use_xui(FakeXui(None))
+        purchases.send_offer("ann@example.com")
+        first = {o["id"] for o in payments.all_orders()}
+        purchases.send_offer("ann@example.com")
+        self.assertEqual({o["id"] for o in payments.all_orders()}, first)
+        self.assertEqual(len(self.sent), 2)
+
+    def test_an_offer_nearly_out_of_time_is_replaced(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        self.use_xui(FakeXui(None))
+        purchases.send_offer("ann@example.com")
+        old = payments.all_orders()[0]
+        payments.update(old["id"], expires_at=NOW_MS + 3600 * 1000)
+        purchases.send_offer("ann@example.com")
+        self.assertEqual(len(payments.all_orders()), 2)
+
+    def test_a_client_switched_off_by_hand_may_not_buy(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "enable": False,
+                              "expiryTime": NOW_MS + 10 * DAY_MS, "totalGB": 0}))
+        purchases.send_offer("ann@example.com")
+        self.assertEqual(self.sent[0][1], templates.notice_subject("purchase_barred"))
+        self.assertEqual(payments.all_orders(), [])
+
+    def test_a_client_switched_off_for_running_out_may(self):
+        # 3x-ui does that by itself, and these are exactly who the offer is for.
+        self.assertFalse(purchases.is_barred({"enable": False, "expiryTime": NOW_MS - DAY_MS}))
+        self.assertFalse(purchases.is_barred({"enable": False, "expiryTime": 0, "totalGB": 10,
+                                              "traffic": {"up": 6, "down": 4}}))
+        self.assertTrue(purchases.is_barred({"enable": False, "expiryTime": 0, "totalGB": 0}))
+
+    def test_a_provider_with_a_shorter_life_shortens_the_order_and_the_letter(self):
+        from providers.manual import Manual
+        short = PollingProvider()
+        short.max_hours = 12
+        self.use_providers(Manual(), short)
+        self.use_xui(FakeXui(None))
+        purchases.send_offer("ann@example.com")
+        fake = next(o for o in payments.all_orders() if o["provider"] == "fake")
+        self.assertEqual(fake["expires_at"] - fake["created_at"], 12 * 3600 * 1000)
+        letter = self.sent[0][2].text
+        self.assertIn(templates._plain(templates.text("offer.valid", hours=12)), letter)
 
     def test_paying_by_transfer_needs_the_details(self):
         from providers.manual import Manual

@@ -41,6 +41,8 @@ def sign(body: bytes, api_key: str) -> str:
 class Heleket(Provider):
     id = "heleket"
     title = "Heleket"
+    # Heleket keeps an invoice for 5 minutes to 12 hours.
+    max_hours = 12
 
     def enabled(self) -> bool:
         return bool(getattr(config, "HELEKET_ENABLED", False)
@@ -71,8 +73,8 @@ class Heleket(Provider):
             "amount": str(order["amount"]),
             "currency": "RUB",
             "order_id": order["id"],
-            # Heleket takes 5 minutes to 12 hours; a longer order simply has
-            # an invoice that closes earlier, and /buy hands out a fresh one.
+            # The order already lives no longer than max_hours; the clamp is
+            # for the lower bound.
             "lifetime": int(min(max(lifetime, 300), 43200)),
             # Paying in instalments would leave an order half paid; one
             # payment of the whole amount is what the tariff costs.

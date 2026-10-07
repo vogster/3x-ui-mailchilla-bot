@@ -529,10 +529,13 @@ def code_used_by(address: str):
     if not needle:
         return None
     with _lock:
-        for code in _state["codes"]:
-            if any(str(x).strip().lower() == needle for x in code["used_by"]):
-                return dict(code)
-        return None
+        found = [c for c in _state["codes"]
+                 if any(str(x).strip().lower() == needle for x in c["used_by"])]
+        # A free word is how somebody came in; a word with a discount records a
+        # purchase, which may have come long after. It answers only for somebody
+        # whose first appearance was that purchase.
+        found.sort(key=lambda c: bool(c["discount"]))
+        return dict(found[0]) if found else None
 
 
 def live_words(free_only: bool = False) -> list:

@@ -312,7 +312,7 @@ def get_inactivity_email(email, days) -> Email:
     return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
-def get_offer_email(blocks, code=None) -> Email:
+def get_offer_email(blocks, code=None, now_ms=None) -> Email:
     """
     The tariffs for sale and a way to pay each, as purchases.build_offer made them.
 
@@ -340,7 +340,16 @@ def get_offer_email(blocks, code=None) -> Email:
                            else text("offer.manual", details=details, order=way["order"])),
             } for way in block["ways"]],
         })
-    hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
+    # How long the links work, said by the one that dies first — a provider
+    # that keeps invoices for less than we do, or an offer sent again after
+    # part of its life has gone. Whole hours, rounded down: a promise of
+    # "24 hours" for a link with 23 and a half left would be a small lie.
+    ends = [w["expires_at"] for b in blocks for w in b["ways"] if w.get("expires_at")]
+    if ends:
+        now_ms = now_ms or datetime.now().timestamp() * 1000
+        hours = max(1, int((min(ends) - now_ms) // 3_600_000))
+    else:
+        hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
     return _render(
         "offer",
         title=text("offer.subject"),

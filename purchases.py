@@ -60,6 +60,87 @@ def _now_ms() -> int:
 
 # --- The offer -------------------------------------------------------------
 
+# An offer still open is sent again rather than replaced, as long as this much
+# of it is left. Less than that, and the reader could open the letter to links
+# that have just died; a fresh offer is the better answer.
+REUSE_LEFT_MS = 2 * 3600 * 1000
+
+
+def is_barred(client) -> bool:
+    """
+    Whether this client was switched off by hand, and so may not buy.
+
+    3x-ui switches a client off by itself when its term or its traffic runs
+    out — exactly the people an offer is for. So a disabled client is only
+    barred when neither has happened: then somebody switched them off on
+    purpose, and a purchase would quietly undo that decision.
+    """
+    if not client or client.get("enable") is not False:
+        return False
+    expiry = int(client.get("expiryTime") or 0)
+    if expiry > 0 and expiry <= _now_ms():
+        return False
+    total = int(client.get("totalGB") or 0)
+    traffic = client.get("traffic") or {}
+    used = int(traffic.get("up") or client.get("up") or 0) + int(traffic.get("down") or client.get("down") or 0)
+    if total > 0 and used >= total:
+        return False
+    return True
+
+
+def _lifetime_hours(provider) -> int:
+    """How long an invoice through this provider lives: ours, unless it allows less."""
+    hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
+    return min(hours, provider.max_hours) if provider.max_hours else hours
+
+
+def _open_offer(email: str, code: dict = None):
+    """
+    The orders of an offer this address already holds, if one is still good.
+
+    Answering every /buy with fresh invoices made each repeated letter a new
+    row at every provider, and two letters' worth of links that could both be
+    paid. The same links again are what the reader actually needs. An offer
+    made through a different word — or through none — is a different offer.
+    """
+    word = (code or {}).get("word", "") if (code or {}).get("discount") else ""
+    now = _now_ms()
+    by_offer = {}
+    for order in payments.with_status(payments.PENDING):
+        if order["email"] == email.strip().lower() and order["offer_id"]:
+            by_offer.setdefault(order["offer_id"], []).append(order)
+    for orders in by_offer.values():
+        if orders[0]["code"] != word:
+            continue
+        if min(o["expires_at"] for o in orders) - now < REUSE_LEFT_MS:
+            continue
+        if any(not providers.get(o["provider"]) or not providers.get(o["provider"]).enabled()
+               for o in orders):
+            # A way of paying switched off since: its link is not to be sent again.
+            continue
+        return sorted(orders, key=lambda o: o["created_at"])
+    return None
+
+
+def _blocks(orders: list) -> list:
+    """Orders laid out the way the letter wants them: one block per tariff."""
+    blocks = {}
+    for order in orders:
+        block = blocks.setdefault(order["tariff"]["id"], {
+            "tariff": {**order["tariff"], "price": order["full_price"]},
+            "price": order["amount"],
+            "ways": [],
+        })
+        provider = providers.get(order["provider"])
+        block["ways"].append({
+            "order": order["id"],
+            "provider": provider.title if provider else order["provider"],
+            "url": order["pay_url"],
+            "expires_at": order["expires_at"],
+        })
+    return list(blocks.values())
+
+
 def build_offer(email: str, code: dict = None):
     """
     Creates the invoices for one offer letter.
@@ -82,13 +163,11 @@ def build_offer(email: str, code: dict = None):
         return None
 
     offer_id = payments.new_offer_id()
-    hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
-    blocks = []
+    made = []
     for tariff in for_sale:
-        entries = []
         for provider in ways:
             order = payments.create(email, tariff, provider.id, offer_id=offer_id,
-                                    hours=hours, code=code)
+                                    hours=_lifetime_hours(provider), code=code)
             try:
                 invoice = provider.create(order)
             except Exception as e:
@@ -96,16 +175,8 @@ def build_offer(email: str, code: dict = None):
                              f"({tariff['name']!r}): {e}")
                 payments.update(order["id"], status=payments.CANCELLED, error=str(e)[:300])
                 continue
-            payments.update(order["id"], provider_ref=invoice.ref, pay_url=invoice.url)
-            entries.append({
-                "order": order["id"],
-                "provider": provider.title,
-                "url": invoice.url,
-            })
-        if entries:
-            blocks.append({"tariff": tariff, "ways": entries,
-                           "price": tariffs.discounted_price(tariff["price"], code)})
-    return blocks or None
+            made.append(payments.update(order["id"], provider_ref=invoice.ref, pay_url=invoice.url))
+    return _blocks(made) or None
 
 
 def send_offer(email: str, code: dict = None):
@@ -113,7 +184,15 @@ def send_offer(email: str, code: dict = None):
     The answer to /buy, or to a word carrying a discount: the tariffs for sale
     with a way to pay each.
     """
-    blocks = build_offer(email, code)
+    client = get_shared_client().find_client_by_email(email)
+    if is_barred(client):
+        logger.info(f"{email} asked to buy, but was switched off by hand in 3x-ui; refused.")
+        mailer.send_email_reply(email, templates.notice_subject("purchase_barred"),
+                                templates.get_notice("purchase_barred"))
+        return
+
+    reused = _open_offer(email, code)
+    blocks = _blocks(reused) if reused else build_offer(email, code)
     if not blocks:
         logger.info(f"{email} asked to buy, but there is nothing on sale "
                     f"(tariffs with a price: {len(tariffs.for_sale())}, "
@@ -122,8 +201,8 @@ def send_offer(email: str, code: dict = None):
                                 templates.get_notice("not_for_sale"))
         return
     mailer.send_email_reply(email, templates.text("offer.subject"),
-                            templates.get_offer_email(blocks, code))
-    logger.info(f"Offer sent to {email}: {len(blocks)} tariff(s)"
+                            templates.get_offer_email(blocks, code, now_ms=_now_ms()))
+    logger.info(f"Offer {'sent again' if reused else 'sent'} to {email}: {len(blocks)} tariff(s)"
                 + (f", word {code['word']!r} at {tariffs.discount_text(code)} off." if code else "."))
 
 
@@ -177,11 +256,23 @@ def _target_expiry(order: dict, client) -> int:
     From whichever is later: today, or the end of what the client has. Paying
     a week early must not cost a week. An already expired subscription counts
     from today, not from the day it ran out.
+
+    A client whose subscription never ends keeps it that way: a payment buys
+    time, and taking "for ever" away in exchange for thirty days is not what
+    anybody paid for. A negative expiry is 3x-ui's "this long from the first
+    connection", a term not yet started, and it is added to rather than lost.
     """
     days = order["tariff"]["expire_days"]
     if days <= 0:
         return 0
-    current = int((client or {}).get("expiryTime") or 0)
+    if client is not None:
+        current = int(client.get("expiryTime") or 0)
+        if current == 0:
+            return 0
+        if current < 0:
+            return _now_ms() - current + days * DAY_MS
+    else:
+        current = 0
     return max(_now_ms(), current) + days * DAY_MS
 
 
@@ -216,6 +307,12 @@ def apply(order_id: str) -> bool:
                                expiry_ms=target, enable=True, group=tariff["name"],
                                client_obj=client)
         ok = ok and xui.reset_traffic(client.get("email", ""))
+        # The tariff's inbounds too: a client moved from one tariff to another
+        # keeps the group's name only if they also get what that name stands
+        # for. Done after the update, from the client as read before it — the
+        # update changes nothing set_client_inbounds looks at.
+        ok = ok and xui.set_client_inbounds(xui.client_key(client), tariff["inbound_ids"],
+                                            client_obj=client)
         created = False
     else:
         new_uuid, _ = xui.add_client(email=build_client_email(email),

@@ -44,10 +44,14 @@ PENDING, PAID, APPLIED, EXPIRED, CANCELLED = "pending", "paid", "applied", "expi
 OPEN = (PENDING, PAID)
 STATUSES = (PENDING, PAID, APPLIED, EXPIRED, CANCELLED)
 
-# How many closed orders are kept. Open ones are always kept, whatever their
-# number: dropping one would lose money somebody is about to pay or has paid.
-# The closed ones are history, and payments.json is rewritten whole on every
-# change — the same reasoning as USED_BY_KEPT in tariffs.py.
+# How many unpaid closed orders — expired or cancelled — are kept. Those are
+# the bulk of the file, since every letter makes several and most are never
+# paid, and payments.json is rewritten whole on every change — the reasoning
+# of USED_BY_KEPT in tariffs.py.
+#
+# Paid ones are never dropped. They are the record of money received, and the
+# Payments page adds them up: trimming them made the takings shrink as the
+# shop got older.
 CLOSED_KEPT = 2000
 
 # An order number is read off a letter and typed into a bank transfer's
@@ -121,7 +125,7 @@ def _clean(raw: dict) -> dict:
 
 
 def _trim(orders: list) -> list:
-    closed = [o for o in orders if o["status"] not in OPEN]
+    closed = [o for o in orders if o["status"] in (EXPIRED, CANCELLED)]
     if len(closed) <= CLOSED_KEPT:
         return orders
     drop = {o["id"] for o in sorted(closed, key=lambda o: o["created_at"])[:len(closed) - CLOSED_KEPT]}

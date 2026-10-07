@@ -899,4 +899,7 @@ TEXTS = {
     "Token": "Токен",
     "Wallet number": "Номер кошелька",
     "YooMoney keeps 3% of a card payment. A payment that arrives short of the price less that is not counted: the link can be edited before paying, and the order then waits for you on the Payments page.": "ЮMoney удерживает 3% с оплаты картой. Платёж меньше цены за вычетом этой комиссии не засчитывается: ссылку можно отредактировать перед оплатой, и такой заказ ждёт вас на странице «Оплаты».",
+    "Purchase refused — subject": "Покупка недоступна — тема",
+    "Purchase refused — text": "Покупка недоступна — текст",
+    "Sent in answer to /buy from a client switched off by hand in 3x-ui. Every line is a paragraph.": "Отправляется в ответ на /buy клиенту, которого отключили в 3x-ui вручную. Каждая строка — абзац.",
 }

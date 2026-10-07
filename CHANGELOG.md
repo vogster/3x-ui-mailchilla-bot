@@ -16,8 +16,12 @@ read as something a person wants to know before updating.
   client who writes **/buy** gets a letter with every tariff that has one and a
   way to pay each. Paying extends the subscription at once: the new term runs
   on from whatever is left of the old one, so paying early loses nothing, and
-  the traffic counter starts from zero. Somebody who is not a client yet
-  becomes one. The first way of paying is by transfer — the letter shows your
+  the traffic counter starts from zero, and the client moves to the tariff
+  bought, its inbounds included. A subscription without an end keeps having
+  none. Somebody who is not a client yet becomes one; somebody you switched
+  off by hand in 3x-ui is told that buying is not available to them. Writing
+  /buy again while an offer is still open sends the same links rather than a
+  new set. The first way of paying is by transfer — the letter shows your
   details and an order number, and you mark the order paid on the new Payments
   page. Nothing is sold until a tariff has a price and a way of paying is
   switched on on the new Payments tab of the settings.

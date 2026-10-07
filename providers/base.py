@@ -30,6 +30,10 @@ class Provider:
     # keeps working afterwards can still be paid, and money that arrives on
     # an expired order must still be noticed — see purchases.poll.
     link_expires = True
+    # The longest an invoice may live at the provider, in hours, if shorter
+    # than ours. The order is given the shorter life, so the letter never
+    # promises a link longer than it works.
+    max_hours = None
 
     def enabled(self) -> bool:
         """Switched on and configured well enough to take money."""

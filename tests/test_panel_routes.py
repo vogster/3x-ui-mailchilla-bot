@@ -89,6 +89,10 @@ class FakeXui:
         self.reset = remark
         return True
 
+    def set_client_inbounds(self, client_uuid, inbound_ids, client_obj=None):
+        self.inbounds = list(inbound_ids)
+        return True
+
     @staticmethod
     def client_key(client_obj):
         return xui_client.XuiClient.client_key(client_obj)
