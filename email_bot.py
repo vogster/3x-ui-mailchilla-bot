@@ -18,6 +18,7 @@ import uuid
 from email.utils import parseaddr
 
 import config
+import i18n
 import purchases
 import tariffs
 import templates
@@ -245,8 +246,58 @@ def handle_help(email_addr: str):
     send_email_reply(email_addr, templates.text("help.subject"),
                      templates.get_help_email(email_addr, sub_url))
 
-def handle_unknown(email_addr: str, subject_received: str):
-    """The reply to an unknown command, or a letter without the code word."""
+def support_target(sender: str) -> str:
+    """
+    Where a letter the bot cannot understand goes, or "" for nowhere.
+
+    The support address, else the administrator's. Never the sender — the
+    support person writing to the bot would be passed their own letter — and
+    never the bot's own mailbox, which would read it back and pass it on again.
+    """
+    if not getattr(config, "SUPPORT_FORWARD_ENABLED", False):
+        return ""
+    target = (config.SUPPORT_EMAIL or config.ADMIN_EMAIL or "").strip()
+    _, bare = parseaddr(target)
+    bare = bare.lower()
+    own = {(config.IMAP_USER or "").strip().lower(), (config.SMTP_USER or "").strip().lower()}
+    if not bare or bare == sender.lower() or bare in own:
+        return ""
+    return bare
+
+
+def forward_to_support(target: str, email_addr: str, sender_name: str,
+                       subject_received: str, body: str):
+    """The client's letter, as it came, for a person to answer."""
+    # The administrator reads this, so it speaks the panel's language, like
+    # the Gotify notifications do.
+    from_line = f"{sender_name} <{email_addr}>" if sender_name else email_addr
+    letter = templates.get_notice_email(
+        title=i18n.t("A letter the bot did not understand"),
+        paragraphs=[i18n.t("From: {sender}", sender=from_line),
+                    i18n.t("Subject: {subject}", subject=subject_received or "—"),
+                    i18n.t("Answering this letter writes to the client.")],
+        code_text=(body or "").strip()[:20000] or "—",
+    )
+    send_email_reply(target, f"[{config.SERVICE_NAME}] {subject_received or i18n.t('(no subject)')}",
+                     letter, reply_to=email_addr)
+
+
+def handle_unknown(email_addr: str, subject_received: str, body: str = "",
+                   sender_name: str = ""):
+    """
+    The reply to an unknown command, or a letter without the code word.
+
+    With forwarding on, the letter is most likely a question for a person, and
+    it is passed on to support; the client is told so rather than told their
+    command was not understood.
+    """
+    target = support_target(email_addr)
+    if target:
+        forward_to_support(target, email_addr, sender_name, subject_received, body)
+        logger.info(f"The letter from {email_addr} was not understood; passed on to {target}.")
+        send_email_reply(email_addr, templates.notice_subject("forwarded"),
+                         templates.get_notice("forwarded"))
+        return
     # The subject is somebody else's text, but there is no need to escape it by
     # hand: it goes into the template as a value, and Jinja escapes it itself.
     send_email_reply(email_addr, templates.notice_subject("unknown"),
@@ -492,7 +543,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             handle_registration(from_email, sender_name, matched[0], matched[1])
         else:
             # Between the scan and the lookup the code was revoked or spent.
-            handle_unknown(from_email, subject_clean)
+            handle_unknown(from_email, subject_clean, body_clean, sender_name)
     elif contains_word(text, "/start"):
         # /start carries no tariff of its own. With a single tariff there is
         # nothing to choose and it still means "let me in", which is how it
@@ -509,7 +560,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
         if code and code[0]["id"] == only[0]["id"]:
             handle_registration(from_email, sender_name, only[0], code[1])
         else:
-            handle_unknown(from_email, subject_clean)
+            handle_unknown(from_email, subject_clean, body_clean, sender_name)
     elif contains_word(text, "/buy"):
         # After the code words: a letter carrying one is a registration, and
         # the word is the more specific thing it asks for.
@@ -519,7 +570,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     elif contains_word(text, "/help"):
         handle_help(from_email)
     else:
-        handle_unknown(from_email, subject_clean)
+        handle_unknown(from_email, subject_clean, body_clean, sender_name)
 
     # Only now: anything that raised above leaves the letter unread for the
     # next cycle, which is the whole point.

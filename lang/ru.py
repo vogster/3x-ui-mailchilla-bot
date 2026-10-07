@@ -93,7 +93,6 @@ TEXTS = {
     "Groups without a tariff": "Группы без тарифа",
     "Support address": "Адрес поддержки",
     "Link to the instructions": "Ссылка на инструкцию",
-    "Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. Nothing is sent from it or to it — it is an address for people to write to. An empty value leaves it out of the letters altogether.": "Показывается клиентам в письмах: в подписи каждого и отдельной строкой в письме о регистрации. С него ничего не отправляется и на него ничего не приходит — это адрес, куда пишут люди. Пусто — адреса в письмах не будет вовсе.",
     "The page explaining how to connect. In the registration letter it becomes a link under every way of connecting, which the Letters tab can switch off. An empty value removes the link.": "Страница с инструкцией по подключению. В письме о регистрации становится ссылкой под всеми способами подключения; выключить её можно на вкладке «Письма». Пусто — ссылки не будет.",
     "the support address must contain an @": "в адресе поддержки должна быть собака",
     # Поддержка и инструкция в письмах
@@ -925,4 +924,16 @@ TEXTS = {
     "The line under the button": "Строка под кнопкой",
     "The line while nothing is for sale": "Строка, когда купить нечего",
     "the reminder must come at least a day before the end": "напоминание должно приходить хотя бы за день до окончания",
+    # Support forwarding
+    "Pass letters the bot does not understand on to support": "Пересылать в поддержку письма, которые бот не понял",
+    "A question written to the bot reaches a person: the letter goes to the support address — or the administrator's, when there is none — with the client as the reply address, so answering it writes to the client. The client is told their letter was passed on. Automatic letters, bounces and vacation replies are never passed on.": "Вопрос, написанный боту, дойдёт до человека: письмо уходит на адрес поддержки (если его нет — администратору), а адресом для ответа стоит клиент, так что ответ на такое письмо придёт клиенту. Клиенту бот сообщает, что письмо передано. Автоматические письма, возвраты и автоответы «я в отпуске» не пересылаются.",
+    "Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. It is an address for people to write to; the bot sends to it only letters it could not understand, when the switch below is on. An empty value leaves it out of the letters altogether.": "Показывается клиентам в письмах: в подписи каждого и отдельной строкой в письме о регистрации. Это адрес, на который пишут люди; бот отправляет на него только письма, которые не понял, если включён переключатель ниже. Пустое значение убирает его из писем совсем.",
+    "A letter the bot did not understand": "Письмо, которое бот не понял",
+    "From: {sender}": "От: {sender}",
+    "Subject: {subject}": "Тема: {subject}",
+    "Answering this letter writes to the client.": "Ответ на это письмо уйдёт клиенту.",
+    "(no subject)": "(без темы)",
+    "Passed on to support — subject": "Передано в поддержку — тема",
+    "Passed on to support — text": "Передано в поддержку — текст",
+    "Sent to a client whose letter was passed on to support. Every line is a paragraph.": "Отправляется клиенту, чьё письмо передано в поддержку. Каждая строка — абзац.",
 }

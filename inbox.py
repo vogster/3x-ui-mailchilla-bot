@@ -166,6 +166,44 @@ def scan_sender_names(limit: int = SCAN_LIMIT) -> dict:
     finally:
         _disconnect(mail, graceful=True)
 
+# Addresses that only ever send automatic mail: bounces, and the "do not
+# reply" senders of every service. Matched on the part before the @.
+AUTOMATIC_LOCAL_PARTS = ("mailer-daemon", "postmaster", "noreply", "no-reply",
+                         "donotreply", "do-not-reply", "bounce", "bounces")
+
+
+def automatic_reason(msg, from_email: str) -> str:
+    """
+    Why a letter was written by a program rather than a person, or "".
+
+    Answering such a letter is how two automatic mailboxes end up writing to
+    each other for ever: a vacation responder answers the bot's "command not
+    understood", the bot answers the responder, and so on. RFC 3834 gives the
+    headers that say so; the rest are the conventions that predate it.
+    """
+    auto = (msg.get("Auto-Submitted") or "").strip().lower()
+    if auto and auto != "no":
+        return f"Auto-Submitted: {auto}"
+    precedence = (msg.get("Precedence") or "").strip().lower()
+    if precedence in ("bulk", "list", "junk", "auto_reply"):
+        return f"Precedence: {precedence}"
+    # The older responders' own markers. Not X-Auto-Response-Suppress: Exchange
+    # puts that on letters people write too, and it asks *us* not to answer
+    # automatically rather than saying it was written by a program.
+    for header in ("X-Autoreply", "X-Autorespond"):
+        if msg.get(header):
+            return header
+    if msg.get("List-Id") or msg.get("List-Unsubscribe"):
+        return "a mailing list"
+    local = from_email.split("@", 1)[0]
+    if local in AUTOMATIC_LOCAL_PARTS:
+        return f"from {local}@"
+    own = {(getattr(config, k, "") or "").strip().lower() for k in ("IMAP_USER", "SMTP_USER")}
+    if from_email in own:
+        return "from the bot's own address"
+    return ""
+
+
 def _mark_seen(mail_conn, msg_num):
     """Marks the letter read, and does not let that failure lose the letter."""
     try:
@@ -453,6 +491,15 @@ def check_mail(handle):
                     else:
                         subject_parts.append(str(decoded_str))
                 subject = " ".join(subject_parts).strip()
+
+                reason = automatic_reason(msg, from_email)
+                if reason:
+                    # Read and left alone: no answer, no forwarding, nothing
+                    # anybody could answer back to.
+                    logger.info(f"Letter #{num} from {from_email} is automatic ({reason}); "
+                                f"not answering it.")
+                    _mark_seen(mail, num)
+                    continue
 
                 body = get_email_body(msg)
 

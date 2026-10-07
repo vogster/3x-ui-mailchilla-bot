@@ -56,7 +56,8 @@ def _sender_domain(smtp_user: str = None) -> str:
     return domain or "localhost"
 
 def build_message(to_email: str, subject: str, message,
-                  smtp_user: str = None, service_name: str = None):
+                  smtp_user: str = None, service_name: str = None,
+                  reply_to: str = None):
     """
     Assembles the finished MIME letter.
 
@@ -90,6 +91,15 @@ def build_message(to_email: str, subject: str, message,
     # What sent it is ordinary courtesy, and a clue when a complaint is looked
     # into. The version is not decoration: without it XM_UA_NO_VERSION fires.
     msg['X-Mailer'] = f"{config.APP_NAME} {config.APP_VERSION}"
+    # RFC 3834: every letter this bot sends is written by a program, and says
+    # so. A vacation responder or another bot that honours the header then
+    # does not answer it — which is what keeps two automatic mailboxes from
+    # writing to each other for ever.
+    msg['Auto-Submitted'] = 'auto-replied'
+    if reply_to:
+        # A client's letter passed on to support: answering it goes to the
+        # client, not back to the bot.
+        msg['Reply-To'] = reply_to
 
     # quoted-printable instead of base64 for both parts: MIME_BASE64_TEXT fires
     # on HTML too, and the letter stays readable in its source.
@@ -133,7 +143,8 @@ def probe_smtp(server_host: str, port: int, user: str, password: str):
             pass
 
 def send_email_via(server_host: str, port: int, user: str, password: str,
-                   to_email: str, subject: str, message, service_name: str = None):
+                   to_email: str, subject: str, message, service_name: str = None,
+                   reply_to: str = None):
     """
     Sends a letter with the parameters given, bypassing config.
 
@@ -142,7 +153,7 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
     duration — the bot is alive in its own thread alongside.
     """
     msg = build_message(to_email, subject, message,
-                        smtp_user=user, service_name=service_name)
+                        smtp_user=user, service_name=service_name, reply_to=reply_to)
     # The envelope carries the plain address: with a display name the server
     # would refuse it.
     _, envelope = parseaddr(user or "")
@@ -156,12 +167,12 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
         except Exception:
             pass
 
-def send_email_reply(to_email: str, subject: str, message):
+def send_email_reply(to_email: str, subject: str, message, reply_to: str = None):
     """Sends a letter over SMTP using the settings from config."""
     try:
         send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
                        config.SMTP_USER, config.SMTP_PASSWORD,
-                       to_email, subject, message)
+                       to_email, subject, message, reply_to=reply_to)
         logger.info(f"Letter sent to {to_email}. Subject: {subject}")
     except Exception as e:
         logger.error(f"Could not send the letter to {to_email}. Error: {e}")

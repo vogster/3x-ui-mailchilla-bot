@@ -243,7 +243,7 @@ class Dispatch(StorageCase):
             self.calls.append(("register", addr, tariff["name"] if tariff else None))
         email_bot.handle_status = lambda addr: self.calls.append(("status", addr, None))
         email_bot.handle_help = lambda addr: self.calls.append(("help", addr, None))
-        email_bot.handle_unknown = lambda addr, subject: self.calls.append(("unknown", addr, None))
+        email_bot.handle_unknown = lambda addr, subject, body="", name="": self.calls.append(("unknown", addr, None))
         email_bot.send_email_reply = lambda addr, subject, message: \
             self.calls.append(("reply", addr, subject))
         email_bot._mark_seen = lambda conn, num: None

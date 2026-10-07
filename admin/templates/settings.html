@@ -83,9 +83,16 @@
                        placeholder="https://sub.example.com">
             </div>
             <div>
-                <label for="support_email">{{ t("Support address") }} {{ fields.help(t("Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. Nothing is sent from it or to it — it is an address for people to write to. An empty value leaves it out of the letters altogether.")) }}</label>
+                <label for="support_email">{{ t("Support address") }} {{ fields.help(t("Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. It is an address for people to write to; the bot sends to it only letters it could not understand, when the switch below is on. An empty value leaves it out of the letters altogether.")) }}</label>
                 <input type="text" id="support_email" name="support_email"
                        value="{{ state.SUPPORT_EMAIL.value }}" placeholder="support@example.com">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="support_forward_enabled" name="support_forward_enabled"
+                       {% if state.SUPPORT_FORWARD_ENABLED.value %}checked{% endif %}>
+                <label for="support_forward_enabled">{{ t("Pass letters the bot does not understand on to support") }}
+                    {{ fields.help(t("A question written to the bot reaches a person: the letter goes to the support address — or the administrator's, when there is none — with the client as the reply address, so answering it writes to the client. The client is told their letter was passed on. Automatic letters, bounces and vacation replies are never passed on.")) }}
+                </label>
             </div>
             <div>
                 <label for="manual_url">{{ t("Link to the instructions") }} {{ fields.help(t("The page explaining how to connect. In the registration letter it becomes a link under every way of connecting, which the Letters tab can switch off. An empty value removes the link.")) }}</label>

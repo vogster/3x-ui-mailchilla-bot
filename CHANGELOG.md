@@ -12,6 +12,19 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Letters the bot does not understand can go to support.** Switched on
+  beside the support address on the General tab, a letter with no command in
+  it — most often a question for a person — is passed on to the support
+  address, or the administrator's when there is none, with the client as the
+  reply address: answering it writes to the client. The client is told their
+  letter was passed on rather than that their command was not understood.
+
+- **The bot no longer answers automatic mail.** A vacation reply, a bounce, a
+  mailing list or a "no-reply" sender is read and left alone, and every letter
+  the bot sends now says it was written by a program (RFC 3834), so a
+  responder that honours it does not answer back. Before this, a bot and a
+  vacation responder could write to each other until one was switched off.
+
 - **Selling subscriptions by letter.** A tariff can have a price now, and a
   client who writes **/buy** gets a letter with every tariff that has one and a
   way to pay each. Paying extends the subscription at once: the new term runs

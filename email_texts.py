@@ -257,6 +257,9 @@ GROUPS = [
              "Substitution: {subject}. Every line is a paragraph."),
             ("notice.unknown_bullets", "Command not understood — list", TEXT,
              "Every line is an item of the list."),
+            ("notice.forwarded_subject", "Passed on to support — subject", LINE, ""),
+            ("notice.forwarded_text", "Passed on to support — text", TEXT,
+             "Sent to a client whose letter was passed on to support. Every line is a paragraph."),
             ("notice.ambiguous_subject", "Several code words — subject", LINE, ""),
             ("notice.ambiguous_text", "Several code words — text", TEXT,
              "Sent when one letter carries the words of several tariffs, so that "
@@ -426,6 +429,10 @@ DEFAULTS_BY_LANG = {
             "the code word — to register a subscription\n"
             "/status — how much traffic is left and when it ends\n"
             "/help — the instructions for setting up an app",
+        "notice.forwarded_subject": "Your letter has been passed on",
+        "notice.forwarded_text":
+            "The bot did not recognise a command in your letter, so it has been passed "
+            "on to support. A person will answer you at this address.",
         "notice.ambiguous_subject": "Which subscription did you mean?",
         "notice.ambiguous_text":
             "Your letter carries more than one code word: {words}.\n"
@@ -595,6 +602,10 @@ DEFAULTS_BY_LANG = {
             "кодовое слово — чтобы зарегистрировать подписку\n"
             "/status — узнать остаток трафика и срок действия\n"
             "/help — получить инструкцию по настройке приложений",
+        "notice.forwarded_subject": "Ваше письмо передано",
+        "notice.forwarded_text":
+            "Бот не нашёл в письме команды, поэтому передал его в поддержку. Вам ответит "
+            "человек на этот адрес.",
         "notice.ambiguous_subject": "Какая подписка нужна?",
         "notice.ambiguous_text":
             "В вашем письме несколько кодовых слов: {words}.\n"

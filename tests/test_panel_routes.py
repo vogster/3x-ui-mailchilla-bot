@@ -203,6 +203,9 @@ class PagesOpen(PanelCase):
         self.assertIn('name="switch:EXPIRY_REMINDER_ENABLED"', body)
         self.assertIn('name="setting:EXPIRY_REMINDER_DAYS"', body)
 
+    def test_the_support_forwarding_switch_is_on_the_page(self):
+        self.assertIn('name="support_forward_enabled"', self.page("/settings"))
+
     def test_the_payment_settings_are_on_the_page(self):
         body = self.page("/settings")
         self.assertIn('name="payment_manual_details"', body)

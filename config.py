@@ -156,6 +156,12 @@ MANUAL_URL = os.getenv("MANUAL_URL", "").strip()
 # offered to somebody setting a connection up for the first time.
 FOOTER_SUPPORT_ENABLED = True
 
+# A letter the bot cannot make sense of is passed on to the support address
+# (the administrator's when there is none), with the client as Reply-To, so
+# that a question written to the bot reaches a person. Off by default: an
+# update should not start sending somebody mail they did not ask for.
+SUPPORT_FORWARD_ENABLED = False
+
 # --- The welcome letter ---
 # The QR code of the subscription link. On by default: the reader who opened
 # their mail on a computer is exactly who the letter is for.
