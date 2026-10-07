@@ -30,6 +30,8 @@ EVENTS = [
      "By letter with a code word. The text is the one set below."),
     ("payment", "NOTIFY_PAYMENT", "A payment arrived",
      "Who paid, how much, for which tariff — and through which promo code."),
+    ("registration_limit", "NOTIFY_REGISTRATION_LIMIT", "New registrations reached the hourly limit",
+     "Set on the Registration tab. Once per hour that fills up; the letters wait their turn."),
     ("forwarded", "NOTIFY_FORWARDED", "A letter was passed on to support",
      "Only when passing letters on is switched on, on the General tab."),
     ("payment_stuck", "NOTIFY_PAYMENT_STUCK", "A payment could not be applied",

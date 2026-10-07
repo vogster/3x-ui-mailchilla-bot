@@ -294,6 +294,16 @@ class Dispatch(StorageCase):
         self.make(name="Family", word="FAMILY")
         self.assertEqual([c[0] for c in self.letter("/start")], ["unknown"])
 
+    def test_a_registration_that_has_to_wait_leaves_the_letter_unread(self):
+        # The queue is the mailbox itself: a letter marked read here would be
+        # a registration lost rather than delayed.
+        self.make(name="Basic", word="AURORA")
+        marked = []
+        email_bot._mark_seen = lambda conn, num: marked.append(num)
+        email_bot.handle_registration = lambda *a, **kw: email_bot.DEFERRED
+        email_bot.process_message(1, "ben@example.com", "AURORA", "", None)
+        self.assertEqual(marked, [])
+
     def test_start_needs_a_live_word(self):
         # It stands in for a word. With every code switched off it used to
         # register anybody all the same, which undid the switch.

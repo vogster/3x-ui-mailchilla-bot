@@ -257,6 +257,10 @@ GROUPS = [
              "Substitution: {subject}. Every line is a paragraph."),
             ("notice.unknown_bullets", "Command not understood — list", TEXT,
              "Every line is an item of the list."),
+            ("notice.domain_blocked_subject", "Throwaway address — subject", LINE, ""),
+            ("notice.domain_blocked_text", "Throwaway address — text", TEXT,
+             "Sent instead of a free registration to an address at a throwaway mail service. "
+             "Every line is a paragraph."),
             ("notice.forwarded_subject", "Passed on to support — subject", LINE, ""),
             ("notice.forwarded_text", "Passed on to support — text", TEXT,
              "Sent to a client whose letter was passed on to support. Every line is a paragraph."),
@@ -429,6 +433,10 @@ DEFAULTS_BY_LANG = {
             "the code word — to register a subscription\n"
             "/status — how much traffic is left and when it ends\n"
             "/help — the instructions for setting up an app",
+        "notice.domain_blocked_subject": "Please write from a permanent address",
+        "notice.domain_blocked_text":
+            "Free registration is not available from temporary mail services. Write to us "
+            "from the address you actually use.",
         "notice.forwarded_subject": "Your letter has been passed on",
         "notice.forwarded_text":
             "The bot did not recognise a command in your letter, so it has been passed "
@@ -602,6 +610,10 @@ DEFAULTS_BY_LANG = {
             "кодовое слово — чтобы зарегистрировать подписку\n"
             "/status — узнать остаток трафика и срок действия\n"
             "/help — получить инструкцию по настройке приложений",
+        "notice.domain_blocked_subject": "Напишите с постоянного адреса",
+        "notice.domain_blocked_text":
+            "Бесплатная регистрация с временных почтовых сервисов недоступна. Напишите нам "
+            "с адреса, которым вы пользуетесь.",
         "notice.forwarded_subject": "Ваше письмо передано",
         "notice.forwarded_text":
             "Бот не нашёл в письме команды, поэтому передал его в поддержку. Вам ответит "

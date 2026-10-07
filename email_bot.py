@@ -17,6 +17,7 @@ import time
 import uuid
 from email.utils import parseaddr
 
+import abuse
 import config
 import i18n
 import notify
@@ -126,6 +127,11 @@ def send_personal_email(email_addr: str, subject: str, message_body: str, kind="
                      templates.get_broadcast_email(subject, message_body, kind))
 
 
+# Returned by handle_registration when the letter has to wait for room in the
+# hour: the caller leaves it unread, and the next poll tries it again.
+DEFERRED = "deferred"
+
+
 def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = None,
                         code: dict = None):
     """
@@ -158,6 +164,17 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
                     f"The {tariff['name']!r} tariff was not applied — an existing client keeps what it has.")
         return
 
+    # The two limits on a new free registration (abuse.py). An existing
+    # client above was answered whatever they are: they are already in.
+    if abuse.is_blocked_domain(email_addr):
+        logger.info(f"Registration from {email_addr} refused: a throwaway domain.")
+        send_email_reply(email_addr, templates.notice_subject("domain_blocked"),
+                         templates.get_notice("domain_blocked"))
+        return
+    if not abuse.registration_allowed():
+        logger.info(f"Registration from {email_addr} waits: the hourly limit is reached.")
+        return DEFERRED
+
     client_email = build_client_email(email_addr)
     comment = build_comment(sender_name)
     client_uuid = str(uuid.uuid4())
@@ -186,6 +203,7 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"],
                            tariff=tariff["name"])
         logger.info(f"Client {email_addr} registered successfully on {tariff['name']!r}.")
+        abuse.note_registration()
         # The code is spent only now. Burning it before the client exists would
         # lose an invitation to a 3x-ui that happened to be unreachable.
         if code:
@@ -543,7 +561,8 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             # registration word — "/buy" beside it changes nothing.
             purchases.send_offer(from_email, matched[1])
         elif matched:
-            handle_registration(from_email, sender_name, matched[0], matched[1])
+            if handle_registration(from_email, sender_name, matched[0], matched[1]) == DEFERRED:
+                return
         else:
             # Between the scan and the lookup the code was revoked or spent.
             handle_unknown(from_email, subject_clean, body_clean, sender_name)
@@ -561,7 +580,8 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
         free = tariffs.live_words(free_only=True)
         code = tariffs.match(free[0]) if len(only) == 1 and free else None
         if code and code[0]["id"] == only[0]["id"]:
-            handle_registration(from_email, sender_name, only[0], code[1])
+            if handle_registration(from_email, sender_name, only[0], code[1]) == DEFERRED:
+                return
         else:
             handle_unknown(from_email, subject_clean, body_clean, sender_name)
     elif contains_word(text, "/buy"):

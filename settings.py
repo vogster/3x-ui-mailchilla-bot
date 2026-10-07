@@ -37,6 +37,7 @@ MANAGED_KEYS = (
     "EXPIRY_REMINDER_ENABLED", "EXPIRY_REMINDER_DAYS", "EXPIRY_REMINDER_LAST_AT",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
+    "LETTERS_PER_HOUR", "BLOCK_DISPOSABLE", "BLOCKED_DOMAINS", "REGISTRATIONS_PER_HOUR",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
     "WELCOME_MANUAL_ENABLED", "WELCOME_SUPPORT_ENABLED",
     # Payments
@@ -46,7 +47,7 @@ MANAGED_KEYS = (
     "YOOMONEY_ENABLED", "YOOMONEY_WALLET", "YOOMONEY_TOKEN",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
-    "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN",
+    "NOTIFY_REGISTRATION", "NOTIFY_REGISTRATION_LIMIT", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN",
     # App schemes for the "Add to …" buttons in the letter
     "HAPP_URL", "INCY_URL",
     # The version check
@@ -229,6 +230,15 @@ def _coerce(key, value):
         # clipboard debris, and inside a wallet number they are typing.
         text = str(value or "").strip()
         return text.replace(" ", "") if key == "YOOMONEY_WALLET" else text
+    if key in ("LETTERS_PER_HOUR", "REGISTRATIONS_PER_HOUR"):
+        number = int(value or 0)
+        if number < 0:
+            raise ValueError(i18n.t("the value cannot be negative"))
+        return number
+    if key == "BLOCKED_DOMAINS":
+        # One per line, as typed; an @ in front is forgiven when read.
+        return "\n".join(d.strip().lower() for d in str(value or "").replace(",", "\n").splitlines()
+                         if d.strip())
     if key == "PAYMENT_MANUAL_DETAILS":
         # Several lines are fine — a card number, the bank, whose name.
         return str(value or "").strip()
@@ -238,7 +248,7 @@ def _coerce(key, value):
                "HELEKET_ENABLED", "YOOMONEY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED", "SUPPORT_FORWARD_ENABLED",
-               "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN"):
+               "BLOCK_DISPOSABLE", "NOTIFY_REGISTRATION_LIMIT", "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

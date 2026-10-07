@@ -12,6 +12,17 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Keeping abuse down.** An email address costs nothing to make, so the
+  Registration tab has three limits. Letters answered per hour from one
+  address (10 by default): past it a letter is read and not answered, since
+  every answer is one more letter from you to whoever floods the mailbox; the
+  administrator is never limited. No free registration from throwaway mail
+  services — mailinator, temp-mail, yopmail and about a hundred more, plus
+  any domains you add — while buying stays open to them and existing clients
+  are not affected. And new free registrations per hour (off by default):
+  past it a letter waits unread and is handled when the hour has room, with
+  one Gotify push to say registrations are queueing.
+
 - **Gotify tells you about trouble, not only about registrations.** The Gotify
   tab has a switch per kind of push: a registration, a payment (with the promo
   code, when there was one), a letter passed on to support, a payment that

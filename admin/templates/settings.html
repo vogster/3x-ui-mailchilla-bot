@@ -260,6 +260,37 @@
             <a href="/tariffs">{{ t("Open the tariffs") }}</a>
         </p>
     </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Keeping abuse down") }}</h2>
+            <span class="muted">{{ t("An email address costs nothing to make; these keep that from costing you.") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="letters_per_hour">{{ t("Letters answered per hour from one address") }} {{ fields.help(t("Past it, a letter is read and not answered: every answer would be one more letter from you to whoever floods the mailbox. The administrator is never limited. 0 switches the limit off.")) }}</label>
+                <input type="number" id="letters_per_hour" name="letters_per_hour" min="0" step="1"
+                       value="{{ state.LETTERS_PER_HOUR.value }}">
+            </div>
+            <div>
+                <label for="registrations_per_hour">{{ t("New free registrations per hour") }} {{ fields.help(t("Across the whole installation. Past it, the letter stays unread and is handled when the hour has room again — a queue, not a refusal. 0 is no limit.")) }}</label>
+                <input type="number" id="registrations_per_hour" name="registrations_per_hour" min="0" step="1"
+                       value="{{ state.REGISTRATIONS_PER_HOUR.value }}">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="block_disposable" name="block_disposable"
+                       {% if state.BLOCK_DISPOSABLE.value %}checked{% endif %}>
+                <label for="block_disposable">{{ t("No free registration from throwaway mail services") }}
+                    {{ fields.help(t("Mailinator, temp-mail, yopmail and about a hundred more: a free trial claimed again and again from a fresh throwaway mailbox. Buying stays open to them, and an existing client is not affected.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="blocked_domains">{{ t("Further domains to refuse") }} {{ fields.help(t("One per line. Refused for free registration the same way, whether or not the switch above is on; a subdomain counts as its domain.")) }}</label>
+                <textarea id="blocked_domains" name="blocked_domains" style="min-height:70px;"
+                          placeholder="example-throwaway.com">{{ state.BLOCKED_DOMAINS.value }}</textarea>
+            </div>
+        </div>
+    </div>
   </div>
 
   <div class="tab-panel" data-panel="apps" hidden>

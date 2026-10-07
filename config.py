@@ -75,6 +75,17 @@ EXPIRY_REMINDER_DAYS = 3
 # When the sweep last ran, as a unix time — written by the bot, not the panel.
 EXPIRY_REMINDER_LAST_AT = 0.0
 
+# --- Keeping abuse down (abuse.py) ---
+# Letters answered per hour from one address; 0 switches the limit off.
+LETTERS_PER_HOUR = 10
+# No free registration from throwaway mail services (disposable_domains.txt),
+# nor from the domains listed here, one per line.
+BLOCK_DISPOSABLE = True
+BLOCKED_DOMAINS = ""
+# New free registrations per hour across the installation; 0 is no limit.
+REGISTRATIONS_PER_HOUR = 0
+NOTIFY_REGISTRATION_LIMIT = True
+
 # --- Payments ---
 # How long the links in an offer letter stay payable. Every link is an invoice
 # of its own, created when the letter is sent; an unpaid one is closed after

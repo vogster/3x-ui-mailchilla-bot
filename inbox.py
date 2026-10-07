@@ -22,6 +22,7 @@ import time
 from email.header import decode_header
 from email.utils import parseaddr
 
+import abuse
 import config
 import periodic
 
@@ -498,6 +499,14 @@ def check_mail(handle):
                     # anybody could answer back to.
                     logger.info(f"Letter #{num} from {from_email} is automatic ({reason}); "
                                 f"not answering it.")
+                    _mark_seen(mail, num)
+                    continue
+
+                if not abuse.allow_letter(from_email, msg_id or num):
+                    # Read and not answered: an answer is one more letter from
+                    # us to whoever is flooding the mailbox.
+                    logger.warning(f"Letter #{num} from {from_email}: over the hourly limit of "
+                                   f"letters from one address; not answering it.")
                     _mark_seen(mail, num)
                     continue
 
