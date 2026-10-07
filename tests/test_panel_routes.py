@@ -201,6 +201,14 @@ class PagesOpen(PanelCase):
         body = self.page("/settings")
         self.assertIn('name="payment_manual_details"', body)
         self.assertIn('name="payment_invoice_hours"', body)
+        for field in ("yoomoney_wallet", "yoomoney_token", "cryptopay_token",
+                      "heleket_merchant", "heleket_api_key"):
+            self.assertIn(f'name="{field}"', body)
+
+    def test_checking_a_way_of_paying_that_is_off_says_so(self):
+        response = self.client.post("/settings/payments/test/cryptopay")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
 
     def test_the_tariff_form_asks_for_a_price(self):
         self.assertIn('name="price"', self.page(f"/tariffs/{self.tariff['id']}/edit"))

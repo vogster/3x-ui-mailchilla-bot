@@ -43,6 +43,11 @@ DAY_MS = 86400 * 1000
 # would rate-limit us, and nobody needs their payment noticed within seconds.
 CHECK_EVERY_MS = 60 * 1000
 
+# How long an expired order is still watched, for a provider whose link keeps
+# working after ours has run out. Somebody who opened the letter late and paid
+# anyway has paid; three days covers a weekend away from the mail.
+LATE_PAYMENT_MS = 3 * 86400 * 1000
+
 # Waits between attempts to apply a paid order that 3x-ui refused, doubling up
 # to the last. Each attempt is a line in the log, and an unreachable 3x-ui
 # should not write one every few seconds.
@@ -133,9 +138,12 @@ def poll():
     """
     payments.expire_stale()
     now = _now_ms()
-    for order in payments.with_status(payments.PENDING):
+    for order in payments.with_status(payments.PENDING, payments.EXPIRED):
         provider = providers.get(order["provider"])
         if not provider or not provider.polls:
+            continue
+        if order["status"] == payments.EXPIRED and (
+                provider.link_expires or now - order["expires_at"] > LATE_PAYMENT_MS):
             continue
         if order["next_try_at"] > now:
             continue
@@ -147,7 +155,7 @@ def poll():
             continue
         if status == payments.PAID:
             payments.mark_paid(order["id"], provider.id)
-        elif status == payments.EXPIRED:
+        elif status == payments.EXPIRED and order["status"] == payments.PENDING:
             payments.update(order["id"], status=payments.EXPIRED)
     apply_due()
 
@@ -264,5 +272,8 @@ def _tell(order: dict, target: int, created: bool):
 
 def run_if_due():
     """The bot loop's entry point. Nothing to do and nothing asked when nothing is open."""
-    if payments.with_status(*payments.OPEN):
+    now = _now_ms()
+    late = [o for o in payments.with_status(payments.EXPIRED)
+            if now - o["expires_at"] <= LATE_PAYMENT_MS]
+    if payments.with_status(*payments.OPEN) or late:
         poll()

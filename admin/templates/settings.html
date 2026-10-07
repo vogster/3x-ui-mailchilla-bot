@@ -292,6 +292,92 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>ЮMoney</h2>
+            <span class="muted">{{ t("A bank card, into a YooMoney wallet. Anybody with a wallet can take payments, whatever their status; there are no receipts.") }}</span>
+            {% if state.YOOMONEY_ENABLED.value %}
+            <button type="button" class="btn small" data-payment-test="yoomoney" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="yoomoney_enabled" name="yoomoney_enabled"
+                       {% if state.YOOMONEY_ENABLED.value %}checked{% endif %}>
+                <label for="yoomoney_enabled">{{ t("Offer paying by card through YooMoney") }}
+                    {{ fields.help(t("YooMoney keeps 3% of a card payment. A payment that arrives short of the price less that is not counted: the link can be edited before paying, and the order then waits for you on the Payments page.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="yoomoney_wallet">{{ t("Wallet number") }} {{ fields.help(t("The number of the wallet the money goes to, 15–16 digits, from the wallet's own page.")) }}</label>
+                <input type="text" id="yoomoney_wallet" name="yoomoney_wallet"
+                       value="{{ state.YOOMONEY_WALLET.value }}" placeholder="4100…" autocomplete="off">
+            </div>
+            {{ fields.secret_field("yoomoney_token", "YOOMONEY_TOKEN", t("Token"), state.YOOMONEY_TOKEN,
+                            t("An OAuth token for the same wallet with the operation-history scope: register an app at yoomoney.ru/myservices/new and issue a token for it. It is how the bot sees a payment arrive; the link is built without it.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>Crypto Pay</h2>
+            <span class="muted">{{ t("Payment in cryptocurrency through @CryptoBot in Telegram. The price is in rubles; the client pays in whatever coin they have.") }}</span>
+            {% if state.CRYPTOPAY_ENABLED.value %}
+            <button type="button" class="btn small" data-payment-test="cryptopay" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="cryptopay_enabled" name="cryptopay_enabled"
+                       {% if state.CRYPTOPAY_ENABLED.value %}checked{% endif %}>
+                <label for="cryptopay_enabled">{{ t("Offer paying through Crypto Pay") }}
+                    {{ fields.help(t("Needs only a token: in @CryptoBot open Crypto Pay → My Apps → Create App.")) }}
+                </label>
+            </div>
+            {{ fields.secret_field("cryptopay_token", "CRYPTOPAY_TOKEN", t("API token"), state.CRYPTOPAY_TOKEN,
+                            t("The token of the app made in @CryptoBot.")) }}
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="cryptopay_testnet" name="cryptopay_testnet"
+                       {% if state.CRYPTOPAY_TESTNET.value %}checked{% endif %}>
+                <label for="cryptopay_testnet">{{ t("Test network") }}
+                    {{ fields.help(t("For trying it out with test coins: the token then comes from @CryptoTestnetBot, and nothing paid is real money.")) }}
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>Heleket</h2>
+            <span class="muted">{{ t("Payment in cryptocurrency on Heleket's own payment page.") }}</span>
+            {% if state.HELEKET_ENABLED.value %}
+            <button type="button" class="btn small" data-payment-test="heleket" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="heleket_enabled" name="heleket_enabled"
+                       {% if state.HELEKET_ENABLED.value %}checked{% endif %}>
+                <label for="heleket_enabled">{{ t("Offer paying through Heleket") }}
+                    {{ fields.help(t("The merchant UUID and the payment API key are in the Heleket dashboard, under the merchant's settings.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="heleket_merchant">{{ t("Merchant UUID") }}</label>
+                <input type="text" id="heleket_merchant" name="heleket_merchant"
+                       value="{{ state.HELEKET_MERCHANT.value }}" autocomplete="off" spellcheck="false">
+            </div>
+            {{ fields.secret_field("heleket_api_key", "HELEKET_API_KEY", t("Payment API key"), state.HELEKET_API_KEY,
+                            t("The key for payments, not for payouts: it signs every request the bot makes.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("By transfer") }}</h2>
             <span class="muted">{{ t("Needs no contract and no status; you confirm each payment yourself.") }}</span>
         </div>
@@ -568,6 +654,24 @@
             form.addEventListener("input", refresh);
             form.addEventListener("change", refresh);
         }
+
+        // The check buttons of the ways of paying: one request each, with the
+        // keys as saved — the same as the Gotify one below.
+        document.querySelectorAll("[data-payment-test]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                button.disabled = true;
+                var was = button.textContent.trim();
+                button.textContent = {{ t("Checking…")|tojson }};
+                fetch("/settings/payments/test/" + button.dataset.paymentTest,
+                      { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { button.textContent = d.ok ? {{ t("It works")|tojson }} : (d.error || {{ t("It did not work")|tojson }}); })
+                    .catch(function () { button.textContent = {{ t("The request failed")|tojson }}; })
+                    .then(function () {
+                        setTimeout(function () { button.textContent = was; button.disabled = false; }, 4000);
+                    });
+            });
+        });
 
         var test = document.getElementById("gotify-test");
         if (test) {

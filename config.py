@@ -76,6 +76,21 @@ PAYMENT_INVOICE_HOURS = 24
 # is in. Off by default, and useless without the details.
 PAYMENT_MANUAL_ENABLED = False
 PAYMENT_MANUAL_DETAILS = ""
+# The online ways of paying, each off until switched on and given its keys.
+# Crypto Pay: the token of an app made in @CryptoBot (Crypto Pay → My Apps).
+# Its test network is a separate bot, @CryptoTestnetBot, with tokens of its own.
+CRYPTOPAY_ENABLED = False
+CRYPTOPAY_TOKEN = ""
+CRYPTOPAY_TESTNET = False
+# Heleket: the merchant's UUID and its payment API key.
+HELEKET_ENABLED = False
+HELEKET_MERCHANT = ""
+HELEKET_API_KEY = ""
+# YooMoney: the wallet number money goes to, and an OAuth token with the
+# operation-history scope, which is how a payment is seen to have arrived.
+YOOMONEY_ENABLED = False
+YOOMONEY_WALLET = ""
+YOOMONEY_TOKEN = ""
 
 # --- The seed of the first tariff ---
 # These three described what every new client got, back when there was one code

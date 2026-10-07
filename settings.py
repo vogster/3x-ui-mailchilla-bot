@@ -40,6 +40,9 @@ MANAGED_KEYS = (
     "WELCOME_MANUAL_ENABLED", "WELCOME_SUPPORT_ENABLED",
     # Payments
     "PAYMENT_INVOICE_HOURS", "PAYMENT_MANUAL_ENABLED", "PAYMENT_MANUAL_DETAILS",
+    "CRYPTOPAY_ENABLED", "CRYPTOPAY_TOKEN", "CRYPTOPAY_TESTNET",
+    "HELEKET_ENABLED", "HELEKET_MERCHANT", "HELEKET_API_KEY",
+    "YOOMONEY_ENABLED", "YOOMONEY_WALLET", "YOOMONEY_TOKEN",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
@@ -53,7 +56,8 @@ MANAGED_KEYS = (
 
 # These values never reach the page markup in full: a mask goes instead, and
 # the real value can be asked for separately with the reveal button.
-SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN"})
+SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN",
+                         "CRYPTOPAY_TOKEN", "HELEKET_API_KEY", "YOOMONEY_TOKEN"})
 
 # Of those, the ones shown as dots and nothing else. Seeing a few characters at
 # either end helps when a value has to be told apart from another one — which
@@ -210,12 +214,18 @@ def _coerce(key, value):
         if number < 1:
             raise ValueError(i18n.t("the payment links must stay valid for at least an hour"))
         return number
+    if key in ("HELEKET_MERCHANT", "YOOMONEY_WALLET"):
+        # Identifiers copied off a provider's page: spaces at the edges are
+        # clipboard debris, and inside a wallet number they are typing.
+        text = str(value or "").strip()
+        return text.replace(" ", "") if key == "YOOMONEY_WALLET" else text
     if key == "PAYMENT_MANUAL_DETAILS":
         # Several lines are fine — a card number, the bank, whose name.
         return str(value or "").strip()
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
                "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
-               "PAYMENT_MANUAL_ENABLED",
+               "PAYMENT_MANUAL_ENABLED", "CRYPTOPAY_ENABLED", "CRYPTOPAY_TESTNET",
+               "HELEKET_ENABLED", "YOOMONEY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED"):
         if isinstance(value, bool):

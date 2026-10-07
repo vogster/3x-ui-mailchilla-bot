@@ -26,6 +26,10 @@ class Provider:
     # Whether check() can say anything. A provider that cannot is left out of
     # the poll, and its orders are marked paid in the panel.
     polls = True
+    # Whether the provider closes its invoice when ours runs out. A link that
+    # keeps working afterwards can still be paid, and money that arrives on
+    # an expired order must still be noticed — see purchases.poll.
+    link_expires = True
 
     def enabled(self) -> bool:
         """Switched on and configured well enough to take money."""
@@ -33,6 +37,14 @@ class Provider:
 
     def create(self, order: dict) -> Invoice:
         """An invoice for the order. Raises on failure; the letter then leaves this way out."""
+        raise NotImplementedError
+
+    def probe(self) -> str:
+        """
+        Asks the provider something harmless with the saved keys, for the
+        settings page's check button. Returns a line to show; raises on failure.
+        Creating a test invoice would do as well, but would leave one behind.
+        """
         raise NotImplementedError
 
     def check(self, order: dict):

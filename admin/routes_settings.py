@@ -21,6 +21,7 @@ import email_bot
 import email_texts
 import i18n
 import periodic
+import providers
 import settings
 import tariffs
 import templates as mail_templates
@@ -164,6 +165,15 @@ def settings_submit(
     payment_invoice_hours: str = Form("24"),
     payment_manual_enabled: str = Form(""),
     payment_manual_details: str = Form(""),
+    cryptopay_enabled: str = Form(""),
+    cryptopay_token: str = Form(""),
+    cryptopay_testnet: str = Form(""),
+    heleket_enabled: str = Form(""),
+    heleket_merchant: str = Form(""),
+    heleket_api_key: str = Form(""),
+    yoomoney_enabled: str = Form(""),
+    yoomoney_wallet: str = Form(""),
+    yoomoney_token: str = Form(""),
 ):
     auth_redirect = require_auth(request)
     if auth_redirect:
@@ -199,6 +209,15 @@ def settings_submit(
         "PAYMENT_INVOICE_HOURS": payment_invoice_hours,
         "PAYMENT_MANUAL_ENABLED": payment_manual_enabled == "on",
         "PAYMENT_MANUAL_DETAILS": payment_manual_details,
+        "CRYPTOPAY_ENABLED": cryptopay_enabled == "on",
+        "CRYPTOPAY_TOKEN": cryptopay_token,
+        "CRYPTOPAY_TESTNET": cryptopay_testnet == "on",
+        "HELEKET_ENABLED": heleket_enabled == "on",
+        "HELEKET_MERCHANT": heleket_merchant,
+        "HELEKET_API_KEY": heleket_api_key,
+        "YOOMONEY_ENABLED": yoomoney_enabled == "on",
+        "YOOMONEY_WALLET": yoomoney_wallet,
+        "YOOMONEY_TOKEN": yoomoney_token,
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:
@@ -468,6 +487,27 @@ def settings_gotify_test(request: Request):
     except Exception as e:
         logger.error(f"The test notification to Gotify did not go out: {e}")
         return JSONResponse({"ok": False, "error": i18n.t("It did not go out")}, status_code=502)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/settings/payments/test/{provider_id}")
+def settings_payment_test(request: Request, provider_id: str):
+    """Asks one way of paying something harmless with the keys as saved."""
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    provider = providers.get(provider_id)
+    if not provider or not provider.polls:
+        return JSONResponse({"ok": False, "error": i18n.t("Nothing to check")}, status_code=404)
+    if not provider.enabled():
+        return JSONResponse({"ok": False, "error": i18n.t("Switch it on, fill in the keys and save first")},
+                            status_code=400)
+    logger.info(f"Panel: checking the connection to {provider.title}.")
+    try:
+        provider.probe()
+    except Exception as e:
+        logger.error(f"{provider.title} did not answer the check: {e}")
+        return JSONResponse({"ok": False, "error": _clean(e)}, status_code=502)
     return JSONResponse({"ok": True})
 
 

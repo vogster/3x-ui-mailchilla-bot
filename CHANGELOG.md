@@ -19,8 +19,18 @@ read as something a person wants to know before updating.
   the traffic counter starts from zero. Somebody who is not a client yet
   becomes one. The first way of paying is by transfer — the letter shows your
   details and an order number, and you mark the order paid on the new Payments
-  page. Online providers come next. Nothing is sold until a tariff has a price
-  and a way of paying is switched on on the new Payments tab of the settings.
+  page. Nothing is sold until a tariff has a price and a way of paying is
+  switched on on the new Payments tab of the settings.
+
+- **Paying online: by card through YooMoney, and in cryptocurrency through
+  Crypto Pay (@CryptoBot) or Heleket.** Each is switched on and given its keys
+  on the Payments tab, which has a button to check them. The bot sees a
+  payment arrive by itself and extends the subscription — no domain and no
+  webhook needed, since it asks rather than waits to be told. YooMoney is open
+  to anybody with a wallet, whatever their status, and issues no receipts; a
+  card payment that arrives short of the price less YooMoney's 3% is not
+  counted, since the payment link can be edited before paying, and waits on
+  the Payments page for you to look at.
 
 - **A code word can carry a discount**, in per cent or in rubles. Such a word
   is a promo code: whoever writes it — on its own, the same as a registration
