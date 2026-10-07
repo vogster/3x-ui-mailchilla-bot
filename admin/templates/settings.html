@@ -42,11 +42,12 @@
     <button type="button" data-tab="mailbox">{{ t("Mail") }}</button>
     <button type="button" data-tab="registration">{{ t("Registration") }}</button>
     <button type="button" data-tab="apps">{{ t("Apps") }}</button>
+    <button type="button" data-tab="payments">{{ t("Payments") }}</button>
     <button type="button" data-tab="gotify">Gotify</button>
     <button type="button" data-tab="mail">{{ t("Letters") }}</button>
 </div>
 
-<form method="post" action="/settings" class="tab-owner" data-owns="panel mailbox registration apps gotify">
+<form method="post" action="/settings" class="tab-owner" data-owns="panel mailbox registration apps payments gotify">
   <div class="tab-panel" data-panel="panel">
     <div class="panel" style="margin-bottom: 20px;">
         <div class="panel-head">
@@ -269,6 +270,43 @@
                 <label for="incy_url">{{ t("Incy scheme") }}</label>
                 <input type="text" id="incy_url" name="incy_url"
                        value="{{ state.INCY_URL.value }}" placeholder="incy://add">
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="payments" hidden>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>{{ t("Invoices") }}</h2>
+            <span class="muted">{{ t("A client writes /buy and gets the tariffs that have a price, with a way to pay each.") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="payment_invoice_hours">{{ t("Payment links stay valid, hours") }} {{ fields.help(t("Each link in the letter is an invoice created when the letter went out. An unpaid one is closed after this long, and /buy hands out fresh ones.")) }}</label>
+                <input type="number" id="payment_invoice_hours" name="payment_invoice_hours"
+                       min="1" step="1" value="{{ state.PAYMENT_INVOICE_HOURS.value }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("By transfer") }}</h2>
+            <span class="muted">{{ t("Needs no contract and no status; you confirm each payment yourself.") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="payment_manual_enabled" name="payment_manual_enabled"
+                       {% if state.PAYMENT_MANUAL_ENABLED.value %}checked{% endif %}>
+                <label for="payment_manual_enabled">{{ t("Offer paying by transfer") }}
+                    {{ fields.help(t("The letter shows the details below and an order number to put in the transfer's comment. Once the money is in, mark the order paid on the Payments page and the subscription is extended at once.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="payment_manual_details">{{ t("Details for the transfer") }} {{ fields.help(t("Shown to the client as they are: a card or phone number for SBP, the bank, whose name. Without them paying by transfer is not offered even when switched on.")) }}</label>
+                <textarea id="payment_manual_details" name="payment_manual_details"
+                          style="min-height:70px;" placeholder="{{ t('SBP: +7 900 000-00-00, T-Bank, Ivan I.') }}">{{ state.PAYMENT_MANUAL_DETAILS.value }}</textarea>
             </div>
         </div>
     </div>

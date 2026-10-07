@@ -164,6 +164,34 @@ GROUPS = [
         ],
     },
     {
+        "id": "purchase",
+        "title": "Purchase",
+        "hint": "The answer to /buy, with the tariffs that have a price and a way to "
+                "pay each, and the receipt once the payment has arrived.",
+        "fields": [
+            ("offer.subject", "Offer — subject", LINE, "Substitution: {service}"),
+            ("offer.intro", "Offer — introduction", TEXT,
+             "Substitution: {service}. Every line is a paragraph."),
+            ("offer.label_price", "Caption: price", LINE, ""),
+            ("offer.label_term", "Caption: term", LINE, ""),
+            ("offer.label_limit", "Caption: traffic", LINE, ""),
+            ("offer.value_price", "Price", LINE, "Substitution: {price}, in rubles."),
+            ("offer.button", "Pay button", LINE,
+             "Substitution: {provider}, the name of the way of paying."),
+            ("offer.manual", "Paying by transfer", TEXT,
+             "Shown in place of a button when paying by transfer is switched on. "
+             "Substitutions: {details} — the details from the Payments tab, "
+             "{order} — the order number to put in the transfer."),
+            ("offer.valid", "How long the links last", TEXT, "Substitution: {hours}"),
+            ("paid.subject", "Receipt — subject", LINE, "Substitution: {service}"),
+            ("paid.text", "Receipt — text", TEXT,
+             "Substitutions: {order}, {tariff}, {until}. Every line is a paragraph."),
+            ("paid.new_link", "Receipt — for a new client", TEXT,
+             "Added when the payment made somebody a client just now; the "
+             "subscription link follows it."),
+        ],
+    },
+    {
         "id": "help",
         "title": "Help",
         "hint": "The answer to the /help command.",
@@ -213,6 +241,10 @@ GROUPS = [
             ("notice.status_error_text", "Status error — text", TEXT, ""),
             ("notice.create_error_subject", "Registration error — subject", LINE, ""),
             ("notice.create_error_text", "Registration error — text", TEXT, ""),
+            ("notice.not_for_sale_subject", "Nothing for sale — subject", LINE, ""),
+            ("notice.not_for_sale_text", "Nothing for sale — text", TEXT,
+             "Sent in answer to /buy when no tariff has a price or no way of paying "
+             "is switched on. Every line is a paragraph."),
             ("notice.broadcast_done_subject", "Broadcast report — subject", LINE, ""),
             ("notice.broadcast_done_text", "Broadcast report — text", TEXT, "Substitution: {count}"),
             ("notice.broadcast_empty_subject", "Empty broadcast — subject", LINE, ""),
@@ -285,6 +317,29 @@ DEFAULTS_BY_LANG = {
             "or **/help** for the setup instructions.",
         "inactivity.support": "You can also just write to us: **{support}**.",
 
+        "offer.subject": "Your {service} subscription",
+        "offer.intro":
+            "Choose a tariff and a way to pay. The subscription is extended as soon "
+            "as the payment arrives, and the time you have left is kept.",
+        "offer.label_price": "Price",
+        "offer.label_term": "Term",
+        "offer.label_limit": "Traffic",
+        "offer.value_price": "{price} ₽",
+        "offer.button": "Pay: {provider}",
+        "offer.manual":
+            "**By transfer:** {details}\n"
+            "Put the order number **{order}** in the transfer's comment. The "
+            "subscription is extended once we see the payment.",
+        "offer.valid":
+            "The links work for {hours} hours. Missed them? Send **/buy** and we "
+            "will send fresh ones.",
+        "paid.subject": "Payment received",
+        "paid.text":
+            "Thank you! The payment for order **{order}** has arrived.\n"
+            "Tariff: **{tariff}**. Your subscription is valid until **{until}**.",
+        "paid.new_link":
+            "The subscription link is below. Send **/help** for how to add it to an app.",
+
         "help.subject": "{service} help",
         "help.intro":
             "You can manage your subscription by writing to this address — the command "
@@ -336,6 +391,10 @@ DEFAULTS_BY_LANG = {
         "notice.create_error_text":
             "Unfortunately the subscription could not be created automatically.\n"
             "Try sending the code word again in a little while, or write to the administrator.",
+        "notice.not_for_sale_subject": "Nothing to buy right now",
+        "notice.not_for_sale_text":
+            "Subscriptions cannot be bought by letter at the moment. Write to the "
+            "administrator if you need one.",
         "notice.broadcast_done_subject": "The broadcast is finished",
         "notice.broadcast_done_text": "Letters sent: {count}.\nThe text of the broadcast:",
         "notice.broadcast_empty_subject": "The broadcast was not sent",
@@ -403,6 +462,28 @@ DEFAULTS_BY_LANG = {
             "или **/help** — получить инструкцию по настройке.",
         "inactivity.support": "Также можно просто написать нам: **{support}**.",
 
+        "offer.subject": "Подписка {service}",
+        "offer.intro":
+            "Выберите тариф и способ оплаты. Подписка продлится сразу после оплаты, "
+            "оставшиеся дни сохраняются.",
+        "offer.label_price": "Цена",
+        "offer.label_term": "Срок",
+        "offer.label_limit": "Трафик",
+        "offer.value_price": "{price} ₽",
+        "offer.button": "Оплатить: {provider}",
+        "offer.manual":
+            "**Переводом:** {details}\n"
+            "В комментарии к переводу укажите номер заказа **{order}**. Подписка "
+            "продлится, когда мы увидим платёж.",
+        "offer.valid":
+            "Ссылки действуют {hours} ч. Не успели — напишите **/buy**, пришлём новые.",
+        "paid.subject": "Оплата получена",
+        "paid.text":
+            "Спасибо! Оплата по заказу **{order}** получена.\n"
+            "Тариф: **{tariff}**. Подписка действует до **{until}**.",
+        "paid.new_link":
+            "Ссылка на подписку — ниже. Как добавить её в приложение, расскажет письмо с **/help**.",
+
         "help.subject": "Справка {service}",
         "help.intro":
             "Подпиской можно управлять письмами на этот адрес — команду достаточно "
@@ -454,6 +535,10 @@ DEFAULTS_BY_LANG = {
         "notice.create_error_text":
             "К сожалению, подписку не удалось создать автоматически.\n"
             "Попробуйте отправить кодовое слово ещё раз чуть позже или напишите администратору.",
+        "notice.not_for_sale_subject": "Сейчас купить нельзя",
+        "notice.not_for_sale_text":
+            "Купить подписку письмом сейчас не получится. Если она нужна, напишите "
+            "администратору.",
         "notice.broadcast_done_subject": "Рассылка завершена",
         "notice.broadcast_done_text": "Отправлено писем: {count}.\nТекст рассылки:",
         "notice.broadcast_empty_subject": "Рассылка не отправлена",

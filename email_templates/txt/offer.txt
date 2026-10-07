@@ -1,0 +1,24 @@
+{{ title | plain }}
+
+{% for p in intro %}
+{{ p | plain }}
+{% endfor %}
+{% for block in blocks %}
+
+== {{ block.name | plain }} ==
+{{ t("offer.label_price") | plain }}: {{ block.price_text | plain }}
+{{ t("offer.label_term") | plain }}: {{ block.term_text | plain }}
+{{ t("offer.label_limit") | plain }}: {{ block.limit_text | plain }}
+{% for way in block.ways %}
+{% if way.url %}  {{ way.button | plain }}: {{ way.url }}
+{% else %}  {{ way.manual | plain }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+{% if valid %}{{ valid | plain }}
+{% endif %}
+--
+{{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}

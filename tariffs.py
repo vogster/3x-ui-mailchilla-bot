@@ -78,7 +78,8 @@ def _clean_tariff(raw: dict) -> dict:
         raise ValueError(i18n.t("the tariff needs a name"))
     limit_gb = int(raw.get("limit_gb") or 0)
     expire_days = int(raw.get("expire_days") or 0)
-    if limit_gb < 0 or expire_days < 0:
+    price = int(raw.get("price") or 0)
+    if limit_gb < 0 or expire_days < 0 or price < 0:
         raise ValueError(i18n.t("the value cannot be negative"))
     ids = raw.get("inbound_ids") or []
     if isinstance(ids, str):
@@ -92,6 +93,10 @@ def _clean_tariff(raw: dict) -> dict:
         "limit_gb": limit_gb,
         "expire_days": expire_days,
         "inbound_ids": inbound_ids,
+        # Whole rubles. 0 is not "free" but "not for sale": the tariff is then
+        # given out by code words only, which is every tariff from before
+        # payments existed — an older file has no price and stays as it was.
+        "price": price,
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
 
@@ -236,6 +241,11 @@ def snapshot() -> dict:
 def all_tariffs() -> list:
     with _lock:
         return [dict(t) for t in _state["tariffs"]]
+
+
+def for_sale() -> list:
+    """The tariffs a client can buy: those with a price."""
+    return [t for t in all_tariffs() if t["price"] > 0]
 
 
 def all_codes() -> list:

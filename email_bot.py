@@ -18,6 +18,7 @@ import uuid
 from email.utils import parseaddr
 
 import config
+import purchases
 import tariffs
 import templates
 from xui_client import XuiClient, get_shared_client
@@ -499,6 +500,10 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
                                 code[1] if code and code[0]["id"] == only[0]["id"] else None)
         else:
             handle_unknown(from_email, subject_clean)
+    elif contains_word(text, "/buy"):
+        # After the code words: a letter carrying one is a registration, and
+        # the word is the more specific thing it asks for.
+        purchases.send_offer(from_email)
     elif contains_word(text, "/status"):
         handle_status(from_email)
     elif contains_word(text, "/help"):

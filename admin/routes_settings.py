@@ -161,6 +161,9 @@ def settings_submit(
     gotify_message: str = Form(""),
     happ_url: str = Form(""),
     incy_url: str = Form(""),
+    payment_invoice_hours: str = Form("24"),
+    payment_manual_enabled: str = Form(""),
+    payment_manual_details: str = Form(""),
 ):
     auth_redirect = require_auth(request)
     if auth_redirect:
@@ -193,6 +196,9 @@ def settings_submit(
         "INCY_URL": incy_url,
         "REMARK_INCLUDE_NAME": remark_include_name == "on",
         "UPDATE_CHECK_ENABLED": update_check_enabled == "on",
+        "PAYMENT_INVOICE_HOURS": payment_invoice_hours,
+        "PAYMENT_MANUAL_ENABLED": payment_manual_enabled == "on",
+        "PAYMENT_MANUAL_DETAILS": payment_manual_details,
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:

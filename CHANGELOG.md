@@ -12,6 +12,16 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Selling subscriptions by letter.** A tariff can have a price now, and a
+  client who writes **/buy** gets a letter with every tariff that has one and a
+  way to pay each. Paying extends the subscription at once: the new term runs
+  on from whatever is left of the old one, so paying early loses nothing, and
+  the traffic counter starts from zero. Somebody who is not a client yet
+  becomes one. The first way of paying is by transfer — the letter shows your
+  details and an order number, and you mark the order paid on the new Payments
+  page. Online providers come next. Nothing is sold until a tariff has a price
+  and a way of paying is switched on on the new Payments tab of the settings.
+
 - **The registration letter names the tariff**, beside the term and the traffic
   limit it gave. It answers the question the numbers do not — somebody who would
   otherwise write back asking which one they are on was told in the first

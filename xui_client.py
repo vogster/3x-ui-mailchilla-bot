@@ -118,7 +118,7 @@ class XuiClient:
 
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
                    inbound_ids: list = None, comment: str = "", flow: str = None,
-                   group: str = ""):
+                   group: str = "", expiry_ms: int = None):
         """
         Adds a new client to every inbound listed.
         :param email: the client's unique email/identifier (a limited character
@@ -132,6 +132,8 @@ class XuiClient:
         :param limit_gb: traffic limit in GB (taken from the config when absent)
         :param expire_days: subscription length in days (from the config when absent)
         :param inbound_ids: the inbound ids (taken from the config when absent)
+        :param expiry_ms: the end of the term as an absolute time, in place of
+                          expire_days — a purchase works the date out itself
         :return: (client_uuid, list_of_success_inbound_ids), or (None, []) on failure
         """
         if client_uuid is None:
@@ -161,7 +163,9 @@ class XuiClient:
 
         total_bytes = limit_gb * 1024 * 1024 * 1024 if limit_gb > 0 else 0
 
-        if expire_days > 0:
+        if expiry_ms is not None:
+            expire_time_ms = max(int(expiry_ms), 0)
+        elif expire_days > 0:
             expire_time_ms = int((datetime.now() + timedelta(days=expire_days)).timestamp() * 1000)
         else:
             expire_time_ms = 0
@@ -594,7 +598,8 @@ class XuiClient:
     def update_client(self, client_uuid: str, total_gb: int = None,
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
-                      group: str = None, client_obj: dict = None) -> bool:
+                      group: str = None, client_obj: dict = None,
+                      expiry_ms: int = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -605,6 +610,8 @@ class XuiClient:
         :param expire_days: new length in days from now (None leaves it; 0 never expires)
         :param enable: True/False to switch on or off (None leaves it)
         :param group: the client group — this project's tariff name (None leaves it)
+        :param expiry_ms: the end of the term as an absolute time, 0 for never
+                          (None leaves it; wins over expire_days)
         :param new_remark: a new value for the client's email field (None leaves it)
         :param new_comment: a new comment/name (None leaves it)
         :param client_obj: a client object already fetched — lets the caller avoid
@@ -640,7 +647,9 @@ class XuiClient:
             payload["comment"] = new_comment
         if total_gb is not None:
             payload["totalGB"] = total_gb * 1024 * 1024 * 1024 if total_gb > 0 else 0
-        if expire_days is not None:
+        if expiry_ms is not None:
+            payload["expiryTime"] = max(int(expiry_ms), 0)
+        elif expire_days is not None:
             if expire_days > 0:
                 payload["expiryTime"] = int((datetime.now() + timedelta(days=expire_days)).timestamp() * 1000)
             else:
@@ -669,6 +678,27 @@ class XuiClient:
         except Exception as e:
             logger.error(f"Exception while updating client {current_remark}: {e}")
 
+        return False
+
+    def reset_traffic(self, remark: str) -> bool:
+        """
+        Zeroes a client's up/down counters.
+
+        The panel's own route rather than up/down = 0 in an update: it also
+        re-enables the client on every attached inbound and pushes the change
+        to Xray, so somebody cut off for running out of traffic can connect the
+        moment they have paid, not after the next restart.
+        """
+        endpoint = f"/panel/api/clients/resetTraffic/{quote(str(remark), safe='')}"
+        try:
+            response = self._request("POST", endpoint)
+            if response.status_code == 200 and response.json().get("success"):
+                logger.info(f"Traffic of client {remark} reset.")
+                return True
+            logger.error(f"Could not reset the traffic of client {remark}: "
+                         f"{response.status_code} {response.text[:200]}")
+        except Exception as e:
+            logger.error(f"Exception while resetting the traffic of client {remark}: {e}")
         return False
 
     # Fields the panel hands back in one shape and expects in another on update.

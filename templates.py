@@ -311,6 +311,56 @@ def get_inactivity_email(email, days) -> Email:
     return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
+def get_offer_email(blocks) -> Email:
+    """
+    The tariffs for sale and a way to pay each, as purchases.build_offer made them.
+
+    The links are invoices already created; the letter only lays them out.
+    """
+    details = (getattr(config, "PAYMENT_MANUAL_DETAILS", "") or "").strip()
+    laid_out = []
+    for block in blocks:
+        tariff = block["tariff"]
+        laid_out.append({
+            "name": tariff["name"],
+            "price_text": text("offer.value_price", price=tariff["price"]),
+            "term_text": (text("welcome.value_forever") if not tariff["expire_days"]
+                          else text("welcome.value_days", days=tariff["expire_days"])),
+            "limit_text": (text("welcome.value_unlimited") if not tariff["limit_gb"]
+                           else text("welcome.value_gb", gb=tariff["limit_gb"])),
+            "ways": [{
+                "url": way["url"],
+                "button": text("offer.button", provider=way["provider"]),
+                "manual": ("" if way["url"]
+                           else text("offer.manual", details=details, order=way["order"])),
+            } for way in block["ways"]],
+        })
+    hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
+    return _render(
+        "offer",
+        title=text("offer.subject"),
+        intro=_split(text("offer.intro")),
+        blocks=laid_out,
+        valid=text("offer.valid", hours=hours),
+    )
+
+
+def get_paid_email(order_id, tariff, until, sub_url="") -> Email:
+    """
+    The receipt: the payment arrived and the term is extended.
+
+    Somebody who already had a subscription keeps the link they have — the
+    subscription id does not change — so the link is only in the letter for
+    somebody the payment made a client just now.
+    """
+    paragraphs = _split(text("paid.text", order=order_id, tariff=tariff,
+                             until=until or text("welcome.value_forever")))
+    if sub_url:
+        paragraphs += _split(text("paid.new_link"))
+    return get_notice_email(title=text("paid.subject"), paragraphs=paragraphs,
+                            code_text=sub_url or None)
+
+
 def _howto_steps():
     """
     Parses the multi-line instructions field: a line without indentation is a

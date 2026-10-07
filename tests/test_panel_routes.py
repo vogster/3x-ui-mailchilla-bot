@@ -23,6 +23,8 @@ import unittest
 from fastapi.testclient import TestClient
 
 import config
+import payments
+import purchases
 import tariffs
 import xui_client
 
@@ -83,6 +85,14 @@ class FakeXui:
         self.updated = {"uuid": client_uuid, **kwargs}
         return True
 
+    def reset_traffic(self, remark):
+        self.reset = remark
+        return True
+
+    @staticmethod
+    def client_key(client_obj):
+        return xui_client.XuiClient.client_key(client_obj)
+
     def login(self):
         return True
 
@@ -125,6 +135,17 @@ class PanelCase(unittest.TestCase):
             {"name": "Basic", "limit_gb": 100, "expire_days": 90, "inbound_ids": [1]})
         tariffs.save_code({"word": "AURORA", "tariff_id": self.tariff["id"],
                            "uses_left": None, "enabled": True})
+        # The orders too, for the same reason as the tariffs.
+        self.real_payments_path = payments.PAYMENTS_PATH
+        payments.PAYMENTS_PATH = os.path.join(self.dir, "payments.json")
+        self.saved_orders = payments._orders
+        payments._orders = []
+        # Nothing here may send a letter or a push: applying an order does both.
+        self.sent = []
+        self.real_send = purchases.mailer.send_email_reply
+        self.real_push = purchases.mailer.send_gotify_notification
+        purchases.mailer.send_email_reply = lambda to, subject, message: self.sent.append((to, subject))
+        purchases.mailer.send_gotify_notification = lambda title, message: None
 
         self.fake = FakeXui()
         self.real_shared = xui_client.get_shared_client
@@ -133,7 +154,7 @@ class PanelCase(unittest.TestCase):
         self.patched = []
         for name in ("admin.routes_tariffs", "admin.routes_clients",
                      "admin.routes_broadcast", "admin.routes_settings",
-                     "admin.routes_setup", "admin.app"):
+                     "admin.routes_setup", "admin.app", "purchases"):
             module = __import__(name, fromlist=["x"])
             if hasattr(module, "get_shared_client"):
                 self.patched.append((module, module.get_shared_client))
@@ -151,6 +172,10 @@ class PanelCase(unittest.TestCase):
             module.get_shared_client = original
         tariffs.TARIFFS_PATH = self.real_path
         tariffs._state = self.saved_state
+        payments.PAYMENTS_PATH = self.real_payments_path
+        payments._orders = self.saved_orders
+        purchases.mailer.send_email_reply = self.real_send
+        purchases.mailer.send_gotify_notification = self.real_push
 
     def page(self, url):
         response = self.client.get(url)
@@ -161,7 +186,7 @@ class PanelCase(unittest.TestCase):
 class PagesOpen(PanelCase):
     def test_the_pages_of_the_panel(self):
         for url in ("/", "/clients", "/tariffs", "/tariffs/new", "/broadcast",
-                    "/settings", "/logs", "/setup"):
+                    "/settings", "/logs", "/setup", "/payments"):
             with self.subTest(url=url):
                 self.page(url)
 
@@ -171,6 +196,19 @@ class PagesOpen(PanelCase):
         body = self.page("/settings")
         self.assertIn('name="switch:INACTIVITY_REMINDER_ENABLED"', body)
         self.assertIn('name="setting:INACTIVITY_REMINDER_DAYS"', body)
+
+    def test_the_payment_settings_are_on_the_page(self):
+        body = self.page("/settings")
+        self.assertIn('name="payment_manual_details"', body)
+        self.assertIn('name="payment_invoice_hours"', body)
+
+    def test_the_tariff_form_asks_for_a_price(self):
+        self.assertIn('name="price"', self.page(f"/tariffs/{self.tariff['id']}/edit"))
+
+    def test_the_payments_page_says_why_nothing_is_on_sale(self):
+        # No tariff has a price in the fixture, and nothing is switched on.
+        body = self.page("/payments")
+        self.assertIn("No tariff has a price", body)
 
     def test_a_switched_block_carries_its_texts_inside_it(self):
         # The switches on the Letters tab are drawn as blocks with the texts
@@ -548,3 +586,35 @@ class DatesTypedByHand(PanelCase):
         body = self.page("/tariffs/codes/WEEKEND/edit")
         self.assertIn('value="2030-03-17"', body)   # the hidden half
         self.assertIn('value="17.03.2030"', body)   # the half that is read
+
+
+class ThePaymentsPage(PanelCase):
+    """An order marked paid by hand goes all the way to 3x-ui and a receipt."""
+
+    def setUp(self):
+        super().setUp()
+        self.tariff = tariffs.save_tariff({**self.tariff, "price": 300})
+        self.order = payments.create("ben@example.com", self.tariff, "manual")
+
+    def test_the_order_is_listed(self):
+        body = self.page("/payments")
+        self.assertIn(self.order["id"], body)
+        self.assertIn("ben@example.com", body)
+
+    def test_marking_paid_applies_it(self):
+        response = self.client.post(f"/payments/{self.order['id']}/paid", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(payments.get(self.order["id"])["status"], payments.APPLIED)
+        self.assertEqual(self.fake.updated["group"], "Basic")
+        self.assertEqual(self.fake.reset, "ben@example.com")
+        self.assertEqual(self.sent[0][0], "ben@example.com")
+
+    def test_marking_paid_twice_applies_once(self):
+        self.client.post(f"/payments/{self.order['id']}/paid")
+        self.fake.updated = None
+        self.client.post(f"/payments/{self.order['id']}/paid")
+        self.assertIsNone(self.fake.updated)
+
+    def test_cancelling_an_open_order(self):
+        self.client.post(f"/payments/{self.order['id']}/cancel")
+        self.assertEqual(payments.get(self.order["id"])["status"], payments.CANCELLED)

@@ -38,6 +38,8 @@ MANAGED_KEYS = (
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
     "WELCOME_MANUAL_ENABLED", "WELCOME_SUPPORT_ENABLED",
+    # Payments
+    "PAYMENT_INVOICE_HOURS", "PAYMENT_MANUAL_ENABLED", "PAYMENT_MANUAL_DETAILS",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
@@ -201,8 +203,19 @@ def _coerce(key, value):
         if number < 1:
             raise ValueError(i18n.t("the inactivity period must be at least one day"))
         return number
+    if key == "PAYMENT_INVOICE_HOURS":
+        # Hours, at least one: a link that is dead before the letter arrives
+        # is a letter wasted, and a zero would close every invoice on creation.
+        number = int(value)
+        if number < 1:
+            raise ValueError(i18n.t("the payment links must stay valid for at least an hour"))
+        return number
+    if key == "PAYMENT_MANUAL_DETAILS":
+        # Several lines are fine — a card number, the bank, whose name.
+        return str(value or "").strip()
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
                "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
+               "PAYMENT_MANUAL_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED"):
         if isinstance(value, bool):

@@ -66,6 +66,17 @@ INACTIVITY_REMINDER_DAYS = 30
 # When the sweep last ran, as a unix time — written by the bot, not the panel.
 INACTIVITY_REMINDER_LAST_AT = 0.0
 
+# --- Payments ---
+# How long the links in an offer letter stay payable. Every link is an invoice
+# of its own, created when the letter is sent; an unpaid one is closed after
+# this many hours, and /buy hands out fresh ones.
+PAYMENT_INVOICE_HOURS = 24
+# Paying by hand: the letter shows the details below and an order number, and
+# the administrator marks the order paid on the Payments page once the money
+# is in. Off by default, and useless without the details.
+PAYMENT_MANUAL_ENABLED = False
+PAYMENT_MANUAL_DETAILS = ""
+
 # --- The seed of the first tariff ---
 # These three described what every new client got, back when there was one code
 # word and one set of limits. They belong to a tariff now (tariffs.json, the

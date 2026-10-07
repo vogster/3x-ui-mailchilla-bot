@@ -1,0 +1,114 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Payments") }}{% endblock %}
+{% block nav_payments %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 8px 0;">{{ t("Payments") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0;">
+    {{ t("A client writes /buy and gets a letter with the tariffs that have a price and a way to pay each. Every link is an order of its own; the first one paid closes the rest of that letter.") }}
+</p>
+
+{% if error %}<div class="flash error" style="margin-bottom: 18px;">{{ error }}</div>{% endif %}
+{% if saved %}<div class="flash ok" style="margin-bottom: 18px;">{{ saved }}</div>{% endif %}
+
+{# Why /buy would answer "nothing to buy" — said here, where somebody wonders
+   why nobody pays, rather than left for them to find in the log. #}
+{% if not for_sale or not ways %}
+<div class="flash error" style="margin-bottom: 18px;">
+    {% if not for_sale %}{{ t("No tariff has a price, so /buy has nothing to offer. Set one on the tariff's form.") }}{% endif %}
+    {% if not ways %}{{ t("No way of paying is switched on. Set one up on the Payments tab of the settings.") }}{% endif %}
+</div>
+{% endif %}
+
+<div class="cards">
+    <div class="card">
+        <div class="label">{{ t("Received") }}</div>
+        <div class="value">{{ revenue }} ₽</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ status_labels['pending'] }}</div>
+        <div class="value">{{ counts['pending'] }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ status_labels['paid'] }}</div>
+        <div class="value" style="{% if counts['paid'] %}color:#fbbf24;{% endif %}">{{ counts['paid'] }}</div>
+    </div>
+    <div class="card">
+        <div class="label">{{ t("Ways of paying") }}</div>
+        <div class="value" style="font-size: 15px;">{{ ways | join(", ") if ways else "—" }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head" style="gap: 10px; flex-wrap: wrap;">
+        <h2>{{ t("Orders") }} <span class="muted" style="font-weight:400;">({{ orders|length }})</span></h2>
+        <form method="get" action="/payments" style="margin-left: auto;">
+            <select name="status" onchange="this.form.submit()">
+                <option value="">{{ t("every status") }}</option>
+                {% for key, label in status_labels.items() %}
+                <option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }} ({{ counts[key] }})</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+    {% if orders %}
+    <div class="tscroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ t("Order [payment]") }}</th>
+                    <th>{{ t("Client") }}</th>
+                    <th>{{ t("Tariff") }}</th>
+                    <th>{{ t("Amount") }}</th>
+                    <th>{{ t("Way of paying") }}</th>
+                    <th>{{ t("Status") }}</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for o in orders %}
+                <tr>
+                    <td>
+                        <span class="mono">{{ o.id }}</span>
+                        <div class="muted">{{ o.created_text }}</div>
+                    </td>
+                    <td><a href="/clients?q={{ o.email | urlencode }}">{{ o.email }}</a></td>
+                    <td>{{ o.tariff.name }}</td>
+                    <td class="mono">{{ o.amount }} ₽</td>
+                    <td>{{ o.provider_title }}</td>
+                    <td>
+                        <span class="badge nodot {% if o.status == 'applied' %}on{% endif %}"
+                              {% if o.status == 'paid' %}style="color:#fbbf24;"{% elif o.status in ('expired', 'cancelled') %}style="color:var(--fg-3);"{% endif %}>
+                            {{ o.status_text }}
+                        </span>
+                        {% if o.paid_text %}<div class="muted">{{ o.paid_text }}{% if o.paid_by == 'admin' %} · {{ t("by hand") }}{% endif %}</div>{% endif %}
+                        {% if o.until_text and o.status == 'applied' %}<div class="muted">{{ t("until {date}", date=o.until_text) }}</div>{% endif %}
+                        {% if o.error %}<div class="muted" style="color:#f87171;">{{ o.error }}</div>{% endif %}
+                    </td>
+                    <td style="white-space: nowrap; text-align: right;">
+                        {% if o.status in ('pending', 'expired', 'cancelled') %}
+                        <form method="post" action="/payments/{{ o.id }}/paid" style="display:inline;"
+                              data-confirm="{{ t('Mark order {order} paid and extend {email} on {tariff}?', order=o.id, email=o.email, tariff=o.tariff.name) }}">
+                            <button type="submit" class="btn small">{{ t("Mark paid") }}</button>
+                        </form>
+                        {% endif %}
+                        {% if o.status == 'pending' %}
+                        <form method="post" action="/payments/{{ o.id }}/cancel" style="display:inline;">
+                            <button type="submit" class="btn small">{{ t("Cancel [order]") }}</button>
+                        </form>
+                        {% endif %}
+                        {% if o.status == 'paid' %}
+                        <form method="post" action="/payments/{{ o.id }}/apply" style="display:inline;">
+                            <button type="submit" class="btn small primary">{{ t("Apply now") }}</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted" style="padding: 20px;">{{ t("No orders yet.") if not status else t("No orders with this status.") }}</p>
+    {% endif %}
+</div>
+{% endblock %}

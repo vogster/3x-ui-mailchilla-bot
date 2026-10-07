@@ -11,6 +11,8 @@ import logging
 
 import config
 import inactivity
+import payments
+import purchases
 import tariffs
 
 logging.basicConfig(
@@ -58,6 +60,12 @@ def run_bot_loop():
             inactivity.run_if_due()
         except Exception as e:
             logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
+        try:
+            # Asks the payment providers only while an invoice is open, which
+            # is rarely; otherwise this is a look at a list in memory.
+            purchases.run_if_due()
+        except Exception as e:
+            logger.error(f"Error while checking the payments: {e}", exc_info=True)
         # Wait in a way that can be cut short by a signal
         _stop_event.wait(config.POLL_INTERVAL_SECONDS)
 
@@ -72,6 +80,7 @@ def main():
     email_texts.load()
     # After the settings, since a first run builds the opening tariff from them.
     tariffs.load()
+    payments.load()
 
     # Log collection into the buffer and file starts before the bot, so that
     # nothing is lost

@@ -29,6 +29,10 @@
             <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
             <input type="number" id="expire_days" name="expire_days" min="0" step="1" value="{{ tariff.expire_days }}">
         </div>
+        <div>
+            <label for="price">{{ t("Price, ₽") }} {{ fields.help(t("What a client pays for this tariff by /buy. 0 means it is not for sale and is given out by code words only.")) }}</label>
+            <input type="number" id="price" name="price" min="0" step="1" value="{{ tariff.price or 0 }}">
+        </div>
     </div>
 </div>
 
