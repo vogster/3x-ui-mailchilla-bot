@@ -24,6 +24,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
 import email_texts
+import providers
 import tariffs
 
 logger = logging.getLogger(__name__)
@@ -162,12 +163,21 @@ def qr_png(url: str) -> bytes:
         return b""
 
 
+def selling() -> bool:
+    """A tariff has a price and a way of paying is switched on."""
+    return bool(tariffs.for_sale() and providers.enabled())
+
+
 def _render(name: str, **context) -> Email:
     """Builds the HTML and text pair from the templates of the same name."""
     context.setdefault("service_name", config.SERVICE_NAME)
     # Every letter carries the support address in its footer, so it is set here
     # rather than by each builder. Empty means the footer says nothing about it.
     context.setdefault("support", _support("FOOTER_SUPPORT_ENABLED"))
+    # Whether /buy would answer with something to buy. Every letter that
+    # mentions it asks this, so that an installation selling nothing never
+    # points anybody at a command that only says "nothing for sale".
+    context.setdefault("selling", selling())
     try:
         html = _env.get_template(f"{name}.html").render(**context)
     except Exception as e:

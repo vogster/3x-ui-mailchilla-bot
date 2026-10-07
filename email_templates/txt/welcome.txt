@@ -21,6 +21,8 @@
 {% if t("welcome.commands_text") %}{{ t("welcome.commands_title") | plain }}
 {{ t("welcome.commands_text") | plain }}
 {% endif %}
+{% if selling and t("welcome.commands_buy") %}{{ t("welcome.commands_buy") | plain }}
+{% endif %}
 --
 {{ service_name }}
 {% if support %}{{ t("common.support") | plain }}

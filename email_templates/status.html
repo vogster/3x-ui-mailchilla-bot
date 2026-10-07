@@ -24,4 +24,7 @@
 {% if t("status.outro") %}
 <p style="margin: 24px 0 0 0;">{{ t("status.outro") | emph }}</p>
 {% endif %}
+{% if selling and t("status.buy") %}
+<p style="margin: 14px 0 0 0;">{{ t("status.buy") | emph }}</p>
+{% endif %}
 {% endblock %}

@@ -440,6 +440,19 @@ class TheOffer(OrdersCase):
         letter = self.sent[0][2].text
         self.assertIn(templates._plain(templates.text("offer.valid", hours=12)), letter)
 
+    def test_the_letters_mention_buy_only_while_something_can_be_bought(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        status = templates.get_status_email("ann@example.com", True, 0, 0, 0, 0)
+        help_letter = templates.get_help_email("ann@example.com")
+        self.assertIn("/buy", status.text)
+        self.assertIn("/buy", status.html)
+        self.assertIn("/buy", help_letter.text)
+        self.use_providers()
+        status = templates.get_status_email("ann@example.com", True, 0, 0, 0, 0)
+        self.assertNotIn("/buy", status.text)
+        self.assertNotIn("/buy", templates.get_help_email("ann@example.com").html)
+
     def test_paying_by_transfer_needs_the_details(self):
         from providers.manual import Manual
         config.PAYMENT_MANUAL_DETAILS = "  "

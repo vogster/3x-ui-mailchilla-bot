@@ -10,6 +10,8 @@
 {% endif %}
 {% if t("status.outro") %}{{ t("status.outro") | plain }}
 {% endif %}
+{% if selling and t("status.buy") %}{{ t("status.buy") | plain }}
+{% endif %}
 --
 {{ service_name }}
 {% if support %}{{ t("common.support") | plain }}

@@ -36,6 +36,11 @@ read as something a person wants to know before updating.
   counted, since the payment link can be edited before paying, and waits on
   the Payments page for you to look at.
 
+- The help letter, the registration letter and the answer to /status mention
+  **/buy** — but only while something can actually be bought, so an
+  installation that sells nothing never points anybody at it. Each line is
+  editable like every other text.
+
 - **A code word can carry a discount**, in per cent or in rubles. Such a word
   is a promo code: whoever writes it — on its own, the same as a registration
   word, or after /buy — gets a letter offering its tariff for less, and is

@@ -902,4 +902,7 @@ TEXTS = {
     "Purchase refused — subject": "Покупка недоступна — тема",
     "Purchase refused — text": "Покупка недоступна — текст",
     "Sent in answer to /buy from a client switched off by hand in 3x-ui. Every line is a paragraph.": "Отправляется в ответ на /buy клиенту, которого отключили в 3x-ui вручную. Каждая строка — абзац.",
+    "The line about /buy": "Строка про /buy",
+    "What /buy does": "Что делает /buy",
+    "Shown only while something can be bought: a tariff has a price and a way of paying is switched on.": "Показывается, только когда есть что купить: у тарифа есть цена и включён способ оплаты.",
 }

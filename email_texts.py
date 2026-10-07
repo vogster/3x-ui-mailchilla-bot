@@ -125,6 +125,7 @@ GROUPS = [
              [("welcome.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("welcome.commands_title", "The commands block heading", LINE, ""),
             ("welcome.commands_text", "The commands block text", TEXT, ""),
+            ("welcome.commands_buy", "The line about /buy", TEXT, "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
         ],
     },
     {
@@ -147,6 +148,7 @@ GROUPS = [
             ("status.used_nolimit", "The value without a limit", LINE, "Substitution: {used}"),
             ("status.meter_text", "The caption under the bar", LINE, "Substitution: {percent}"),
             ("status.outro", "Closing", TEXT, ""),
+            ("status.buy", "The line about /buy", TEXT, "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
         ],
     },
     {
@@ -205,6 +207,7 @@ GROUPS = [
             ("help.intro", "Opening", TEXT, ""),
             ("help.cmd_status", "What /status does", LINE, ""),
             ("help.cmd_help", "What /help does", LINE, ""),
+            ("help.cmd_buy", "What /buy does", LINE, "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
             ("help.sub_label", "The line above the link", LINE, ""),
             ("help.not_registered", "The text for people with no subscription", TEXT,
              "Substitution: {service}"),
@@ -357,6 +360,11 @@ DEFAULTS_BY_LANG = {
             "can go in the subject or in the body of the letter.",
         "help.cmd_status": "the traffic left and when the subscription ends",
         "help.cmd_help": "this letter, with the instructions",
+        "help.cmd_buy": "extend the subscription or buy one: the prices and the ways to pay",
+        "welcome.commands_buy":
+            "To extend the subscription, send **/buy** — we will reply with the prices "
+            "and the ways to pay.",
+        "status.buy": "To extend it, send **/buy**.",
         "help.sub_label": "Your subscription link:",
         "help.not_registered":
             "You are not registered with {service} yet. Send a letter with the code word "
@@ -507,6 +515,10 @@ DEFAULTS_BY_LANG = {
             "написать в теме или в тексте.",
         "help.cmd_status": "остаток трафика и срок подписки",
         "help.cmd_help": "это письмо с инструкцией",
+        "help.cmd_buy": "продлить подписку или купить: цены и способы оплаты",
+        "welcome.commands_buy":
+            "Чтобы продлить подписку, напишите **/buy** — пришлём цены и способы оплаты.",
+        "status.buy": "Продлить подписку — напишите **/buy**.",
         "help.sub_label": "Ваша ссылка подписки:",
         "help.not_registered":
             "Вы ещё не зарегистрированы в сервисе {service}. Отправьте письмо "

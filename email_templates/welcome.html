@@ -88,4 +88,7 @@
 <p style="margin: 26px 0 8px 0; color: #ededef; font-weight: 600;">{{ t("welcome.commands_title") | emph }}</p>
 <p style="margin: 0;">{{ t("welcome.commands_text") | emph }}</p>
 {% endif %}
+{% if selling and t("welcome.commands_buy") %}
+<p style="margin: 12px 0 0 0;">{{ t("welcome.commands_buy") | emph }}</p>
+{% endif %}
 {% endblock %}

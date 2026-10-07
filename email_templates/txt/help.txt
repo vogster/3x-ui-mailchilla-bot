@@ -4,7 +4,8 @@
 
   /status — {{ t("help.cmd_status") | plain }}
   /help — {{ t("help.cmd_help") | plain }}
-{% if sub_url %}
+{% if selling and t("help.cmd_buy") %}  /buy — {{ t("help.cmd_buy") | plain }}
+{% endif %}{% if sub_url %}
 {{ t("help.sub_label") | plain }}
 {{ sub_url }}
 {% else %}
