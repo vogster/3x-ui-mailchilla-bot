@@ -74,6 +74,12 @@ def overdue():
     for client in clients:
         if client.get("enable") is not True:
             continue
+        # A subscription that has ended explains the silence by itself, and
+        # the expiry reminder has already said so; asking "is something
+        # wrong?" on top of it would be the wrong letter.
+        end = int(client.get("expiryTime") or 0)
+        if 0 < end <= now_ms:
+            continue
         # A client made by hand in 3x-ui may carry no address at all; there is
         # nowhere to mail such a row.
         bare_email = XuiClient.extract_bare_email(client.get("email", "") or "")

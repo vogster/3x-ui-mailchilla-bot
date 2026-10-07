@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 import config
 import email_bot
 import email_texts
+import expiry
 import i18n
 import periodic
 import providers
@@ -34,7 +35,7 @@ router = APIRouter()
 
 # These letters have a test version worth sending; the "General" group is only
 # the footer, which shows up in any of them.
-TESTABLE = {"welcome", "status", "help", "broadcast", "notice", "inactivity"}
+TESTABLE = {"welcome", "status", "help", "broadcast", "notice", "inactivity", "expiry"}
 
 # The placeholder addresses from .env.example look real, and must never prefill
 # the send field: the letter would go to a stranger.
@@ -118,6 +119,7 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "test_email": _default_test_email(),
         "cleanup_last": _last_run("MAIL_CLEANUP_LAST_AT"),
         "inactivity_last": _last_run("INACTIVITY_REMINDER_LAST_AT"),
+        "expiry_last": _last_run("EXPIRY_REMINDER_LAST_AT"),
         "state": state,
         "error": error,
         "saved": saved,
@@ -667,6 +669,14 @@ def _sample_email(group: str, kind: str = "info"):
     if group == "notice":
         return (mail_templates.notice_subject("unknown"),
                 mail_templates.get_notice("unknown", subject=i18n.t("Hello")))
+    if group == "expiry":
+        # The "soon" letter: it is the one with every part in it, and the one
+        # an administrator will want to read before switching this on.
+        days = int(getattr(config, "EXPIRY_REMINDER_DAYS", 3) or 3)
+        end = int((datetime.now().timestamp() + days * 86400) * 1000)
+        return (mail_templates.expiry_subject("soon", days),
+                mail_templates.get_expiry_email("soon", end, days, _demo_tariff_name(),
+                                                expiry.bot_address()))
     if group == "inactivity":
         days = periodic.period_days("INACTIVITY_REMINDER_DAYS")
         return (mail_templates.text("inactivity.subject"),

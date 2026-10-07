@@ -199,6 +199,24 @@ GROUPS = [
         ],
     },
     {
+        "id": "expiry",
+        "title": "End of the subscription",
+        "hint": "Sent a few days before a subscription ends, and on the day it does, "
+                "when «Reminding about the end» is switched on under «Settings» at "
+                "the top of the menu.",
+        "fields": [
+            ("expiry.soon_subject", "Ends soon — subject", LINE, "Substitutions: {service}, {days}"),
+            ("expiry.soon_text", "Ends soon — text", TEXT, "Substitutions: {date}, {days}, {tariff}. Every line is a paragraph."),
+            ("expiry.ended_subject", "Has ended — subject", LINE, "Substitution: {service}"),
+            ("expiry.ended_text", "Has ended — text", TEXT, "Substitutions: {date}, {days}, {tariff}. Every line is a paragraph."),
+            ("expiry.button", "The extend button", LINE,
+             "Opens a letter to the bot with /buy in it. Shown only while something can be bought."),
+            ("expiry.buy_line", "The line under the button", TEXT, ""),
+            ("expiry.no_sale", "The line while nothing is for sale", TEXT,
+             "Shown in place of the button when no tariff has a price or no way of paying is on."),
+        ],
+    },
+    {
         "id": "help",
         "title": "Help",
         "hint": "The answer to the /help command.",
@@ -354,6 +372,21 @@ DEFAULTS_BY_LANG = {
         "paid.new_link":
             "The subscription link is below. Send **/help** for how to add it to an app.",
 
+        "expiry.soon_subject": "Your {service} subscription ends in {days} days",
+        "expiry.soon_text":
+            "Hello!\n"
+            "Your subscription ends on **{date}**, in {days} days. Extend it in advance "
+            "and the days you have left are kept.",
+        "expiry.ended_subject": "Your {service} subscription has ended",
+        "expiry.ended_text":
+            "Hello!\n"
+            "Your subscription ended on **{date}**, and the connection no longer works.",
+        "expiry.button": "Extend the subscription",
+        "expiry.buy_line":
+            "The button opens a letter to us with **/buy** in it — send it and we reply "
+            "with the prices and the ways to pay. Writing **/buy** to this address does the same.",
+        "expiry.no_sale": "To extend the subscription, write to the administrator.",
+
         "help.subject": "{service} help",
         "help.intro":
             "You can manage your subscription by writing to this address — the command "
@@ -508,6 +541,21 @@ DEFAULTS_BY_LANG = {
             "Тариф: **{tariff}**. Подписка действует до **{until}**.",
         "paid.new_link":
             "Ссылка на подписку — ниже. Как добавить её в приложение, расскажет письмо с **/help**.",
+
+        "expiry.soon_subject": "Подписка {service} заканчивается через {days} дн.",
+        "expiry.soon_text":
+            "Здравствуйте!\n"
+            "Подписка заканчивается **{date}**, через {days} дн. Продлите заранее — "
+            "оставшиеся дни сохранятся.",
+        "expiry.ended_subject": "Подписка {service} закончилась",
+        "expiry.ended_text":
+            "Здравствуйте!\n"
+            "Подписка закончилась **{date}**, подключение больше не работает.",
+        "expiry.button": "Продлить подписку",
+        "expiry.buy_line":
+            "Кнопка откроет письмо нам с командой **/buy** — отправьте его, и в ответ придут "
+            "цены и способы оплаты. Можно и просто написать **/buy** на этот адрес.",
+        "expiry.no_sale": "Чтобы продлить подписку, напишите администратору.",
 
         "help.subject": "Справка {service}",
         "help.intro":

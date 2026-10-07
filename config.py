@@ -66,6 +66,15 @@ INACTIVITY_REMINDER_DAYS = 30
 # When the sweep last ran, as a unix time — written by the bot, not the panel.
 INACTIVITY_REMINDER_LAST_AT = 0.0
 
+# --- Reminding about the end of a subscription ---
+# A letter some days before a subscription ends and one on the day it does,
+# each with a way to extend it. Off by default, like every letter the bot
+# sends on a schedule rather than in answer to one.
+EXPIRY_REMINDER_ENABLED = False
+EXPIRY_REMINDER_DAYS = 3
+# When the sweep last ran, as a unix time — written by the bot, not the panel.
+EXPIRY_REMINDER_LAST_AT = 0.0
+
 # --- Payments ---
 # How long the links in an offer letter stay payable. Every link is an invoice
 # of its own, created when the letter is sent; an unpaid one is closed after

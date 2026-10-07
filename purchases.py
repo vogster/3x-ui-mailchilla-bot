@@ -66,7 +66,7 @@ def _now_ms() -> int:
 REUSE_LEFT_MS = 2 * 3600 * 1000
 
 
-def is_barred(client) -> bool:
+def is_barred(client, now_ms: int = None) -> bool:
     """
     Whether this client was switched off by hand, and so may not buy.
 
@@ -78,7 +78,7 @@ def is_barred(client) -> bool:
     if not client or client.get("enable") is not False:
         return False
     expiry = int(client.get("expiryTime") or 0)
-    if expiry > 0 and expiry <= _now_ms():
+    if expiry > 0 and expiry <= (now_ms or _now_ms()):
         return False
     total = int(client.get("totalGB") or 0)
     traffic = client.get("traffic") or {}

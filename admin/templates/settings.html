@@ -520,6 +520,29 @@
                         {% endif %}
                     </div>
                 </div>
+                <div class="panel-head" style="border-top: 1px solid var(--line);">
+                    <h2>{{ t("Reminding about the end") }}</h2>
+                    <span class="muted">{{ t("Sends the «End of the subscription» letters: a few days before a subscription ends, and on the day it does.") }}</span>
+                </div>
+                <div style="padding: 22px 20px;" class="form-grid">
+                    <div class="checkbox-row">
+                        <input type="hidden" name="switch:EXPIRY_REMINDER_ENABLED" value="off">
+                        <input type="checkbox" class="switch" id="f-expiry-enabled"
+                               name="switch:EXPIRY_REMINDER_ENABLED" value="on"
+                               {% if state.EXPIRY_REMINDER_ENABLED.value %}checked{% endif %}>
+                        <label for="f-expiry-enabled">{{ t("Remind a client that their subscription is ending") }}
+                            {{ fields.help(t("Each client gets each letter once. While something can be bought, the letter has a button that opens a letter to the bot with /buy in it. A client switched off by hand in 3x-ui is not written to. Switched on, it warns at the next poll everybody whose subscription ends within the days below.")) }}
+                        </label>
+                    </div>
+                    <div>
+                        <label for="f-expiry-days">{{ t("Days before the end") }}</label>
+                        <input type="number" id="f-expiry-days" name="setting:EXPIRY_REMINDER_DAYS"
+                               min="1" step="1" value="{{ state.EXPIRY_REMINDER_DAYS.value }}">
+                        {% if expiry_last %}
+                        <div class="hint">{{ t("Last checked: {when}", when=expiry_last) }}</div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             {% for g in text_groups %}

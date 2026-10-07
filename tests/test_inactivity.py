@@ -136,6 +136,12 @@ class WhoGetsMailed(unittest.TestCase):
         self.assertEqual(count, 0)
         self.assertEqual(self.sent, [])
 
+    def test_a_client_whose_subscription_ended_is_left_to_the_expiry_letter(self):
+        old = self.now_ms - 40 * DAY_MS
+        client = self._client(email="ended@example.com", expiryTime=self.now_ms - DAY_MS)
+        count = self._run([client], last_online={"ended@example.com": old})
+        self.assertEqual(count, 0)
+
     def test_a_client_with_no_address_is_skipped(self):
         # Made by hand in 3x-ui: nowhere to mail such a row.
         old = self.now_ms - 40 * DAY_MS

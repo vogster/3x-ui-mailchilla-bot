@@ -200,6 +200,8 @@ class PagesOpen(PanelCase):
         body = self.page("/settings")
         self.assertIn('name="switch:INACTIVITY_REMINDER_ENABLED"', body)
         self.assertIn('name="setting:INACTIVITY_REMINDER_DAYS"', body)
+        self.assertIn('name="switch:EXPIRY_REMINDER_ENABLED"', body)
+        self.assertIn('name="setting:EXPIRY_REMINDER_DAYS"', body)
 
     def test_the_payment_settings_are_on_the_page(self):
         body = self.page("/settings")

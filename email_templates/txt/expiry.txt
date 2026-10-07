@@ -1,0 +1,15 @@
+{{ title | plain }}
+
+{% for p in paragraphs %}
+{{ p | plain }}
+{% endfor %}
+
+{% if buy_url %}{{ t("expiry.button") | plain }}: {{ buy_url }}
+{{ t("expiry.buy_line") | plain }}
+{% elif not selling %}{{ t("expiry.no_sale") | plain }}
+{% else %}{{ t("expiry.buy_line") | plain }}
+{% endif %}
+--
+{{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}

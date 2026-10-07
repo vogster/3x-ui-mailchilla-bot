@@ -34,6 +34,7 @@ MANAGED_KEYS = (
     "POLL_INTERVAL_SECONDS",
     "MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS", "MAIL_CLEANUP_LAST_AT",
     "INACTIVITY_REMINDER_ENABLED", "INACTIVITY_REMINDER_DAYS", "INACTIVITY_REMINDER_LAST_AT",
+    "EXPIRY_REMINDER_ENABLED", "EXPIRY_REMINDER_DAYS", "EXPIRY_REMINDER_LAST_AT",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
@@ -74,7 +75,8 @@ UNCHANGED = "•••unchanged•••"
 # false value mean different things. No key: the installation predates the
 # wizard, and whether it is configured shows in the settings themselves.
 # false: the wizard was deliberately not taken, and the banner should show.
-WRITE_ON_DEMAND = frozenset({"SETUP_DONE", "MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT"})
+WRITE_ON_DEMAND = frozenset({"SETUP_DONE", "MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT",
+                             "EXPIRY_REMINDER_LAST_AT"})
 
 _lock = threading.RLock()
 
@@ -193,13 +195,20 @@ def _coerce(key, value):
         if number < 1:
             raise ValueError(i18n.t("the cleanup interval must be at least one day"))
         return number
-    if key in ("MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT"):
+    if key in ("MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT", "EXPIRY_REMINDER_LAST_AT"):
         # A unix time the bot writes for itself. Anything unreadable means "not
         # yet", which costs one run rather than an error on startup.
         try:
             return max(0.0, float(value))
         except (TypeError, ValueError):
             return 0.0
+    if key == "EXPIRY_REMINDER_DAYS":
+        # Days before the end; at least one, or "soon" would be the same
+        # letter as "it has ended".
+        number = int(value)
+        if number < 1:
+            raise ValueError(i18n.t("the reminder must come at least a day before the end"))
+        return number
     if key == "INACTIVITY_REMINDER_DAYS":
         # Days, never zero: "remind after no days" is not a threshold, and a
         # zero left in the file would nag every client on every sweep.
@@ -223,7 +232,7 @@ def _coerce(key, value):
         # Several lines are fine — a card number, the bank, whose name.
         return str(value or "").strip()
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
-               "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
+               "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED", "EXPIRY_REMINDER_ENABLED",
                "PAYMENT_MANUAL_ENABLED", "CRYPTOPAY_ENABLED", "CRYPTOPAY_TESTNET",
                "HELEKET_ENABLED", "YOOMONEY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",

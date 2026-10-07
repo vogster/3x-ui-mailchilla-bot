@@ -36,6 +36,17 @@ read as something a person wants to know before updating.
   counted, since the payment link can be edited before paying, and waits on
   the Payments page for you to look at.
 
+- **Reminding a client that their subscription is ending.** Switched on in the
+  same Settings item of the Letters tab as the inactivity reminder, the bot
+  writes a few days before a subscription ends — three by default — and again
+  on the day it does. While something can be bought, both letters carry an
+  "Extend" button that opens a letter to the bot with /buy already in it; while
+  nothing can, they say to write to the administrator. Each client gets each
+  letter once, without the bot keeping a list of whom it has told: it looks at
+  whose end fell between its last check and this one. A client switched off by
+  hand is not written to, and the inactivity reminder now leaves alone anybody
+  whose subscription has simply ended. Off until you switch it on.
+
 - The help letter, the registration letter and the answer to /status mention
   **/buy** — but only while something can actually be bought, so an
   installation that sells nothing never points anybody at it. Each line is

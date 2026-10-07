@@ -10,6 +10,7 @@ import threading
 import logging
 
 import config
+import expiry
 import inactivity
 import payments
 import purchases
@@ -60,6 +61,12 @@ def run_bot_loop():
             inactivity.run_if_due()
         except Exception as e:
             logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
+        try:
+            # Hourly at most, and only when switched on: the client list, two
+            # windows of time, and a letter for whoever's end falls in them.
+            expiry.run_if_due()
+        except Exception as e:
+            logger.error(f"Error in the expiry reminders: {e}", exc_info=True)
         try:
             # Asks the payment providers only while an invoice is open, which
             # is rarely; otherwise this is a look at a list in memory.

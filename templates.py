@@ -16,6 +16,7 @@ import os
 import re
 from collections import namedtuple
 from datetime import datetime
+from urllib.parse import quote
 
 import segno
 
@@ -385,6 +386,32 @@ def get_paid_email(order_id, tariff, until, sub_url="") -> Email:
         paragraphs += _split(text("paid.new_link"))
     return get_notice_email(title=text("paid.subject"), paragraphs=paragraphs,
                             code_text=sub_url or None)
+
+
+def expiry_subject(kind: str, days: int) -> str:
+    return text(f"expiry.{kind}_subject", days=days)
+
+
+def get_expiry_email(kind: str, end_ms: int, days: int, tariff: str = "",
+                     bot_address: str = "") -> Email:
+    """
+    The subscription ends in a few days ("soon"), or has ended ("ended").
+
+    While something can be bought, the letter offers a button that opens a
+    new letter to the bot with /buy in its subject — a mailto link, so it
+    needs nothing but the reader's own mail client. Without an address to
+    write to, the line saying to send /buy has to do on its own.
+    """
+    date = datetime.fromtimestamp(end_ms / 1000).strftime("%d.%m.%Y")
+    sell = selling()
+    buy_url = f"mailto:{bot_address}?subject={quote('/buy')}" if sell and bot_address else ""
+    return _render(
+        "expiry",
+        title=expiry_subject(kind, days),
+        paragraphs=_split(text(f"expiry.{kind}_text", date=date, days=days, tariff=tariff)),
+        buy_url=buy_url,
+        selling=sell,
+    )
 
 
 def _howto_steps():

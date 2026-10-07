@@ -1,0 +1,18 @@
+{% extends "_layout.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+{% for p in paragraphs %}
+<p style="margin: 0 0 14px 0;">{{ p | emph }}</p>
+{% endfor %}
+
+{# The button opens a letter to the bot with /buy already in its subject: the
+   offer is one press and one "send" away, with no command to remember. #}
+{% if buy_url %}
+<div style="margin-top: 22px;">{{ ui.button(buy_url, t("expiry.button")) }}</div>
+<p style="margin: 16px 0 0 0; color: #a0a0a8; font-size: 15px;">{{ t("expiry.buy_line") | emph }}</p>
+{% elif not selling %}
+<p style="margin: 8px 0 0 0;">{{ t("expiry.no_sale") | emph }}</p>
+{% else %}
+<p style="margin: 8px 0 0 0;">{{ t("expiry.buy_line") | emph }}</p>
+{% endif %}
+{% endblock %}
