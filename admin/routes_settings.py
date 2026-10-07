@@ -21,6 +21,7 @@ import email_bot
 import email_texts
 import expiry
 import i18n
+import notify
 import periodic
 import providers
 import settings
@@ -118,6 +119,8 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "mail_lang_options": i18n.options(i18n.mail_lang()),
         "test_email": _default_test_email(),
         "cleanup_last": _last_run("MAIL_CLEANUP_LAST_AT"),
+        "notify_events": [{"key": key, "name": key.lower(), "label": i18n.t(label),
+                           "hint": i18n.t(hint)} for _, key, label, hint in notify.EVENTS],
         "inactivity_last": _last_run("INACTIVITY_REMINDER_LAST_AT"),
         "expiry_last": _last_run("EXPIRY_REMINDER_LAST_AT"),
         "state": state,
@@ -163,6 +166,12 @@ def settings_submit(
     gotify_priority: str = Form("5"),
     gotify_title: str = Form(""),
     gotify_message: str = Form(""),
+    notify_registration: str = Form(""),
+    notify_payment: str = Form(""),
+    notify_forwarded: str = Form(""),
+    notify_payment_stuck: str = Form(""),
+    notify_xui_down: str = Form(""),
+    notify_mail_down: str = Form(""),
     happ_url: str = Form(""),
     incy_url: str = Form(""),
     payment_invoice_hours: str = Form("24"),
@@ -206,6 +215,12 @@ def settings_submit(
         "GOTIFY_PRIORITY": gotify_priority,
         "GOTIFY_TITLE": gotify_title,
         "GOTIFY_MESSAGE": gotify_message,
+        "NOTIFY_REGISTRATION": notify_registration == "on",
+        "NOTIFY_PAYMENT": notify_payment == "on",
+        "NOTIFY_FORWARDED": notify_forwarded == "on",
+        "NOTIFY_PAYMENT_STUCK": notify_payment_stuck == "on",
+        "NOTIFY_XUI_DOWN": notify_xui_down == "on",
+        "NOTIFY_MAIL_DOWN": notify_mail_down == "on",
         "HAPP_URL": happ_url,
         "INCY_URL": incy_url,
         "REMARK_INCLUDE_NAME": remark_include_name == "on",

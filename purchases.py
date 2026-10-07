@@ -28,6 +28,7 @@ from datetime import datetime
 import config
 import i18n
 import mailer
+import notify
 import payments
 import providers
 import tariffs
@@ -328,6 +329,13 @@ def apply(order_id: str) -> bool:
                         error=i18n.t("3x-ui refused the change; trying again"))
         logger.error(f"Order {order_id} for {email} is paid but could not be applied in 3x-ui "
                      f"(attempt {attempts}); trying again in {wait // 60000} min.")
+        if attempts == 1:
+            # Once, on the first refusal: the retries are the bot's business,
+            # but money taken and not yet delivered is the administrator's.
+            notify.push("payment_stuck", i18n.t("A payment is waiting for 3x-ui"),
+                        i18n.t("Order {order}: {email} paid {amount} ₽, but 3x-ui refused the change. "
+                               "The bot keeps trying.", order=order_id, email=email,
+                               amount=order["amount"]))
         return False
 
     payments.update(order_id, status=payments.APPLIED, applied_at=_now_ms(), error="")
@@ -360,11 +368,12 @@ def _tell(order: dict, target: int, created: bool):
                                                          _fmt_date(target), sub_url))
     except Exception as e:
         logger.error(f"Order {order['id']} is applied, but the letter to {email} did not go: {e}")
-    mailer.send_gotify_notification(
-        title=i18n.t("Payment received"),
-        message=i18n.t("{email} paid {amount} ₽ for {tariff}.", email=email,
-                       amount=order["amount"], tariff=order["tariff"]["name"]),
-    )
+    message = i18n.t("{email} paid {amount} ₽ for {tariff}.", email=email,
+                     amount=order["amount"], tariff=order["tariff"]["name"])
+    if order["code"]:
+        message += " " + i18n.t("Promo code: {word}, instead of {full} ₽.",
+                                word=order["code"], full=order["full_price"])
+    notify.push("payment", i18n.t("Payment received"), message)
 
 
 def run_if_due():

@@ -436,6 +436,22 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("What to notify about") }}</h2>
+            <span class="muted">{{ t("Each switch is one kind of push.") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            {% for ev in notify_events %}
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="{{ ev.name }}" name="{{ ev.name }}"
+                       {% if state[ev.key].value %}checked{% endif %}>
+                <label for="{{ ev.name }}">{{ ev.label }} {{ fields.help(ev.hint) }}</label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("The registration notification text") }}</h2>
             <span class="muted">{{ t("substitutions:") }} <span class="mono">{email}</span>,
                 <span class="mono">{name}</span>, <span class="mono">{service}</span></span>

@@ -340,7 +340,7 @@ class RegistrationUsesTheTariff(StorageCase):
         super().setUp()
         self.added = []
         self.real = {name: getattr(email_bot, name) for name in
-                     ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+                     ("get_shared_client", "send_welcome_email", "send_gotify_notification", "notify")}
         outer = self
 
         class FakeXui:
@@ -354,6 +354,8 @@ class RegistrationUsesTheTariff(StorageCase):
         email_bot.get_shared_client = lambda: FakeXui()
         email_bot.send_welcome_email = lambda *a, **kw: outer.added.append(("letter", a, kw))
         email_bot.send_gotify_notification = lambda **kw: None
+        # Registration pushes through notify now; no test may reach a real Gotify.
+        email_bot.notify = type("Silent", (), {"push": staticmethod(lambda *a, **kw: None)})
 
     def tearDown(self):
         for name, value in self.real.items():
@@ -459,7 +461,7 @@ class LimitedCodes(StorageCase):
         # rather than by calling spend() directly.
         added = []
         real = {name: getattr(email_bot, name) for name in
-                ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+                ("get_shared_client", "send_welcome_email", "send_gotify_notification", "notify")}
 
         class FakeXui:
             def find_client_by_email(self, addr):
@@ -472,6 +474,8 @@ class LimitedCodes(StorageCase):
         email_bot.get_shared_client = lambda: FakeXui()
         email_bot.send_welcome_email = lambda *a, **kw: None
         email_bot.send_gotify_notification = lambda **kw: None
+        # Registration pushes through notify now; no test may reach a real Gotify.
+        email_bot.notify = type("Silent", (), {"push": staticmethod(lambda *a, **kw: None)})
         try:
             tariff = self.make(name="Family", word="FAMILY")
             invite = self.invite(tariff["id"])
@@ -491,7 +495,7 @@ class LimitedCodes(StorageCase):
         sent = []
         added = []
         real = {name: getattr(email_bot, name) for name in
-                ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+                ("get_shared_client", "send_welcome_email", "send_gotify_notification", "notify")}
 
         class FakeXui:
             def find_client_by_email(self, addr):
@@ -506,6 +510,8 @@ class LimitedCodes(StorageCase):
         email_bot.get_shared_client = lambda: FakeXui()
         email_bot.send_welcome_email = lambda *a, **kw: sent.append(kw.get("tariff", ""))
         email_bot.send_gotify_notification = lambda **kw: None
+        # Registration pushes through notify now; no test may reach a real Gotify.
+        email_bot.notify = type("Silent", (), {"push": staticmethod(lambda *a, **kw: None)})
         try:
             tariff = self.make(name="Family", word="FAMILY")
             matched = tariffs.match("FAMILY")
@@ -565,7 +571,7 @@ class TheGroupIsTheTariff(StorageCase):
     def test_registration_stamps_the_tariff_name_as_the_group(self):
         added = []
         real = {name: getattr(email_bot, name) for name in
-                ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+                ("get_shared_client", "send_welcome_email", "send_gotify_notification", "notify")}
 
         class FakeXui:
             def find_client_by_email(self, addr):
@@ -578,6 +584,8 @@ class TheGroupIsTheTariff(StorageCase):
         email_bot.get_shared_client = lambda: FakeXui()
         email_bot.send_welcome_email = lambda *a, **kw: None
         email_bot.send_gotify_notification = lambda **kw: None
+        # Registration pushes through notify now; no test may reach a real Gotify.
+        email_bot.notify = type("Silent", (), {"push": staticmethod(lambda *a, **kw: None)})
         try:
             tariff = self.make(name="Family", word="FAMILY")
             matched = tariffs.match("FAMILY")

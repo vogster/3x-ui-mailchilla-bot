@@ -12,6 +12,15 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Gotify tells you about trouble, not only about registrations.** The Gotify
+  tab has a switch per kind of push: a registration, a payment (with the promo
+  code, when there was one), a letter passed on to support, a payment that
+  arrived but could not be applied, 3x-ui not answering, and the mailbox not
+  being read. The last two come from a watchdog that looks every few minutes
+  and says so once when something breaks and once when it is back — before,
+  a quiet 3x-ui showed up only as the next registration failing. All are on
+  by default; they reach the administrator alone.
+
 - **Letters the bot does not understand can go to support.** Switched on
   beside the support address on the General tab, a letter with no command in
   it — most often a question for a person — is passed on to the support

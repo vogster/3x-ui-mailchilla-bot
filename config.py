@@ -127,6 +127,15 @@ try:
 except ValueError:
     GOTIFY_PRIORITY = 5
 
+# Which events reach Gotify: see notify.EVENTS. All on, since they go to the
+# administrator alone and Gotify is set up precisely to be told things.
+NOTIFY_REGISTRATION = True
+NOTIFY_PAYMENT = True
+NOTIFY_FORWARDED = True
+NOTIFY_PAYMENT_STUCK = True
+NOTIFY_XUI_DOWN = True
+NOTIFY_MAIL_DOWN = True
+
 # App Urls Config
 # The two schemes are the same for every installation — they belong to the apps,
 # not to this server — so they are filled in from the start and the first-run

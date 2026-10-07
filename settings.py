@@ -46,6 +46,7 @@ MANAGED_KEYS = (
     "YOOMONEY_ENABLED", "YOOMONEY_WALLET", "YOOMONEY_TOKEN",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
+    "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN",
     # App schemes for the "Add to …" buttons in the letter
     "HAPP_URL", "INCY_URL",
     # The version check
@@ -236,7 +237,8 @@ def _coerce(key, value):
                "PAYMENT_MANUAL_ENABLED", "CRYPTOPAY_ENABLED", "CRYPTOPAY_TESTNET",
                "HELEKET_ENABLED", "YOOMONEY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
-               "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED", "SUPPORT_FORWARD_ENABLED"):
+               "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED", "SUPPORT_FORWARD_ENABLED",
+               "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

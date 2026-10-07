@@ -19,6 +19,7 @@ from email.utils import parseaddr
 
 import config
 import i18n
+import notify
 import purchases
 import tariffs
 import templates
@@ -195,10 +196,9 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
             "service": config.SERVICE_NAME,
             "tariff": tariff["name"],
         }
-        send_gotify_notification(
-            title=render_template(config.GOTIFY_TITLE, **fields),
-            message=render_template(config.GOTIFY_MESSAGE, **fields),
-        )
+        notify.push("registration",
+                    render_template(config.GOTIFY_TITLE, **fields),
+                    render_template(config.GOTIFY_MESSAGE, **fields))
     else:
         send_email_reply(email_addr, templates.notice_subject("create_error"),
                          templates.get_notice("create_error"))
@@ -295,6 +295,9 @@ def handle_unknown(email_addr: str, subject_received: str, body: str = "",
     if target:
         forward_to_support(target, email_addr, sender_name, subject_received, body)
         logger.info(f"The letter from {email_addr} was not understood; passed on to {target}.")
+        notify.push("forwarded", i18n.t("A letter passed on to support"),
+                    i18n.t("{email}: {subject}", email=email_addr,
+                           subject=subject_received or i18n.t("(no subject)")))
         send_email_reply(email_addr, templates.notice_subject("forwarded"),
                          templates.get_notice("forwarded"))
         return

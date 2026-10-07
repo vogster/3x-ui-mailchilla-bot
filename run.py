@@ -12,6 +12,7 @@ import logging
 import config
 import expiry
 import inactivity
+import notify
 import payments
 import purchases
 import tariffs
@@ -61,6 +62,12 @@ def run_bot_loop():
             inactivity.run_if_due()
         except Exception as e:
             logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
+        try:
+            # Every few minutes, and only with Gotify set up: tells the
+            # administrator once when 3x-ui or the mailbox stops working.
+            notify.watch()
+        except Exception as e:
+            logger.error(f"Error in the watchdog: {e}", exc_info=True)
         try:
             # Hourly at most, and only when switched on: the client list, two
             # windows of time, and a letter for whoever's end falls in them.

@@ -83,6 +83,8 @@ class Forwarding(unittest.TestCase):
         config.ADMIN_EMAIL = "admin@example.com"
         config.IMAP_USER = config.SMTP_USER = "bot@example.com"
         self.sent = []
+        self.real_notify = email_bot.notify
+        email_bot.notify = type("Silent", (), {"push": staticmethod(lambda *a, **kw: None)})
         self.real_send = email_bot.send_email_reply
         email_bot.send_email_reply = lambda to, subject, message, reply_to=None: \
             self.sent.append((to, subject, reply_to, message))
@@ -91,6 +93,7 @@ class Forwarding(unittest.TestCase):
         for k, v in self.saved.items():
             setattr(config, k, v)
         email_bot.send_email_reply = self.real_send
+        email_bot.notify = self.real_notify
 
     def test_the_letter_goes_to_support_and_the_client_is_told(self):
         email_bot.handle_unknown("ann@example.com", "My VPN is slow", "It is slow since Monday", "Ann")
