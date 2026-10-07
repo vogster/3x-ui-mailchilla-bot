@@ -10,6 +10,7 @@ import threading
 import logging
 
 import config
+import inactivity
 import tariffs
 
 logging.basicConfig(
@@ -50,6 +51,13 @@ def run_bot_loop():
             email_bot.check_mail()
         except Exception as e:
             logger.error(f"Error in the bot loop: {e}", exc_info=True)
+        try:
+            # Its own schedule, checked on every poll but rarely due: it needs
+            # 3x-ui and SMTP, never the IMAP connection the line above just
+            # used, so it does not belong on that call.
+            inactivity.run_if_due()
+        except Exception as e:
+            logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
         # Wait in a way that can be cut short by a signal
         _stop_event.wait(config.POLL_INTERVAL_SECONDS)
 

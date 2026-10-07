@@ -23,6 +23,7 @@ from email.header import decode_header
 from email.utils import parseaddr
 
 import config
+import periodic
 
 logger = logging.getLogger(__name__)
 
@@ -292,15 +293,8 @@ def _move_to_trash(mail, uids, folder) -> int:
 
 def cleanup_due(now=None) -> bool:
     """Whether the mailbox is due for a clear-out."""
-    if not getattr(config, "MAIL_CLEANUP_ENABLED", False):
-        return False
-    last = float(getattr(config, "MAIL_CLEANUP_LAST_AT", 0) or 0)
-    if not last:
-        # Never run, which is also the first poll after somebody switched it on:
-        # the mailbox is cleared now rather than in a month's time.
-        return True
-    days = max(1, int(getattr(config, "MAIL_CLEANUP_DAYS", 30) or 1))
-    return (now or time.time()) - last >= days * 86400
+    return periodic.due("MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS",
+                        "MAIL_CLEANUP_LAST_AT", now=now)
 
 
 def cleanup(mail) -> int:

@@ -53,6 +53,19 @@ MAIL_CLEANUP_DAYS = 30
 # so that a restart does not either lose the schedule or start the clock again.
 MAIL_CLEANUP_LAST_AT = 0.0
 
+# --- Reminding inactive clients ---
+# A client who has not connected in a while gets a letter asking whether
+# something is wrong. "Not connected" falls back to the registration date for
+# anybody 3x-ui has never seen online at all, so a client who registered and
+# never came back is not overlooked just for lacking a last-online entry.
+#
+# Off by default, the same as the mailbox cleanup: mailing people on a schedule
+# they did not ask for is not something an update should start doing by itself.
+INACTIVITY_REMINDER_ENABLED = False
+INACTIVITY_REMINDER_DAYS = 30
+# When the sweep last ran, as a unix time — written by the bot, not the panel.
+INACTIVITY_REMINDER_LAST_AT = 0.0
+
 # --- The seed of the first tariff ---
 # These three described what every new client got, back when there was one code
 # word and one set of limits. They belong to a tariff now (tariffs.json, the

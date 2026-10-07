@@ -33,6 +33,7 @@ MANAGED_KEYS = (
     "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
     "POLL_INTERVAL_SECONDS",
     "MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS", "MAIL_CLEANUP_LAST_AT",
+    "INACTIVITY_REMINDER_ENABLED", "INACTIVITY_REMINDER_DAYS", "INACTIVITY_REMINDER_LAST_AT",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
@@ -67,7 +68,7 @@ UNCHANGED = "•••unchanged•••"
 # false value mean different things. No key: the installation predates the
 # wizard, and whether it is configured shows in the settings themselves.
 # false: the wizard was deliberately not taken, and the banner should show.
-WRITE_ON_DEMAND = frozenset({"SETUP_DONE", "MAIL_CLEANUP_LAST_AT"})
+WRITE_ON_DEMAND = frozenset({"SETUP_DONE", "MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT"})
 
 _lock = threading.RLock()
 
@@ -186,15 +187,22 @@ def _coerce(key, value):
         if number < 1:
             raise ValueError(i18n.t("the cleanup interval must be at least one day"))
         return number
-    if key == "MAIL_CLEANUP_LAST_AT":
+    if key in ("MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT"):
         # A unix time the bot writes for itself. Anything unreadable means "not
-        # yet", which costs one cleanup rather than an error on startup.
+        # yet", which costs one run rather than an error on startup.
         try:
             return max(0.0, float(value))
         except (TypeError, ValueError):
             return 0.0
+    if key == "INACTIVITY_REMINDER_DAYS":
+        # Days, never zero: "remind after no days" is not a threshold, and a
+        # zero left in the file would nag every client on every sweep.
+        number = int(value)
+        if number < 1:
+            raise ValueError(i18n.t("the inactivity period must be at least one day"))
+        return number
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
-               "MAIL_CLEANUP_ENABLED",
+               "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED"):
         if isinstance(value, bool):

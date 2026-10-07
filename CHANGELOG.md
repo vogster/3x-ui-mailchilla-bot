@@ -31,6 +31,16 @@ read as something a person wants to know before updating.
   schedule set too eagerly can be undone from the mail client until the Trash
   empties itself. Off until you switch it on.
 
+- **Reminding a client who has not connected in a while.** The Letters tab has
+  a menu item of its own for it, set apart from the templates: switched on, the
+  bot checks, on the same schedule as the mailbox cleanup, who 3x-ui has not
+  seen online for longer than the period you set, and sends them the letter
+  beside it asking whether something is wrong. A client who registered and
+  never connected at all counts from the registration date rather than being
+  skipped for having no online record. The check looks again on its own
+  schedule, so a client still gone next time is reminded again. Off until you
+  switch it on.
+
 - **A support address and a link to the instructions**, both set on the General
   tab. The address goes into the footer of every letter and, in its own words,
   into the registration letter — where somebody is setting a connection up for

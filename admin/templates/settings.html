@@ -356,6 +356,13 @@
 
     <div class="mail-editor">
         <nav class="mail-menu">
+            {# A setting rather than a text — nothing here differs by language —
+               so it stands apart from the templates below it, above a divider,
+               rather than reading as one more of them. #}
+            <button type="button" data-mail="settings">
+                <span>{{ t("Settings") }}</span>
+            </button>
+            <div style="height: 1px; background: var(--line); margin: 10px 14px;"></div>
             {% for g in text_groups %}
             <button type="button" data-mail="{{ g.id }}" class="{% if loop.first %}on{% endif %}">
                 <span>{{ g.title }}</span>
@@ -365,6 +372,32 @@
         </nav>
 
         <div>
+            <div class="mail-pane panel" data-mail="settings" hidden>
+                <div class="panel-head">
+                    <h2>{{ t("Reminding inactive clients") }}</h2>
+                    <span class="muted">{{ t("Sends the «Inactivity reminder» letter to a client 3x-ui has not seen online in a while.") }}</span>
+                </div>
+                <div style="padding: 22px 20px;" class="form-grid">
+                    <div class="checkbox-row">
+                        <input type="hidden" name="switch:INACTIVITY_REMINDER_ENABLED" value="off">
+                        <input type="checkbox" class="switch" id="f-inactivity-enabled"
+                               name="switch:INACTIVITY_REMINDER_ENABLED" value="on"
+                               {% if state.INACTIVITY_REMINDER_ENABLED.value %}checked{% endif %}>
+                        <label for="f-inactivity-enabled">{{ t("Remind a client who has not connected in a while") }}
+                            {{ fields.help(t("A client 3x-ui has not seen online for longer than the period below gets the letter on the left, asking whether something is wrong. A client who registered and never connected at all counts from the registration date. The check runs again on its own schedule, and a client still gone next time is reminded again.")) }}
+                        </label>
+                    </div>
+                    <div>
+                        <label for="f-inactivity-days">{{ t("Considered inactive after, days") }} {{ fields.help(t("Switching it on checks at the next poll, and after that the count starts from the last time it ran, restarts included.")) }}</label>
+                        <input type="number" id="f-inactivity-days" name="setting:INACTIVITY_REMINDER_DAYS"
+                               min="1" step="1" value="{{ state.INACTIVITY_REMINDER_DAYS.value }}">
+                        {% if inactivity_last %}
+                        <div class="hint">{{ t("Last checked: {when}", when=inactivity_last) }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
             {% for g in text_groups %}
             <div class="mail-pane panel" data-mail="{{ g.id }}" {% if not loop.first %}hidden{% endif %}>
                 <div class="panel-head">
@@ -541,14 +574,17 @@
         var state = document.getElementById("texts-state");
         var save = document.getElementById("texts-save");
         if (form && state) {
-            // Only the letter texts count. The kind picker beside the broadcast's
-            // test button sits in this form too, but it chooses what the sample
-            // letter should look like — it edits nothing, and lighting up
-            // "unsaved changes" over it would be a lie.
+            // The letter texts, the switches among them and the plain settings
+            // beside them (so far only the inactivity threshold) all count. The
+            // kind picker beside the broadcast's test button sits in this form
+            // too, but it chooses what the sample letter should look like — it
+            // edits nothing, and lighting up "unsaved changes" over it would be
+            // a lie.
             function signature() {
                 var parts = [];
                 new FormData(form).forEach(function (value, key) {
-                    if (key.indexOf("text:") === 0 || key.indexOf("switch:") === 0) {
+                    if (key.indexOf("text:") === 0 || key.indexOf("switch:") === 0 ||
+                        key.indexOf("setting:") === 0) {
                         parts.push(key + "=" + value);
                     }
                 });

@@ -20,6 +20,7 @@ import config
 import email_bot
 import email_texts
 import i18n
+import periodic
 import settings
 import tariffs
 import templates as mail_templates
@@ -32,7 +33,7 @@ router = APIRouter()
 
 # These letters have a test version worth sending; the "General" group is only
 # the footer, which shows up in any of them.
-TESTABLE = {"welcome", "status", "help", "broadcast", "notice"}
+TESTABLE = {"welcome", "status", "help", "broadcast", "notice", "inactivity"}
 
 # The placeholder addresses from .env.example look real, and must never prefill
 # the send field: the letter would go to a stranger.
@@ -96,9 +97,9 @@ def _demo_tariff_name() -> str:
     return rows[0]["name"] if rows else ""
 
 
-def _cleanup_last() -> str:
-    """When the mailbox was last cleared out, for the line under the field."""
-    when = float(getattr(config, "MAIL_CLEANUP_LAST_AT", 0) or 0)
+def _last_run(key: str) -> str:
+    """When a scheduled job last ran, for the line under its field; empty for never."""
+    when = periodic.last_run(key)
     if not when:
         return ""
     return datetime.fromtimestamp(when).strftime("%d.%m.%Y %H:%M")
@@ -114,7 +115,8 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "mail_lang": i18n.mail_lang(),
         "mail_lang_options": i18n.options(i18n.mail_lang()),
         "test_email": _default_test_email(),
-        "cleanup_last": _cleanup_last(),
+        "cleanup_last": _last_run("MAIL_CLEANUP_LAST_AT"),
+        "inactivity_last": _last_run("INACTIVITY_REMINDER_LAST_AT"),
         "state": state,
         "error": error,
         "saved": saved,
@@ -504,10 +506,15 @@ async def settings_texts_save(request: Request):
     # later entry wins, which is the ticked one when there is one.
     switches = {key[len("switch:"):]: value == "on"
                 for key, value in form.items() if key.startswith("switch:")}
+    # A setting that is not a yes/no — so far only the inactivity threshold,
+    # which sits beside the letter it governs rather than on the Mail tab.
+    plain_settings = {key[len("setting:"):]: value
+                      for key, value in form.items() if key.startswith("setting:")}
+    other_settings = {**switches, **plain_settings}
     try:
         email_texts.save(values)
-        if switches:
-            settings.save(switches)
+        if other_settings:
+            settings.save(other_settings)
     except OSError as e:
         logger.error(f"Could not write the letter texts: {e}")
         return RedirectResponse(url="/settings?error=" + quote(i18n.t("Could not save the texts")),
@@ -614,4 +621,8 @@ def _sample_email(group: str, kind: str = "info"):
     if group == "notice":
         return (mail_templates.notice_subject("unknown"),
                 mail_templates.get_notice("unknown", subject=i18n.t("Hello")))
+    if group == "inactivity":
+        days = periodic.period_days("INACTIVITY_REMINDER_DAYS")
+        return (mail_templates.text("inactivity.subject"),
+                mail_templates.get_inactivity_email(demo_mail, days))
     return None

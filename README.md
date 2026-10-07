@@ -233,11 +233,13 @@ Everything that changes during normal use is set in the panel and applies on the
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, notification text |
-| **Letters** | the language letters go out in, every text of every letter, and a switch for each block that can be left out |
+| **Letters** | the language letters go out in, every text of every letter, a switch for each block that can be left out, and — as its own item beside the templates — reminding a client who has gone quiet |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
 
 The same tab can keep the mailbox tidy. Nobody reads it — every letter in it has been answered already — and after a year of registrations it holds thousands. Switched on, the bot moves the read letters to the Trash every so many days, on the connection it is polling with anyway. Only read ones: the flag is set after a letter has been dealt with, so an unread letter is one still owed an answer, which after a spell of the mailbox being unreachable may be a registration that has not happened yet. Nothing is deleted outright, so a schedule set too eagerly can be undone from the mail client until the Trash empties itself.
+
+The Letters tab keeps one more thing beside the templates, set apart from them in its own menu item: reminding a client who has gone quiet. Switched on, the bot checks — on the same schedule as the mailbox cleanup — who 3x-ui has not seen online for longer than the period you set, and sends the letter for it, asking whether something is wrong. A client who registered and never connected at all counts from the registration date rather than being skipped for having no online record. The check runs again on its own schedule, so a client still gone next time is reminded again rather than only once.
 
 Settings are kept in `settings.json`, the letter texts in `email_texts.json` and the tariffs in `tariffs.json`, all three beside the project. The mailbox is picked up on the next polling cycle.
 

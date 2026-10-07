@@ -202,7 +202,8 @@ class SupportAndInstructions(unittest.TestCase):
         config.SUPPORT_EMAIL = "help@example.com"
         for mail in (self.welcome(),
                      templates.get_status_email("ben@example.com", True, 1, 2, 0, 0),
-                     templates.get_notice("unknown", subject="?")):
+                     templates.get_notice("unknown", subject="?"),
+                     templates.get_inactivity_email("ben@example.com", 30)):
             self.assertIn("help@example.com", mail.html)
             self.assertIn("help@example.com", mail.text)
 
@@ -219,6 +220,20 @@ class SupportAndInstructions(unittest.TestCase):
         mail = self.welcome()
         self.assertIn("Напишите нам", mail.html)
         self.assertIn("Вопросы", mail.html)
+
+    def test_the_inactivity_letter_mentions_it_in_its_own_words_too(self):
+        # Same idea as the registration letter: the footer is a signature, this
+        # is help offered directly to somebody who may have stopped noticing it.
+        config.SUPPORT_EMAIL = "help@example.com"
+        mail = templates.get_inactivity_email("ben@example.com", 30)
+        self.assertIn("написать нам", mail.html)
+        self.assertIn("Вопросы", mail.html)
+
+    def test_the_inactivity_letter_drops_its_own_line_with_no_address(self):
+        config.SUPPORT_EMAIL = ""
+        mail = templates.get_inactivity_email("ben@example.com", 30)
+        self.assertNotIn("написать нам", mail.html)
+        self.assertNotIn("написать нам", mail.text)
 
     def test_the_instructions_are_a_link_in_the_letter(self):
         config.MANUAL_URL = "https://example.com/howto"

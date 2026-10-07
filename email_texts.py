@@ -150,6 +150,20 @@ GROUPS = [
         ],
     },
     {
+        "id": "inactivity",
+        "title": "Inactivity reminder",
+        "hint": "Sent to a client who has not connected in a while, when the "
+                "reminders are switched on under «Settings» at the top of the menu.",
+        "fields": [
+            ("inactivity.subject", "Subject", LINE, "Substitution: {service}"),
+            ("inactivity.text", "Text", TEXT,
+             "Substitutions: {service}, {email}, {days}. Every line is a paragraph."),
+            ("inactivity.support", "The support line", LINE,
+             "Substitution: {support}. Shown only when a support address is set on "
+             "the General tab."),
+        ],
+    },
+    {
         "id": "help",
         "title": "Help",
         "hint": "The answer to the /help command.",
@@ -263,6 +277,14 @@ DEFAULTS_BY_LANG = {
             "To import the subscription again, send a letter with **/help** in it — "
             "we will reply with the link and the instructions.",
 
+        "inactivity.subject": "We haven't seen you in a while",
+        "inactivity.text":
+            "Hello!\n"
+            "You haven't connected to {service} in {days} days. If something is not "
+            "working, send **/status** to this address to check your subscription, "
+            "or **/help** for the setup instructions.",
+        "inactivity.support": "You can also just write to us: **{support}**.",
+
         "help.subject": "{service} help",
         "help.intro":
             "You can manage your subscription by writing to this address — the command "
@@ -372,6 +394,14 @@ DEFAULTS_BY_LANG = {
         "status.outro":
             "Чтобы импортировать подписку заново, отправьте письмо с текстом **/help** — "
             "пришлём ссылку и инструкцию.",
+
+        "inactivity.subject": "Давно вас не видели",
+        "inactivity.text":
+            "Здравствуйте!\n"
+            "Вы не подключались к {service} уже {days} дней. Если что-то не работает, "
+            "отправьте на этот адрес письмо с **/status** — проверить подписку, "
+            "или **/help** — получить инструкцию по настройке.",
+        "inactivity.support": "Также можно просто написать нам: **{support}**.",
 
         "help.subject": "Справка {service}",
         "help.intro":

@@ -165,6 +165,13 @@ class PagesOpen(PanelCase):
             with self.subTest(url=url):
                 self.page(url)
 
+    def test_the_inactivity_reminder_fields_are_on_the_page(self):
+        # It lives on the Letters tab, beside the templates rather than on the
+        # Mail tab, so it is saved through the texts form's own field naming.
+        body = self.page("/settings")
+        self.assertIn('name="switch:INACTIVITY_REMINDER_ENABLED"', body)
+        self.assertIn('name="setting:INACTIVITY_REMINDER_DAYS"', body)
+
     def test_a_switched_block_carries_its_texts_inside_it(self):
         # The switches on the Letters tab are drawn as blocks with the texts
         # they govern inside them; a field that lost its way out of its block

@@ -291,6 +291,26 @@ def get_status_email(email, is_active, up, down, total, expiry_time_ms,
     )
 
 
+def get_inactivity_email(email, days) -> Email:
+    """
+    A nudge to a client who has not connected in a while.
+
+    Built through the same "notice" markup as the service replies: the letter
+    is a title and a couple of paragraphs, which is exactly that template's
+    shape, and a client card carrying its own layout would draw the same box
+    twice for no reason.
+    """
+    paragraphs = _split(text("inactivity.text", email=email, days=days))
+    # The footer already carries the address when it has one; this is the
+    # letter's own mention, the way the registration letter has one besides
+    # its footer. An empty address means nothing to write to, so the line is
+    # left out rather than reading "write to us: ".
+    support = (config.SUPPORT_EMAIL or "").strip()
+    if support:
+        paragraphs.append(text("inactivity.support"))
+    return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
+
+
 def _howto_steps():
     """
     Parses the multi-line instructions field: a line without indentation is a
