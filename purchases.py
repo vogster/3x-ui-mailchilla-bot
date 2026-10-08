@@ -95,7 +95,7 @@ def _lifetime_hours(provider) -> int:
     return min(hours, provider.max_hours) if provider.max_hours else hours
 
 
-def _open_offer(email: str, code: dict = None):
+def _open_offer(email: str, code: dict = None, gift: bool = False):
     """
     The orders of an offer this address already holds, if one is still good.
 
@@ -111,7 +111,7 @@ def _open_offer(email: str, code: dict = None):
         if order["email"] == email.strip().lower() and order["offer_id"]:
             by_offer.setdefault(order["offer_id"], []).append(order)
     for orders in by_offer.values():
-        if orders[0]["code"] != word:
+        if orders[0]["code"] != word or orders[0]["gift"] != gift:
             continue
         if min(o["expires_at"] for o in orders) - now < REUSE_LEFT_MS:
             continue
@@ -142,7 +142,7 @@ def _blocks(orders: list) -> list:
     return list(blocks.values())
 
 
-def build_offer(email: str, code: dict = None):
+def build_offer(email: str, code: dict = None, gift: bool = False):
     """
     Creates the invoices for one offer letter.
 
@@ -168,7 +168,7 @@ def build_offer(email: str, code: dict = None):
     for tariff in for_sale:
         for provider in ways:
             order = payments.create(email, tariff, provider.id, offer_id=offer_id,
-                                    hours=_lifetime_hours(provider), code=code)
+                                    hours=_lifetime_hours(provider), code=code, gift=gift)
             try:
                 invoice = provider.create(order)
             except Exception as e:
@@ -180,10 +180,11 @@ def build_offer(email: str, code: dict = None):
     return _blocks(made) or None
 
 
-def send_offer(email: str, code: dict = None):
+def send_offer(email: str, code: dict = None, gift: bool = False):
     """
     The answer to /buy, or to a word carrying a discount: the tariffs for sale
-    with a way to pay each.
+    with a way to pay each. With `gift`, the answer to /gift: the same tariffs,
+    bought for somebody else — see _apply_gift.
     """
     client = get_shared_client().find_client_by_email(email)
     if is_barred(client):
@@ -192,8 +193,8 @@ def send_offer(email: str, code: dict = None):
                                 templates.get_notice("purchase_barred"))
         return
 
-    reused = _open_offer(email, code)
-    blocks = _blocks(reused) if reused else build_offer(email, code)
+    reused = _open_offer(email, code, gift)
+    blocks = _blocks(reused) if reused else build_offer(email, code, gift)
     if not blocks:
         logger.info(f"{email} asked to buy, but there is nothing on sale "
                     f"(tariffs with a price: {len(tariffs.for_sale())}, "
@@ -201,8 +202,8 @@ def send_offer(email: str, code: dict = None):
         mailer.send_email_reply(email, templates.notice_subject("not_for_sale"),
                                 templates.get_notice("not_for_sale"))
         return
-    mailer.send_email_reply(email, templates.text("offer.subject"),
-                            templates.get_offer_email(blocks, code, now_ms=_now_ms()))
+    mailer.send_email_reply(email, templates.text("offer.gift_subject" if gift else "offer.subject"),
+                            templates.get_offer_email(blocks, code, now_ms=_now_ms(), gift=gift))
     logger.info(f"Offer {'sent again' if reused else 'sent'} to {email}: {len(blocks)} tariff(s)"
                 + (f", word {code['word']!r} at {tariffs.discount_text(code)} off." if code else "."))
 
@@ -298,6 +299,8 @@ def apply(order_id: str) -> bool:
     order = payments.get(order_id)
     if not order or order["status"] != payments.PAID:
         return False
+    if order["gift"]:
+        return _apply_gift(order)
     tariff = order["tariff"]
     email = order["email"]
 
@@ -353,6 +356,56 @@ def apply(order_id: str) -> bool:
     logger.info(f"Order {order_id} applied: {email} is on {tariff['name']!r} until "
                 f"{_fmt_date(target) or 'no end'}.")
     _tell(order, target, created)
+    return True
+
+
+def _apply_gift(order: dict) -> bool:
+    """
+    A paid gift becomes a one-use word, mailed to the buyer to pass on.
+
+    The word is a bonus code worth the tariff's term: somebody new who writes
+    it is registered on the tariff for that term, a client gets the term
+    added. A tariff with no end makes a plain one-use word instead — there are
+    no days to add, and a newcomer simply gets the tariff. The word is stored
+    on the order before the code is made, so a retry finishes the same gift
+    rather than minting a second one.
+    """
+    word = order["gift_word"]
+    if not word:
+        word = tariffs.generate_word()
+        order = payments.update(order["id"], gift_word=word)
+    if not tariffs.get_code(word):
+        if not tariffs.get(order["tariff"]["id"]):
+            payments.update(order["id"], error=i18n.t("The tariff of this gift was deleted; "
+                                                      "make the word by hand and mark it applied"))
+            logger.error(f"Gift order {order['id']}: its tariff {order['tariff']['name']!r} is gone; "
+                         f"no word can be made for it.")
+            return False
+        tariffs.save_code({
+            "word": word,
+            "tariff_id": order["tariff"]["id"],
+            "uses_left": 1,
+            "enabled": True,
+            "bonus_days": order["tariff"]["expire_days"],
+            "note": i18n.t("Gift from {email}, order {order}", email=order["email"], order=order["id"]),
+            "gift_order": order["id"],
+        })
+    payments.update(order["id"], status=payments.APPLIED, applied_at=_now_ms(), error="")
+    logger.info(f"Gift order {order['id']} by {order['email']}: word {word!r} for "
+                f"{order['tariff']['name']!r}.")
+    if order["code"]:
+        tariffs.spend(order["code"], order["email"])
+    try:
+        from expiry import bot_address
+        mailer.send_email_reply(order["email"], templates.text("gift.subject"),
+                                templates.get_gift_email(word, order["tariff"]["name"],
+                                                         order["tariff"]["expire_days"], bot_address()))
+    except Exception as e:
+        logger.error(f"Gift order {order['id']} is made, but the letter with the word did not go: {e}")
+    notify.push("payment", i18n.t("A gift was bought"),
+                i18n.t("{email} paid {amount} ₽ for a gift of {tariff}; the word is {word}.",
+                       email=order["email"], amount=order["amount"],
+                       tariff=order["tariff"]["name"], word=word))
     return True
 
 

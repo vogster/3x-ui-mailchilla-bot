@@ -190,6 +190,13 @@ GROUPS = [
              "Substitutions: {details} — the details from the Payments tab, "
              "{order} — the order number to put in the transfer."),
             ("offer.valid", "How long the links last", TEXT, "Substitution: {hours}"),
+            ("offer.gift_subject", "Gift offer — subject", LINE, "Substitution: {service}"),
+            ("offer.gift_intro", "Gift offer — introduction", TEXT,
+             "The answer to /gift. Every line is a paragraph."),
+            ("gift.subject", "The gift word — subject", LINE, "Substitution: {service}"),
+            ("gift.text", "The gift word — text", TEXT,
+             "Sent to the buyer with the word below it. Substitutions: {tariff}, {term}, "
+             "{address} — where the word is to be written. Every line is a paragraph."),
             ("paid.subject", "Receipt — subject", LINE, "Substitution: {service}"),
             ("paid.text", "Receipt — text", TEXT,
              "Substitutions: {order}, {tariff}, {until}. Every line is a paragraph."),
@@ -225,6 +232,8 @@ GROUPS = [
             ("help.intro", "Opening", TEXT, ""),
             ("help.cmd_status", "What /status does", LINE, ""),
             ("help.cmd_help", "What /help does", LINE, ""),
+            ("help.cmd_gift", "What /gift does", LINE,
+             "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
             ("help.cmd_buy", "What /buy does", LINE, "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
             ("help.sub_label", "The line above the link", LINE, ""),
             ("help.not_registered", "The text for people with no subscription", TEXT,
@@ -379,6 +388,16 @@ DEFAULTS_BY_LANG = {
         "offer.valid":
             "The links work for {hours} hours. Missed them? Send **/buy** and we "
             "will send fresh ones.",
+        "offer.gift_subject": "Give {service} as a gift",
+        "offer.gift_intro":
+            "Choose a tariff and a way to pay. Once paid, you get a word to pass on: whoever "
+            "writes it to this address gets the subscription — or, if they have one already, "
+            "its term added.",
+        "gift.subject": "Your {service} gift",
+        "gift.text":
+            "Thank you! Here is the word for the gift — **{tariff}**, {term}.\n"
+            "Pass it on: the person writes it to **{address}** and the subscription is theirs. "
+            "The word works once and does not expire.",
         "paid.subject": "Payment received",
         "paid.text":
             "Thank you! The payment for order **{order}** has arrived.\n"
@@ -408,6 +427,7 @@ DEFAULTS_BY_LANG = {
         "help.cmd_status": "the traffic left and when the subscription ends",
         "help.cmd_help": "this letter, with the instructions",
         "help.cmd_buy": "extend the subscription or buy one: the prices and the ways to pay",
+        "help.cmd_gift": "buy a subscription as a gift: you get a word to pass on",
         "welcome.commands_buy":
             "To extend the subscription, send **/buy** — we will reply with the prices "
             "and the ways to pay.",
@@ -564,6 +584,16 @@ DEFAULTS_BY_LANG = {
             "продлится, когда мы увидим платёж.",
         "offer.valid":
             "Ссылки действуют {hours} ч. Не успели — напишите **/buy**, пришлём новые.",
+        "offer.gift_subject": "Подарить подписку {service}",
+        "offer.gift_intro":
+            "Выберите тариф и способ оплаты. После оплаты вы получите слово, которое нужно "
+            "передать: тот, кто напишет его на этот адрес, получит подписку, а если она у него "
+            "уже есть — её срок добавится.",
+        "gift.subject": "Ваш подарок {service}",
+        "gift.text":
+            "Спасибо! Вот слово для подарка — **{tariff}**, {term}.\n"
+            "Передайте его: достаточно написать слово на **{address}**, и подписка будет оформлена. "
+            "Слово работает один раз и не сгорает.",
         "paid.subject": "Оплата получена",
         "paid.text":
             "Спасибо! Оплата по заказу **{order}** получена.\n"
@@ -593,6 +623,7 @@ DEFAULTS_BY_LANG = {
         "help.cmd_status": "остаток трафика и срок подписки",
         "help.cmd_help": "это письмо с инструкцией",
         "help.cmd_buy": "продлить подписку или купить: цены и способы оплаты",
+        "help.cmd_gift": "купить подписку в подарок: вы получите слово, которое нужно передать",
         "welcome.commands_buy":
             "Чтобы продлить подписку, напишите **/buy** — пришлём цены и способы оплаты.",
         "status.buy": "Продлить подписку — напишите **/buy**.",

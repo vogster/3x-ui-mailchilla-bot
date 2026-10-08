@@ -72,7 +72,10 @@
                         <div class="muted">{{ o.created_text }}</div>
                     </td>
                     <td><a href="/clients?q={{ o.email | urlencode }}">{{ o.email }}</a></td>
-                    <td>{{ o.tariff.name }}</td>
+                    <td>
+                        {{ o.tariff.name }}
+                        {% if o.gift %}<div class="muted">{{ t("a gift") }}{% if o.gift_word %} · <a href="/tariffs/codes/{{ o.gift_word }}" class="mono">{{ o.gift_word }}</a>{% endif %}</div>{% endif %}
+                    </td>
                     <td class="mono">
                         {{ o.amount }} ₽
                         {% if o.code %}<div class="muted" style="font-family: inherit;">{{ t("{word}, instead of {full} ₽", word=o.code, full=o.full_price) }}</div>{% endif %}

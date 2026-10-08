@@ -1023,4 +1023,17 @@ TEXTS = {
     "Bonus word used already — subject": "Бонусное слово уже использовано — тема",
     "Bonus word used already — text": "Бонусное слово уже использовано — текст",
     "Each address can use a given bonus word once. Every line is a paragraph.": "Каждый адрес может использовать бонусное слово один раз. Каждая строка — абзац.",
+    # Gifts
+    "Gift offer — subject": "Подарок — тема предложения",
+    "Gift offer — introduction": "Подарок — вступление предложения",
+    "The answer to /gift. Every line is a paragraph.": "Ответ на /gift. Каждая строка — абзац.",
+    "The gift word — subject": "Слово-подарок — тема",
+    "The gift word — text": "Слово-подарок — текст",
+    "Sent to the buyer with the word below it. Substitutions: {tariff}, {term}, {address} — where the word is to be written. Every line is a paragraph.": "Отправляется покупателю, слово — под текстом. Подстановки: {tariff}, {term}, {address} — куда писать слово. Каждая строка — абзац.",
+    "What /gift does": "Что делает /gift",
+    "A gift was bought": "Куплен подарок",
+    "{email} paid {amount} ₽ for a gift of {tariff}; the word is {word}.": "{email} оплатил(а) {amount} ₽ за подарок «{tariff}»; слово — {word}.",
+    "Gift from {email}, order {order}": "Подарок от {email}, заказ {order}",
+    "The tariff of this gift was deleted; make the word by hand and mark it applied": "Тариф этого подарка удалён; создайте слово вручную",
+    "a gift": "подарок",
 }

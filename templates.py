@@ -323,7 +323,7 @@ def get_inactivity_email(email, days) -> Email:
     return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
-def get_offer_email(blocks, code=None, now_ms=None) -> Email:
+def get_offer_email(blocks, code=None, now_ms=None, gift=False) -> Email:
     """
     The tariffs for sale and a way to pay each, as purchases.build_offer made them.
 
@@ -363,12 +363,23 @@ def get_offer_email(blocks, code=None, now_ms=None) -> Email:
         hours = int(getattr(config, "PAYMENT_INVOICE_HOURS", 24) or 24)
     return _render(
         "offer",
-        title=text("offer.subject"),
-        intro=_split(text("offer.intro")) + (
+        title=text("offer.gift_subject" if gift else "offer.subject"),
+        intro=_split(text("offer.gift_intro" if gift else "offer.intro")) + (
             _split(text("offer.code_line", word=code["word"],
                         discount=tariffs.discount_text(code))) if code else []),
         blocks=laid_out,
         valid=text("offer.valid", hours=hours),
+    )
+
+
+def get_gift_email(word, tariff, days, bot_address="") -> Email:
+    """The buyer's letter: the word to pass on, and what it does."""
+    return get_notice_email(
+        title=text("gift.subject"),
+        paragraphs=_split(text("gift.text", tariff=tariff, address=bot_address or "",
+                               term=(text("welcome.value_forever") if not days
+                                     else text("welcome.value_days", days=days)))),
+        code_text=word,
     )
 
 

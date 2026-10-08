@@ -12,6 +12,14 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Gifts.** A client writes **/gift** and gets the same letter /buy sends,
+  headed as a gift. Once paid, the buyer receives a word to pass on: whoever
+  writes it to the bot gets the tariff for its full term, or — if they have a
+  subscription already — that term added to it. The word works once and does
+  not expire, and since somebody paid for it, the limits on free
+  registration do not apply to it. The Payments page marks gift orders and
+  links each to its word.
+
 - **Code words with bonus days.** A code can carry a number of days instead
   of opening a tariff for free. A client who writes it gets the days added to
   their term — from whichever is later, today or its end, and a subscription

@@ -102,6 +102,11 @@ def _clean(raw: dict) -> dict:
         # the amount, and empty, for an order bought at the full price.
         "full_price": int(raw.get("full_price") or raw.get("amount") or 0),
         "code": str(raw.get("code") or ""),
+        # Bought for somebody else: applying it makes a one-use word rather
+        # than extending the buyer, and the word is kept here so that a retry
+        # finds the one already made instead of making a second.
+        "gift": bool(raw.get("gift")),
+        "gift_word": str(raw.get("gift_word") or ""),
         "currency": str(raw.get("currency") or "RUB"),
         "provider": str(raw.get("provider") or ""),
         # The provider's own id for the invoice, and the link to pay it.
@@ -172,7 +177,7 @@ def load():
 
 
 def create(email: str, tariff: dict, provider: str, offer_id: str = "",
-           hours: int = 24, code: dict = None) -> dict:
+           hours: int = 24, code: dict = None, gift: bool = False) -> dict:
     """
     A new pending order for one tariff, paid one way. Not yet an invoice.
 
@@ -189,6 +194,7 @@ def create(email: str, tariff: dict, provider: str, offer_id: str = "",
             "amount": tariffs.discounted_price(tariff["price"], code),
             "full_price": tariff["price"],
             "code": (code or {}).get("word", "") if (code or {}).get("discount") else "",
+            "gift": gift,
             "provider": provider,
             "created_at": now,
             "expires_at": now + max(int(hours), 1) * 3600 * 1000,

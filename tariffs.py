@@ -174,6 +174,9 @@ def _clean_code(raw: dict) -> dict:
         # or as the whole term of a newcomer registered on the code's tariff.
         # 0 is an ordinary word. Each address can use a given one only once.
         "bonus_days": bonus_days,
+        # The order a gift word was bought by. A paid word is not a free
+        # trial: the limits on free registration do not apply to it.
+        "gift_order": str(raw.get("gift_order") or ""),
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
 

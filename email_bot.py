@@ -166,13 +166,15 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         return
 
     # The two limits on a new free registration (abuse.py). An existing
-    # client above was answered whatever they are: they are already in.
-    if abuse.is_blocked_domain(email_addr):
+    # client above was answered whatever they are: they are already in. A
+    # gift word is not free — somebody paid for it — and is let through.
+    paid = bool((code or {}).get("gift_order"))
+    if not paid and abuse.is_blocked_domain(email_addr):
         logger.info(f"Registration from {email_addr} refused: a throwaway domain.")
         send_email_reply(email_addr, templates.notice_subject("domain_blocked"),
                          templates.get_notice("domain_blocked"))
         return
-    if not abuse.registration_allowed():
+    if not paid and not abuse.registration_allowed():
         logger.info(f"Registration from {email_addr} waits: the hourly limit is reached.")
         return DEFERRED
 
@@ -204,7 +206,8 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"],
                            tariff=tariff["name"])
         logger.info(f"Client {email_addr} registered successfully on {tariff['name']!r}.")
-        abuse.note_registration()
+        if not paid:
+            abuse.note_registration()
         # The code is spent only now. Burning it before the client exists would
         # lose an invitation to a 3x-ui that happened to be unreachable.
         if code:
@@ -631,6 +634,8 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
                 return
         else:
             handle_unknown(from_email, subject_clean, body_clean, sender_name)
+    elif contains_word(text, "/gift"):
+        purchases.send_offer(from_email, gift=True)
     elif contains_word(text, "/buy"):
         # After the code words: a letter carrying one is a registration, and
         # the word is the more specific thing it asks for.

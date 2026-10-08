@@ -299,6 +299,60 @@ class ApplyingAPayment(OrdersCase):
         self.assertEqual(xui.updates, [])
 
 
+class Gifts(OrdersCase):
+    """A gift order makes a one-use word instead of extending its buyer."""
+
+    def setUp(self):
+        super().setUp()
+        import tariffs
+        self.tariffs = tariffs
+        self.dir2 = tempfile.mkdtemp(prefix="mailchilla-gifts-")
+        self.real_tpath = tariffs.TARIFFS_PATH
+        tariffs.TARIFFS_PATH = os.path.join(self.dir2, "tariffs.json")
+        self.saved_tstate = tariffs.snapshot()
+        tariffs._state = {"tariffs": [], "codes": []}
+        self.tariff = tariffs.save_tariff({"name": "Month", "limit_gb": 100, "expire_days": 30,
+                                           "inbound_ids": [1], "price": 300})
+        self.saved_manual = (config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS)
+
+    def tearDown(self):
+        config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS = self.saved_manual
+        self.tariffs.TARIFFS_PATH = self.real_tpath
+        self.tariffs._state = self.saved_tstate
+        super().tearDown()
+
+    def paid_gift(self):
+        order = payments.create("ann@example.com", self.tariff, "manual", gift=True)
+        payments.mark_paid(order["id"], "admin")
+        return order["id"]
+
+    def test_the_buyer_gets_a_word_and_is_not_extended(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "expiryTime": 0}))
+        order_id = self.paid_gift()
+        self.assertTrue(purchases.apply(order_id))
+        word = payments.get(order_id)["gift_word"]
+        code = self.tariffs.get_code(word)
+        self.assertEqual((code["uses_left"], code["bonus_days"], code["gift_order"]), (1, 30, order_id))
+        self.assertEqual(xui.updates, [])
+        self.assertIn(word, self.sent[0][2].text)
+
+    def test_a_retry_finishes_the_same_gift(self):
+        order_id = self.paid_gift()
+        payments.update(order_id, gift_word="SAMEWORD23")
+        purchases.apply(order_id)
+        self.assertIsNotNone(self.tariffs.get_code("SAMEWORD23"))
+        self.assertEqual(len(self.tariffs.all_codes()), 1)
+
+    def test_a_gift_offer_is_not_mistaken_for_a_purchase(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS = True, "x"
+        purchases.send_offer("ann@example.com", gift=True)
+        purchases.send_offer("ann@example.com")
+        kinds = sorted(o["gift"] for o in payments.all_orders())
+        self.assertEqual(kinds, [False, True])
+
+
 class WatchingTheInvoices(OrdersCase):
     def test_a_paid_invoice_is_noticed_and_applied(self):
         provider = PollingProvider(answer=payments.PAID)

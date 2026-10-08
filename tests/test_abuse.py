@@ -117,6 +117,20 @@ class TheBotAtTheLimits(Case):
         self.assertIsNone(result)
         self.assertEqual(self.sent, [templates.notice_subject("domain_blocked")])
 
+    def test_a_paid_gift_word_is_not_held_to_the_free_limits(self):
+        config.BLOCK_DISPOSABLE = True
+        config.REGISTRATIONS_PER_HOUR = 1
+        abuse._limit_reported = True
+        abuse.note_registration()
+        email_bot.get_shared_client = lambda: type("X", (), {
+            "find_client_by_email": lambda self, e: None,
+            "add_client": lambda self, **kw: (None, [])})()
+        result = email_bot.handle_registration("x@yopmail.com", tariff={
+            "name": "Month", "limit_gb": 0, "expire_days": 30, "inbound_ids": [1]},
+            code={"word": "GIFT", "gift_order": "ORDER1"})
+        self.assertNotEqual(result, email_bot.DEFERRED)
+        self.assertNotIn(templates.notice_subject("domain_blocked"), self.sent)
+
     def test_a_full_hour_leaves_the_letter_for_later(self):
         config.BLOCK_DISPOSABLE = False
         config.REGISTRATIONS_PER_HOUR = 1
