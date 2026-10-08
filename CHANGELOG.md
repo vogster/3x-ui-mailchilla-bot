@@ -12,6 +12,15 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Analytics.** A page of its own in the menu: takings for the last 30 days
+  as a bar per day and for the year by month, the average purchase and the
+  number of paying clients, the split by tariff and by way of paying, and the
+  share of subscriptions, packs, gifts, promo codes and invitations. Below
+  that, the two figures a subscription service lives by: how many who came in
+  on a free word went on to pay, and of the subscriptions that ended in the
+  last 30 days, how many were renewed. Worked out when the page opens from
+  what is already kept; nothing new is stored for it.
+
 - **Traffic packs.** A tariff can be marked as a traffic pack: a price and a
   size, no term. A client with a traffic limit sees the packs in the answer to
   /buy, below the subscriptions, and one bought adds its size to their current

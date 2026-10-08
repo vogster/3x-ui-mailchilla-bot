@@ -153,6 +153,7 @@ def logout(request: Request):
 from admin.routes_clients import router as clients_router  # noqa: E402
 from admin.routes_tariffs import router as tariffs_router  # noqa: E402
 from admin.routes_payments import router as payments_router  # noqa: E402
+from admin.routes_stats import router as stats_router  # noqa: E402
 from admin.routes_broadcast import router as broadcast_router  # noqa: E402
 from admin.routes_settings import router as settings_router  # noqa: E402
 from admin.routes_logs import router as logs_router  # noqa: E402
@@ -161,6 +162,7 @@ from admin.routes_setup import router as setup_router  # noqa: E402
 app.include_router(clients_router)
 app.include_router(tariffs_router)
 app.include_router(payments_router)
+app.include_router(stats_router)
 app.include_router(broadcast_router)
 app.include_router(settings_router)
 app.include_router(logs_router)

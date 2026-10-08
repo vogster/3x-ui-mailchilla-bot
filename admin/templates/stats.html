@@ -1,0 +1,114 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Analytics") }}{% endblock %}
+{% block nav_stats %}active{% endblock %}
+{% block content %}
+<style>
+    /* A bar chart drawn in CSS: one column per day, its height a share of the
+       busiest day. No library and no request — the panel has no static files.
+       Not ".bar": base_admin has a traffic meter by that name, pill-shaped and
+       shaded, and borrowing it drew every empty day as a full grey column. */
+    .bars { display: flex; align-items: flex-end; gap: 3px; height: 160px; padding: 0 20px; }
+    .bars .day { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+    .bars .fill { background: var(--ok); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+    .bars .day:hover .fill { opacity: 1; }
+    .bars-axis { display: flex; gap: 3px; padding: 6px 20px 16px 20px; font-size: 10px; color: var(--fg-3); }
+    .bars-axis span { flex: 1; text-align: center; }
+    .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 20px; }
+    .split table td:last-child { text-align: right; }
+</style>
+
+<h1 style="margin: 0 0 8px 0;">{{ t("Analytics") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0;">
+    {{ t("Worked out on opening the page from the payments applied and the client list in 3x-ui. Money counts once it has turned into days — a payment waiting for 3x-ui is not here yet.") }}
+</p>
+
+<div class="cards">
+    <div class="card"><div class="label">{{ t("In 30 days") }}</div><div class="value">{{ summary.recent_total }} ₽</div></div>
+    <div class="card"><div class="label">{{ t("Purchases in 30 days") }}</div><div class="value">{{ summary.recent_orders }}</div></div>
+    <div class="card"><div class="label">{{ t("Average purchase") }}</div><div class="value">{{ summary.average }} ₽</div></div>
+    <div class="card"><div class="label">{{ t("Paying clients, all time") }}</div><div class="value">{{ summary.payers }}</div></div>
+    <div class="card"><div class="label">{{ t("All time") }}</div><div class="value">{{ summary.total }} ₽</div></div>
+</div>
+
+<div class="panel">
+    <div class="panel-head"><h2>{{ t("By day, last 30 days") }}</h2></div>
+    <div style="padding-top: 18px;">
+        <div class="bars">
+            {% for d in days %}
+            <div class="day" title="{{ d.date }}: {{ d.amount }} ₽"><div class="fill" style="height: {{ d.height }}%;"></div></div>
+            {% endfor %}
+        </div>
+        <div class="bars-axis">
+            {% for d in days %}<span>{% if loop.index0 % 5 == 0 or loop.last %}{{ d.date }}{% endif %}</span>{% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="split">
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("Do people stay?") }}</h2><span class="muted">{{ t("last 30 days") }}</span></div>
+        <div style="padding: 18px 20px;">
+            {% if retention %}
+            <table><tbody>
+                <tr><td>{{ t("Renewed") }}</td><td class="mono">{{ retention.renewals }}</td></tr>
+                <tr><td>{{ t("Ended and not renewed") }}</td><td class="mono">{{ retention.ended }}</td></tr>
+                <tr><td>{{ t("Kept") }}</td><td class="mono">{% if retention.percent is not none %}{{ retention.percent }}%{% else %}—{% endif %}</td></tr>
+            </tbody></table>
+            {% else %}
+            <p class="muted" style="margin: 0;">{{ t("3x-ui is not answering, so who stayed cannot be told.") }}</p>
+            {% endif %}
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("From trial to paying") }}</h2></div>
+        <div style="padding: 18px 20px;">
+            <table><tbody>
+                <tr><td>{{ t("Came in through a free word") }}</td><td class="mono">{{ conversion.arrived }}</td></tr>
+                <tr><td>{{ t("Of them paid since") }}</td><td class="mono">{{ conversion.paid }}</td></tr>
+                <tr><td>{{ t("Conversion") }}</td><td class="mono">{% if conversion.percent is not none %}{{ conversion.percent }}%{% else %}—{% endif %}</td></tr>
+            </tbody></table>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("What was sold") }}</h2><span class="muted">{{ t("all time") }}</span></div>
+        <div style="padding: 18px 20px;">
+            <table><tbody>
+                <tr><td>{{ t("Subscriptions") }}</td><td class="mono">{{ kinds.subscription or 0 }} ₽</td></tr>
+                <tr><td>{{ t("Traffic packs") }}</td><td class="mono">{{ kinds.pack or 0 }} ₽</td></tr>
+                <tr><td>{{ t("Gifts") }}</td><td class="mono">{{ kinds.gift or 0 }} ₽</td></tr>
+                <tr><td class="muted">{{ t("of it through promo codes") }}</td><td class="mono">{{ kinds.promo or 0 }} ₽</td></tr>
+                <tr><td class="muted">{{ t("of it through invitations") }}</td><td class="mono">{{ kinds.referral or 0 }} ₽</td></tr>
+            </tbody></table>
+        </div>
+    </div>
+</div>
+
+<div class="split">
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("By tariff") }}</h2></div>
+        <div style="padding: 18px 20px;">
+            {% if by_tariff %}<table><tbody>
+            {% for name, amount in by_tariff %}<tr><td>{{ name }}</td><td class="mono">{{ amount }} ₽</td></tr>{% endfor %}
+            </tbody></table>{% else %}<p class="muted" style="margin:0;">{{ t("Nothing sold yet.") }}</p>{% endif %}
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("By way of paying") }}</h2></div>
+        <div style="padding: 18px 20px;">
+            {% if by_provider %}<table><tbody>
+            {% for name, amount in by_provider %}<tr><td>{{ name }}</td><td class="mono">{{ amount }} ₽</td></tr>{% endfor %}
+            </tbody></table>{% else %}<p class="muted" style="margin:0;">{{ t("Nothing sold yet.") }}</p>{% endif %}
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("By month") }}</h2></div>
+        <div style="padding: 18px 20px;">
+            <table><tbody>
+            {% for month, amount, count in months|reverse %}
+            <tr><td class="mono">{{ month[5:7] }}.{{ month[0:4] }}</td><td class="muted">{{ count }}</td><td class="mono">{{ amount }} ₽</td></tr>
+            {% endfor %}
+            </tbody></table>
+        </div>
+    </div>
+</div>
+{% endblock %}

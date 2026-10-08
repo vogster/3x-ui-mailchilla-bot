@@ -158,7 +158,7 @@ class PanelCase(unittest.TestCase):
         self.patched = []
         for name in ("admin.routes_tariffs", "admin.routes_clients",
                      "admin.routes_broadcast", "admin.routes_settings",
-                     "admin.routes_setup", "admin.app", "purchases"):
+                     "admin.routes_setup", "admin.app", "purchases", "admin.routes_stats"):
             module = __import__(name, fromlist=["x"])
             if hasattr(module, "get_shared_client"):
                 self.patched.append((module, module.get_shared_client))
@@ -190,7 +190,7 @@ class PanelCase(unittest.TestCase):
 class PagesOpen(PanelCase):
     def test_the_pages_of_the_panel(self):
         for url in ("/", "/clients", "/tariffs", "/tariffs/new", "/broadcast",
-                    "/settings", "/logs", "/setup", "/payments"):
+                    "/settings", "/logs", "/setup", "/payments", "/stats"):
             with self.subTest(url=url):
                 self.page(url)
 
@@ -667,6 +667,11 @@ class ThePaymentsPage(PanelCase):
         super().setUp()
         self.tariff = tariffs.save_tariff({**self.tariff, "price": 300})
         self.order = payments.create("ben@example.com", self.tariff, "manual")
+
+    def test_the_sale_shows_in_the_analytics(self):
+        self.client.post(f"/payments/{self.order['id']}/paid")
+        body = self.page("/stats")
+        self.assertIn("300 ₽", body)
 
     def test_the_order_is_listed(self):
         body = self.page("/payments")
