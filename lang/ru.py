@@ -1100,4 +1100,6 @@ TEXTS = {
     "Nothing sold yet.": "Пока ничего не продано.",
     "By way of paying": "По способам оплаты",
     "By month": "По месяцам",
+    "General [payments]": "Общие",
+    "switched on": "включено",
 }
