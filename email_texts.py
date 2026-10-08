@@ -197,6 +197,13 @@ GROUPS = [
             ("gift.text", "The gift word — text", TEXT,
              "Sent to the buyer with the word below it. Substitutions: {tariff}, {term}, "
              "{address} — where the word is to be written. Every line is a paragraph."),
+            ("offer.referral_line", "The invitation discount", TEXT,
+             "Added to the introduction for a friend who wrote an invitation word. "
+             "Substitution: {discount}."),
+            ("invite.subject", "The invitation word — subject", LINE, "Substitution: {service}"),
+            ("invite.text", "The invitation word — text", TEXT,
+             "The answer to /invite, with the word below it. Substitutions: {discount}, {days}, "
+             "{address}. Every line is a paragraph."),
             ("paid.subject", "Receipt — subject", LINE, "Substitution: {service}"),
             ("paid.text", "Receipt — text", TEXT,
              "Substitutions: {order}, {tariff}, {until}. Every line is a paragraph."),
@@ -232,6 +239,8 @@ GROUPS = [
             ("help.intro", "Opening", TEXT, ""),
             ("help.cmd_status", "What /status does", LINE, ""),
             ("help.cmd_help", "What /help does", LINE, ""),
+            ("help.cmd_invite", "What /invite does", LINE,
+             "Shown only while inviting friends is switched on and something can be bought."),
             ("help.cmd_gift", "What /gift does", LINE,
              "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
             ("help.cmd_buy", "What /buy does", LINE, "Shown only while something can be bought: a tariff has a price and a way of paying is switched on."),
@@ -277,6 +286,10 @@ GROUPS = [
             ("notice.bonus_used_subject", "Bonus word used already — subject", LINE, ""),
             ("notice.bonus_used_text", "Bonus word used already — text", TEXT,
              "Each address can use a given bonus word once. Every line is a paragraph."),
+            ("notice.referral_reward_subject", "A friend paid — subject", LINE, ""),
+            ("notice.referral_reward_text", "A friend paid — text", TEXT,
+             "Sent to the client whose invitation word a friend bought through. "
+             "Substitutions: {days}, {until}. Every line is a paragraph."),
             ("notice.forwarded_subject", "Passed on to support — subject", LINE, ""),
             ("notice.forwarded_text", "Passed on to support — text", TEXT,
              "Sent to a client whose letter was passed on to support. Every line is a paragraph."),
@@ -398,6 +411,12 @@ DEFAULTS_BY_LANG = {
             "Thank you! Here is the word for the gift — **{tariff}**, {term}.\n"
             "Pass it on: the person writes it to **{address}** and the subscription is theirs. "
             "The word works once and does not expire.",
+        "offer.referral_line": "You were invited by a friend: **{discount}** off your first purchase.",
+        "invite.subject": "Your {service} invitation word",
+        "invite.text":
+            "Here is your word for friends. A friend who writes it to **{address}** gets "
+            "**{discount}** off their first purchase — and when they pay, we add **{days}** days "
+            "to your subscription.",
         "paid.subject": "Payment received",
         "paid.text":
             "Thank you! The payment for order **{order}** has arrived.\n"
@@ -428,6 +447,7 @@ DEFAULTS_BY_LANG = {
         "help.cmd_help": "this letter, with the instructions",
         "help.cmd_buy": "extend the subscription or buy one: the prices and the ways to pay",
         "help.cmd_gift": "buy a subscription as a gift: you get a word to pass on",
+        "help.cmd_invite": "your word for friends: a discount for them, days for you",
         "welcome.commands_buy":
             "To extend the subscription, send **/buy** — we will reply with the prices "
             "and the ways to pay.",
@@ -471,6 +491,10 @@ DEFAULTS_BY_LANG = {
         "notice.bonus_used_text":
             "The bonus days from this word were already added to your subscription — each word "
             "works once per address.",
+        "notice.referral_reward_subject": "A friend you invited has paid",
+        "notice.referral_reward_text":
+            "Thank you for the invitation! We have added **{days}** days to your subscription. "
+            "It is now valid until **{until}**.",
         "notice.forwarded_subject": "Your letter has been passed on",
         "notice.forwarded_text":
             "The bot did not recognise a command in your letter, so it has been passed "
@@ -594,6 +618,12 @@ DEFAULTS_BY_LANG = {
             "Спасибо! Вот слово для подарка — **{tariff}**, {term}.\n"
             "Передайте его: достаточно написать слово на **{address}**, и подписка будет оформлена. "
             "Слово работает один раз и не сгорает.",
+        "offer.referral_line": "Вас пригласил друг: скидка **{discount}** на первую покупку.",
+        "invite.subject": "Ваше слово-приглашение {service}",
+        "invite.text":
+            "Вот ваше слово для друзей. Друг, который напишет его на **{address}**, получит "
+            "скидку **{discount}** на первую покупку, а когда он оплатит, мы добавим вам "
+            "**{days}** дн. подписки.",
         "paid.subject": "Оплата получена",
         "paid.text":
             "Спасибо! Оплата по заказу **{order}** получена.\n"
@@ -624,6 +654,7 @@ DEFAULTS_BY_LANG = {
         "help.cmd_help": "это письмо с инструкцией",
         "help.cmd_buy": "продлить подписку или купить: цены и способы оплаты",
         "help.cmd_gift": "купить подписку в подарок: вы получите слово, которое нужно передать",
+        "help.cmd_invite": "ваше слово для друзей: им скидка, вам дни",
         "welcome.commands_buy":
             "Чтобы продлить подписку, напишите **/buy** — пришлём цены и способы оплаты.",
         "status.buy": "Продлить подписку — напишите **/buy**.",
@@ -666,6 +697,10 @@ DEFAULTS_BY_LANG = {
         "notice.bonus_used_text":
             "Бонусные дни по этому слову уже начислены вашей подписке — каждое слово работает "
             "один раз для одного адреса.",
+        "notice.referral_reward_subject": "Приглашённый вами друг оплатил подписку",
+        "notice.referral_reward_text":
+            "Спасибо за приглашение! Мы добавили к вашей подписке **{days}** дн. Теперь она "
+            "действует до **{until}**.",
         "notice.forwarded_subject": "Ваше письмо передано",
         "notice.forwarded_text":
             "Бот не нашёл в письме команды, поэтому передал его в поддержку. Вам ответит "

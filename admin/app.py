@@ -14,6 +14,7 @@ import email_bot
 import email_texts
 import i18n
 import payments
+import referrals
 import settings as app_settings
 import tariffs
 import updater
@@ -33,6 +34,7 @@ email_texts.load()
 # After the settings: a first run builds the opening tariff out of them.
 tariffs.load()
 payments.load()
+referrals.load()
 applog.install()
 # Idempotent, like the two above: the panel may be imported on its own, without
 # run.py having started anything.

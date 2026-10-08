@@ -86,6 +86,14 @@ BLOCKED_DOMAINS = ""
 REGISTRATIONS_PER_HOUR = 0
 NOTIFY_REGISTRATION_LIMIT = True
 
+# --- Inviting friends (referrals.py) ---
+# A friend who writes a client's invitation word gets this discount, in per
+# cent, on their first purchase; the client gets these bonus days when the
+# friend pays. Off until switched on.
+REFERRAL_ENABLED = False
+REFERRAL_DISCOUNT = 10
+REFERRAL_BONUS_DAYS = 7
+
 # --- Payments ---
 # How long the links in an offer letter stay payable. Every link is an invoice
 # of its own, created when the letter is sent; an unpaid one is closed after

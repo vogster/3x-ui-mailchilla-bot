@@ -423,6 +423,10 @@ def save_code(values: dict, was: str = None) -> dict:
                                         name=tariff["name"]))
 
         previous = get_code(was) if was else None
+        # Imported here: referrals builds on this module.
+        import referrals
+        if referrals.owner(code["word"]):
+            raise ValueError(i18n.t("the word {word} is somebody's invitation word", word=code["word"]))
         clash = word_owner(code["word"])
         if clash and not (previous and normalise_word(previous["word"]) == normalise_word(code["word"])):
             raise ValueError(i18n.t("the word {word} already opens the tariff {name}",

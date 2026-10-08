@@ -23,6 +23,7 @@ import config
 import i18n
 import notify
 import purchases
+import referrals
 import tariffs
 import templates
 from xui_client import XuiClient, get_shared_client
@@ -267,6 +268,27 @@ def handle_bonus(email_addr: str, sender_name: str, tariff: dict, code: dict):
     send_email_reply(email_addr, templates.notice_subject("bonus_added"),
                      templates.get_notice("bonus_added", days=days, until=until))
     return None
+
+
+def handle_invite(email_addr: str):
+    """
+    The client's own invitation word, and what it does for a friend and for them.
+
+    Only for a client, and only while invitations are switched on: a word that
+    rewards somebody with days needs somebody with a subscription to add them to.
+    """
+    if not referrals.enabled() or not templates.selling():
+        handle_unknown(email_addr, "/invite")
+        return
+    if not get_shared_client().find_client_by_email(email_addr):
+        send_email_reply(email_addr, templates.notice_subject("not_registered"),
+                         templates.get_notice("not_registered"))
+        return
+    from expiry import bot_address
+    word = referrals.word_for(email_addr)
+    send_email_reply(email_addr, templates.text("invite.subject"),
+                     templates.get_invite_email(word, referrals.discount_percent(),
+                                                referrals.bonus_days(), bot_address()))
 
 
 def handle_status(email_addr: str):
@@ -591,7 +613,7 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     # Only what the sender typed, and only whole words: see readable_text and
     # contains_word above for why both matter once every tariff has a word.
     text = readable_text(subject_clean, body_clean)
-    hits = find_words(text, tariffs.live_words())
+    hits = find_words(text, tariffs.live_words() + referrals.words())
 
     if len(hits) > 1:
         # Two tariffs in one letter. Guessing would hand out the wrong limits,
@@ -600,6 +622,11 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
                     f"({', '.join(hits)}); asking which one is meant.")
         send_email_reply(from_email, templates.notice_subject("ambiguous"),
                          templates.get_notice("ambiguous", words=", ".join(hits)))
+    elif hits and referrals.owner(hits[0]):
+        # A friend's invitation word: an offer of every tariff at the referral
+        # discount. send_offer drops the discount for the word's own owner and
+        # for anybody who has bought before.
+        purchases.send_offer(from_email, referral=referrals.canonical(hits[0]))
     elif hits:
         matched = tariffs.match(hits[0])
         if matched and matched[1].get("discount"):
@@ -634,6 +661,8 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
                 return
         else:
             handle_unknown(from_email, subject_clean, body_clean, sender_name)
+    elif contains_word(text, "/invite"):
+        handle_invite(from_email)
     elif contains_word(text, "/gift"):
         purchases.send_offer(from_email, gift=True)
     elif contains_word(text, "/buy"):

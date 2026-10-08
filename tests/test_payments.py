@@ -353,6 +353,72 @@ class Gifts(OrdersCase):
         self.assertEqual(kinds, [False, True])
 
 
+class Referrals(OrdersCase):
+    """A friend's first payment through an invitation word, and nothing more."""
+
+    def setUp(self):
+        super().setUp()
+        import referrals
+        self.referrals = referrals
+        self.real_rpath = referrals.REFERRALS_PATH
+        referrals.REFERRALS_PATH = os.path.join(self.dir, "referrals.json")
+        self.saved_words = referrals._words
+        referrals._words = {}
+        self.saved_cfg = (config.REFERRAL_ENABLED, config.REFERRAL_DISCOUNT, config.REFERRAL_BONUS_DAYS)
+        config.REFERRAL_ENABLED, config.REFERRAL_DISCOUNT, config.REFERRAL_BONUS_DAYS = True, 10, 7
+        self.word = referrals.word_for("inviter@example.com")
+
+    def tearDown(self):
+        self.referrals.REFERRALS_PATH = self.real_rpath
+        self.referrals._words = self.saved_words
+        config.REFERRAL_ENABLED, config.REFERRAL_DISCOUNT, config.REFERRAL_BONUS_DAYS = self.saved_cfg
+        super().tearDown()
+
+    def friend_pays(self, friend="friend@example.com"):
+        order = payments.create(friend, TARIFF, "manual", referral=self.word, referral_discount=10)
+        payments.mark_paid(order["id"], "admin")
+        purchases.apply(order["id"])
+        return order
+
+    def test_the_friend_pays_less(self):
+        order = payments.create("friend@example.com", TARIFF, "manual", referral=self.word,
+                                referral_discount=10)
+        self.assertEqual((order["amount"], order["full_price"]), (270, 300))
+
+    def test_the_inviter_gets_days_on_the_first_payment_only(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "inviter@example.com",
+                                    "expiryTime": NOW_MS + 10 * DAY_MS}))
+        self.friend_pays()
+        rewards = [u for u in xui.updates if u.get("expiry_ms") == NOW_MS + 17 * DAY_MS]
+        self.assertEqual(len(rewards), 1)
+        self.friend_pays()
+        rewards = [u for u in xui.updates if u.get("expiry_ms") == NOW_MS + 17 * DAY_MS]
+        self.assertEqual(len(rewards), 1)
+
+    def test_ones_own_word_gives_no_discount(self):
+        from providers.manual import Manual
+        self.use_providers(Manual())
+        saved = (config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS)
+        config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS = True, "x"
+        real_for_sale = purchases.tariffs.for_sale
+        purchases.tariffs.for_sale = lambda: [dict(TARIFF)]
+        try:
+            purchases.send_offer("inviter@example.com", referral=self.word)
+        finally:
+            purchases.tariffs.for_sale = real_for_sale
+            config.PAYMENT_MANUAL_ENABLED, config.PAYMENT_MANUAL_DETAILS = saved
+        self.assertEqual(payments.all_orders()[0]["amount"], 300)
+
+    def test_the_word_cannot_become_a_code_word(self):
+        import tariffs
+        with self.assertRaises(ValueError):
+            tariffs.save_code({"word": self.word, "tariff_id": "x"})
+
+    def test_switched_off_the_words_are_not_looked_for(self):
+        config.REFERRAL_ENABLED = False
+        self.assertEqual(self.referrals.words(), [])
+
+
 class WatchingTheInvoices(OrdersCase):
     def test_a_paid_invoice_is_noticed_and_applied(self):
         provider = PollingProvider(answer=payments.PAID)

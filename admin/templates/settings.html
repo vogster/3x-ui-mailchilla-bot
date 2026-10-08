@@ -346,6 +346,32 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("Inviting friends") }}</h2>
+            <span class="muted">{{ t("A client writes /invite and gets a word of their own to pass on.") }}</span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="referral_enabled" name="referral_enabled"
+                       {% if state.REFERRAL_ENABLED.value %}checked{% endif %}>
+                <label for="referral_enabled">{{ t("Let clients invite friends") }}
+                    {{ fields.help(t("A friend who writes a client's word gets an offer of every tariff at the discount below — on their first purchase only. When they pay, the client who invited them gets the bonus days. Needs something for sale.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="referral_discount">{{ t("The friend's discount, %") }}</label>
+                <input type="number" id="referral_discount" name="referral_discount" min="0" max="99" step="1"
+                       value="{{ state.REFERRAL_DISCOUNT.value }}">
+            </div>
+            <div>
+                <label for="referral_bonus_days">{{ t("Days for the one who invited") }}</label>
+                <input type="number" id="referral_bonus_days" name="referral_bonus_days" min="0" step="1"
+                       value="{{ state.REFERRAL_BONUS_DAYS.value }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>ЮMoney</h2>
             <span class="muted">{{ t("A bank card, into a YooMoney wallet. Anybody with a wallet can take payments, whatever their status; there are no receipts.") }}</span>
             {% if state.YOOMONEY_ENABLED.value %}

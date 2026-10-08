@@ -12,6 +12,7 @@ import config
 import email_bot
 import i18n
 import templates as mail_templates
+import referrals
 import tariffs
 from admin.deps import templates, require_auth, is_authenticated
 from xui_client import XuiClient, get_shared_client
@@ -452,6 +453,9 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
             # arrived, not about what they have now — the two can differ, since
             # a client can be moved to another tariff afterwards.
             "came_by": _came_by(client_obj),
+            # Their own invitation word and what it has brought, when they
+            # have asked for one.
+            "referral": referrals.stats_for(XuiClient.extract_bare_email(client_obj.get("email") or "")),
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
             "sent": sent,

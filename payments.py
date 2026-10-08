@@ -106,6 +106,10 @@ def _clean(raw: dict) -> dict:
         # than extending the buyer, and the word is kept here so that a retry
         # finds the one already made instead of making a second.
         "gift": bool(raw.get("gift")),
+        # The invitation word the offer came through, if any: the discount
+        # was the referral one, and the inviter is owed days on the friend's
+        # first payment (see purchases._reward_referrer).
+        "referral": str(raw.get("referral") or ""),
         "gift_word": str(raw.get("gift_word") or ""),
         "currency": str(raw.get("currency") or "RUB"),
         "provider": str(raw.get("provider") or ""),
@@ -177,7 +181,8 @@ def load():
 
 
 def create(email: str, tariff: dict, provider: str, offer_id: str = "",
-           hours: int = 24, code: dict = None, gift: bool = False) -> dict:
+           hours: int = 24, code: dict = None, gift: bool = False,
+           referral: str = "", referral_discount: int = 0) -> dict:
     """
     A new pending order for one tariff, paid one way. Not yet an invoice.
 
@@ -191,10 +196,13 @@ def create(email: str, tariff: dict, provider: str, offer_id: str = "",
             "offer_id": offer_id,
             "email": email,
             "tariff": tariff,
-            "amount": tariffs.discounted_price(tariff["price"], code),
+            "amount": (tariffs.discounted_price(tariff["price"], code) if not referral else
+                       tariffs.discounted_price(tariff["price"], {"discount": referral_discount,
+                                                                  "discount_unit": tariffs.PERCENT})),
             "full_price": tariff["price"],
             "code": (code or {}).get("word", "") if (code or {}).get("discount") else "",
             "gift": gift,
+            "referral": referral,
             "provider": provider,
             "created_at": now,
             "expires_at": now + max(int(hours), 1) * 3600 * 1000,

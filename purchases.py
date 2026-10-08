@@ -31,6 +31,7 @@ import mailer
 import notify
 import payments
 import providers
+import referrals
 import tariffs
 import templates
 from xui_client import get_shared_client
@@ -95,7 +96,7 @@ def _lifetime_hours(provider) -> int:
     return min(hours, provider.max_hours) if provider.max_hours else hours
 
 
-def _open_offer(email: str, code: dict = None, gift: bool = False):
+def _open_offer(email: str, code: dict = None, gift: bool = False, referral: str = ""):
     """
     The orders of an offer this address already holds, if one is still good.
 
@@ -111,7 +112,7 @@ def _open_offer(email: str, code: dict = None, gift: bool = False):
         if order["email"] == email.strip().lower() and order["offer_id"]:
             by_offer.setdefault(order["offer_id"], []).append(order)
     for orders in by_offer.values():
-        if orders[0]["code"] != word or orders[0]["gift"] != gift:
+        if orders[0]["code"] != word or orders[0]["gift"] != gift or orders[0]["referral"] != referral:
             continue
         if min(o["expires_at"] for o in orders) - now < REUSE_LEFT_MS:
             continue
@@ -142,7 +143,7 @@ def _blocks(orders: list) -> list:
     return list(blocks.values())
 
 
-def build_offer(email: str, code: dict = None, gift: bool = False):
+def build_offer(email: str, code: dict = None, gift: bool = False, referral: str = ""):
     """
     Creates the invoices for one offer letter.
 
@@ -168,7 +169,9 @@ def build_offer(email: str, code: dict = None, gift: bool = False):
     for tariff in for_sale:
         for provider in ways:
             order = payments.create(email, tariff, provider.id, offer_id=offer_id,
-                                    hours=_lifetime_hours(provider), code=code, gift=gift)
+                                    hours=_lifetime_hours(provider), code=code, gift=gift,
+                                    referral=referral,
+                                    referral_discount=referrals.discount_percent() if referral else 0)
             try:
                 invoice = provider.create(order)
             except Exception as e:
@@ -180,7 +183,13 @@ def build_offer(email: str, code: dict = None, gift: bool = False):
     return _blocks(made) or None
 
 
-def send_offer(email: str, code: dict = None, gift: bool = False):
+def has_bought(email: str) -> bool:
+    """Whether this address has an applied purchase of its own on record."""
+    email = email.strip().lower()
+    return any(o["email"] == email and not o["gift"] for o in payments.with_status(payments.APPLIED))
+
+
+def send_offer(email: str, code: dict = None, gift: bool = False, referral: str = ""):
     """
     The answer to /buy, or to a word carrying a discount: the tariffs for sale
     with a way to pay each. With `gift`, the answer to /gift: the same tariffs,
@@ -193,8 +202,15 @@ def send_offer(email: str, code: dict = None, gift: bool = False):
                                 templates.get_notice("purchase_barred"))
         return
 
-    reused = _open_offer(email, code, gift)
-    blocks = _blocks(reused) if reused else build_offer(email, code, gift)
+    if referral:
+        if referrals.owner(referral) == email.strip().lower() or has_bought(email):
+            # One's own word, or a friend who has paid before: the discount
+            # is a welcome for somebody new, so the offer is the ordinary one.
+            referral = ""
+        else:
+            referrals.note_invited(referral, email)
+    reused = _open_offer(email, code, gift, referral)
+    blocks = _blocks(reused) if reused else build_offer(email, code, gift, referral)
     if not blocks:
         logger.info(f"{email} asked to buy, but there is nothing on sale "
                     f"(tariffs with a price: {len(tariffs.for_sale())}, "
@@ -203,7 +219,9 @@ def send_offer(email: str, code: dict = None, gift: bool = False):
                                 templates.get_notice("not_for_sale"))
         return
     mailer.send_email_reply(email, templates.text("offer.gift_subject" if gift else "offer.subject"),
-                            templates.get_offer_email(blocks, code, now_ms=_now_ms(), gift=gift))
+                            templates.get_offer_email(blocks, code, now_ms=_now_ms(), gift=gift,
+                                                      referral_discount=(referrals.discount_percent()
+                                                                         if referral else 0)))
     logger.info(f"Offer {'sent again' if reused else 'sent'} to {email}: {len(blocks)} tariff(s)"
                 + (f", word {code['word']!r} at {tariffs.discount_text(code)} off." if code else "."))
 
@@ -353,10 +371,45 @@ def apply(order_id: str) -> bool:
     # 3x-ui would be worse than one used twice.
     if order["code"]:
         tariffs.spend(order["code"], email)
+    if order["referral"]:
+        _reward_referrer(order)
     logger.info(f"Order {order_id} applied: {email} is on {tariff['name']!r} until "
                 f"{_fmt_date(target) or 'no end'}.")
     _tell(order, target, created)
     return True
+
+
+def _reward_referrer(order: dict):
+    """
+    The friend's first payment through an invitation: days for whoever invited.
+
+    record_paid answers True once per friend and word, before anything is
+    sent to 3x-ui — a reward missed on a refusal is cheaper than one paid twice,
+    the same order of things as everywhere money turns into days. Never
+    raises: the friend's own purchase is done by now, and is not to be undone
+    by a problem with somebody else's subscription.
+    """
+    try:
+        inviter = referrals.owner(order["referral"])
+        days = referrals.bonus_days()
+        if not inviter or not days or not referrals.record_paid(order["referral"], order["email"]):
+            return
+        xui = get_shared_client()
+        client = xui.find_client_by_email(inviter)
+        if not client or is_barred(client):
+            logger.info(f"Referral by {inviter}: {order['email']} paid, but the inviter is not a "
+                        f"client in good standing; no days added.")
+            return
+        target = extend_target(client, days)
+        if not xui.update_client(xui.client_key(client), expiry_ms=target, enable=True, client_obj=client):
+            logger.error(f"Referral by {inviter}: 3x-ui refused the {days} bonus days.")
+            return
+        until = _fmt_date(target) or templates.text("welcome.value_forever")
+        logger.info(f"Referral: {order['email']} paid; {inviter} got {days} days, now until {until}.")
+        mailer.send_email_reply(inviter, templates.notice_subject("referral_reward"),
+                                templates.get_notice("referral_reward", days=days, until=until))
+    except Exception as e:
+        logger.error(f"Referral reward for order {order['id']} failed: {e}")
 
 
 def _apply_gift(order: dict) -> bool:

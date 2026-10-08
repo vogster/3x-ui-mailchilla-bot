@@ -179,6 +179,7 @@ def _render(name: str, **context) -> Email:
     # mentions it asks this, so that an installation selling nothing never
     # points anybody at a command that only says "nothing for sale".
     context.setdefault("selling", selling())
+    context.setdefault("inviting", bool(getattr(config, "REFERRAL_ENABLED", False)))
     try:
         html = _env.get_template(f"{name}.html").render(**context)
     except Exception as e:
@@ -323,7 +324,7 @@ def get_inactivity_email(email, days) -> Email:
     return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
-def get_offer_email(blocks, code=None, now_ms=None, gift=False) -> Email:
+def get_offer_email(blocks, code=None, now_ms=None, gift=False, referral_discount=0) -> Email:
     """
     The tariffs for sale and a way to pay each, as purchases.build_offer made them.
 
@@ -366,9 +367,21 @@ def get_offer_email(blocks, code=None, now_ms=None, gift=False) -> Email:
         title=text("offer.gift_subject" if gift else "offer.subject"),
         intro=_split(text("offer.gift_intro" if gift else "offer.intro")) + (
             _split(text("offer.code_line", word=code["word"],
-                        discount=tariffs.discount_text(code))) if code else []),
+                        discount=tariffs.discount_text(code))) if code else []) + (
+            _split(text("offer.referral_line", discount=f"{referral_discount}%"))
+            if referral_discount else []),
         blocks=laid_out,
         valid=text("offer.valid", hours=hours),
+    )
+
+
+def get_invite_email(word, discount, days, bot_address="") -> Email:
+    """A client's invitation word, with what it gives a friend and them."""
+    return get_notice_email(
+        title=text("invite.subject"),
+        paragraphs=_split(text("invite.text", discount=f"{discount}%", days=days,
+                               address=bot_address or "")),
+        code_text=word,
     )
 
 

@@ -12,6 +12,15 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Inviting friends.** Switched on in the Payments tab, a client who writes
+  **/invite** gets a word of their own. A friend who writes it gets every
+  tariff at a discount (10% by default) on their first purchase, and when that
+  friend pays, the client who invited them gets bonus days (7 by default)
+  added to their subscription and a letter saying so. Only a first purchase
+  counts, and one's own word gives no discount. The client's card shows their
+  word, how many it brought and how many of those paid. The words are kept in
+  a new file, `referrals.json`, which `mailchilla update` backs up with the rest.
+
 - **Gifts.** A client writes **/gift** and gets the same letter /buy sends,
   headed as a gift. Once paid, the buyer receives a word to pass on: whoever
   writes it to the bot gets the tariff for its full term, or — if they have a

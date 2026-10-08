@@ -246,6 +246,12 @@
                             {% endif %}
                         </td>
                     </tr>
+                    {% if referral %}
+                    <tr>
+                        <td class="muted">{{ t("Invitation word") }} {{ fields.help(t("The client's own word for friends, made when they wrote /invite. Invited: friends who wrote it; paid: those who then bought, each of which added bonus days to this client.")) }}</td>
+                        <td class="mono">{{ referral.word }} <span class="muted">· {{ t("invited {n}, paid {m}", n=referral.invited, m=referral.paid) }}</span></td>
+                    </tr>
+                    {% endif %}
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
 

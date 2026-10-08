@@ -95,6 +95,8 @@ def main():
     # After the settings, since a first run builds the opening tariff from them.
     tariffs.load()
     payments.load()
+    import referrals
+    referrals.load()
 
     # Log collection into the buffer and file starts before the bot, so that
     # nothing is lost

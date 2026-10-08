@@ -6,6 +6,7 @@
   /help — {{ t("help.cmd_help") | plain }}
 {% if selling and t("help.cmd_buy") %}  /buy — {{ t("help.cmd_buy") | plain }}
 {% endif %}{% if selling and t("help.cmd_gift") %}  /gift — {{ t("help.cmd_gift") | plain }}
+{% endif %}{% if selling and inviting and t("help.cmd_invite") %}  /invite — {{ t("help.cmd_invite") | plain }}
 {% endif %}{% if sub_url %}
 {{ t("help.sub_label") | plain }}
 {{ sub_url }}

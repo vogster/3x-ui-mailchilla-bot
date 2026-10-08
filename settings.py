@@ -42,6 +42,7 @@ MANAGED_KEYS = (
     "WELCOME_MANUAL_ENABLED", "WELCOME_SUPPORT_ENABLED",
     # Payments
     "PAYMENT_INVOICE_HOURS", "PAYMENT_MANUAL_ENABLED", "PAYMENT_MANUAL_DETAILS",
+    "REFERRAL_ENABLED", "REFERRAL_DISCOUNT", "REFERRAL_BONUS_DAYS",
     "CRYPTOPAY_ENABLED", "CRYPTOPAY_TOKEN", "CRYPTOPAY_TESTNET",
     "HELEKET_ENABLED", "HELEKET_MERCHANT", "HELEKET_API_KEY",
     "YOOMONEY_ENABLED", "YOOMONEY_WALLET", "YOOMONEY_TOKEN",
@@ -230,6 +231,16 @@ def _coerce(key, value):
         # clipboard debris, and inside a wallet number they are typing.
         text = str(value or "").strip()
         return text.replace(" ", "") if key == "YOOMONEY_WALLET" else text
+    if key == "REFERRAL_DISCOUNT":
+        number = int(value or 0)
+        if not 0 <= number <= 99:
+            raise ValueError(i18n.t("the invitation discount must be between 0 and 99 per cent"))
+        return number
+    if key == "REFERRAL_BONUS_DAYS":
+        number = int(value or 0)
+        if number < 0:
+            raise ValueError(i18n.t("the value cannot be negative"))
+        return number
     if key in ("LETTERS_PER_HOUR", "REGISTRATIONS_PER_HOUR"):
         number = int(value or 0)
         if number < 0:
@@ -248,7 +259,7 @@ def _coerce(key, value):
                "HELEKET_ENABLED", "YOOMONEY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED", "SUPPORT_FORWARD_ENABLED",
-               "BLOCK_DISPOSABLE", "NOTIFY_REGISTRATION_LIMIT", "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN"):
+               "BLOCK_DISPOSABLE", "REFERRAL_ENABLED", "NOTIFY_REGISTRATION_LIMIT", "NOTIFY_REGISTRATION", "NOTIFY_PAYMENT", "NOTIFY_FORWARDED", "NOTIFY_PAYMENT_STUCK", "NOTIFY_XUI_DOWN", "NOTIFY_MAIL_DOWN"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")

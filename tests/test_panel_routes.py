@@ -208,6 +208,22 @@ class PagesOpen(PanelCase):
         for name in ("notify_registration", "notify_payment", "notify_xui_down", "notify_mail_down"):
             self.assertIn(f'name="{name}"', body)
 
+    def test_the_invitation_settings_are_on_the_page(self):
+        body = self.page("/settings")
+        for name in ("referral_enabled", "referral_discount", "referral_bonus_days"):
+            self.assertIn(f'name="{name}"', body)
+
+    def test_a_client_card_shows_their_invitation_word(self):
+        import referrals
+        saved = referrals._words
+        referrals._words = {"BENWORD234": {"email": "ben@example.com", "created_at": 0,
+                                           "invited": ["a@x.com", "b@x.com"], "paid": ["a@x.com"]}}
+        try:
+            body = self.page("/clients/c0ffee01")
+        finally:
+            referrals._words = saved
+        self.assertIn("BENWORD234", body)
+
     def test_the_deliverability_check_is_on_the_page(self):
         self.assertIn('id="deliver-check"', self.page("/settings"))
 

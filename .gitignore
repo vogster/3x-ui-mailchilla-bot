@@ -8,6 +8,7 @@ settings.json
 email_texts.json
 tariffs.json
 payments.json
+referrals.json
 *.json.tmp
 
 # Logs: the rotating file and its backups.
