@@ -15,6 +15,7 @@ import logging
 import re
 import time
 import uuid
+from datetime import datetime
 from email.utils import parseaddr
 
 import abuse
@@ -221,6 +222,49 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         send_email_reply(email_addr, templates.notice_subject("create_error"),
                          templates.get_notice("create_error"))
         logger.error(f"Could not register client {email_addr} in 3x-ui.")
+
+def handle_bonus(email_addr: str, sender_name: str, tariff: dict, code: dict):
+    """
+    A word carrying bonus days.
+
+    For a client: the days are added to their term — from the later of today
+    and its end, by the same rule a purchase follows — and nothing else about
+    them changes. For somebody new: a registration on the code's tariff with
+    the bonus days as the whole term. Each address can use a given word once;
+    otherwise an open word would be a subscription renewed for ever by
+    writing it every week.
+    """
+    days = code["bonus_days"]
+    xui = get_shared_client()
+    client = xui.find_client_by_email(email_addr)
+
+    if not client:
+        return handle_registration(email_addr, sender_name, {**tariff, "expire_days": days}, code)
+
+    if tariffs.has_used(code["word"], email_addr):
+        logger.info(f"{email_addr} wrote the bonus word {code['word']!r} again; it was used already.")
+        send_email_reply(email_addr, templates.notice_subject("bonus_used"),
+                         templates.get_notice("bonus_used"))
+        return None
+    if purchases.is_barred(client):
+        logger.info(f"{email_addr} wrote a bonus word, but was switched off by hand; refused.")
+        send_email_reply(email_addr, templates.notice_subject("purchase_barred"),
+                         templates.get_notice("purchase_barred"))
+        return None
+
+    target = purchases.extend_target(client, days)
+    # Switched back on as well: 3x-ui turns a client off when the term runs
+    # out, and days added to an ended subscription have to be usable.
+    if not xui.update_client(xui.client_key(client), expiry_ms=target, enable=True, client_obj=client):
+        raise RuntimeError(f"3x-ui refused to add {days} bonus days for {email_addr}")
+    tariffs.spend(code["word"], email_addr)
+    until = (datetime.fromtimestamp(target / 1000).strftime("%d.%m.%Y") if target
+             else templates.text("welcome.value_forever"))
+    logger.info(f"{email_addr} got {days} bonus days through {code['word']!r}; now until {until}.")
+    send_email_reply(email_addr, templates.notice_subject("bonus_added"),
+                     templates.get_notice("bonus_added", days=days, until=until))
+    return None
+
 
 def handle_status(email_addr: str):
     """A request for traffic figures and subscription status."""
@@ -560,6 +604,9 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             # registered until they pay. It works on its own, the same as a
             # registration word — "/buy" beside it changes nothing.
             purchases.send_offer(from_email, matched[1])
+        elif matched and matched[1].get("bonus_days"):
+            if handle_bonus(from_email, sender_name, matched[0], matched[1]) == DEFERRED:
+                return
         elif matched:
             if handle_registration(from_email, sender_name, matched[0], matched[1]) == DEFERRED:
                 return

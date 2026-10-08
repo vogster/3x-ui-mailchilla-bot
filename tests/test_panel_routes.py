@@ -234,6 +234,7 @@ class PagesOpen(PanelCase):
         body = self.page("/tariffs/codes/AURORA/edit")
         self.assertIn('name="discount"', body)
         self.assertIn('name="discount_unit"', body)
+        self.assertIn('name="bonus_days"', body)
 
     def test_a_code_with_a_discount_shows_it(self):
         tariffs.save_tariff({**self.tariff, "price": 300})

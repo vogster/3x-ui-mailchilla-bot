@@ -359,7 +359,8 @@ def code_save(request: Request,
               note: str = Form(""),
               enabled: str = Form(""),
               discount: str = Form(""),
-              discount_unit: str = Form("%")):
+              discount_unit: str = Form("%"),
+              bonus_days: str = Form("")):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
@@ -379,6 +380,7 @@ def code_save(request: Request,
         "enabled": enabled == "on",
         "discount": (discount or "").strip() or 0,
         "discount_unit": discount_unit,
+        "bonus_days": (bonus_days or "").strip() or 0,
     }
     try:
         saved = tariffs.save_code(values, was=was or None)

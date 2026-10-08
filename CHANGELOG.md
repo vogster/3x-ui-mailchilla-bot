@@ -12,6 +12,14 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Code words with bonus days.** A code can carry a number of days instead
+  of opening a tariff for free. A client who writes it gets the days added to
+  their term — from whichever is later, today or its end, and a subscription
+  without an end keeps having none — and somebody new is registered on the
+  code's tariff with the bonus days as the whole term. Each address can use a
+  given word once, so an open word cannot renew a subscription for ever. For
+  compensating a service break, or a "week for free" campaign.
+
 - **Will the letters arrive?** The Mail tab has a deliverability check, and
   `mailchilla check` runs its DNS half. It reads the sending domain's SPF and
   DMARC and says what is missing or wrong — no record, two records, +all, an

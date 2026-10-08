@@ -51,6 +51,12 @@
             </div>
         </div>
         <div>
+            <label for="bonus_days">{{ t("Bonus days") }} {{ fields.help(t("Empty: an ordinary word. Days here are added to the term of a client who writes the word, or become the whole term of somebody new registered on the tariff above. Each address can use the word once. Not together with a discount.")) }}</label>
+            <input type="number" id="bonus_days" name="bonus_days" min="0" step="1"
+                   value="{% if code.bonus_days %}{{ code.bonus_days }}{% endif %}"
+                   placeholder="{{ t('empty = none') }}">
+        </div>
+        <div>
             <label for="expires_on">{{ t("Works until") }} {{ fields.help(t("The last day the code works, to the end of it. Empty means it never runs out on its own. Use it for a word you hand out for a weekend — it stops on its own rather than waiting to be remembered on Monday.")) }}</label>
             {% with field_id = "expires_on", field_name = "expires_on",
                     field_value = code.expires_input, field_shown = code.expires,

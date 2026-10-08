@@ -250,9 +250,10 @@ def apply_due():
 
 # --- Applying a payment ----------------------------------------------------
 
-def _target_expiry(order: dict, client) -> int:
+def extend_target(client, days: int, now_ms: int = None) -> int:
     """
-    The end of the term this payment buys, 0 for no end.
+    The end of a term with `days` added, 0 for no end — the one rule for every
+    way time is added: a purchase, bonus days, a gift.
 
     From whichever is later: today, or the end of what the client has. Paying
     a week early must not cost a week. An already expired subscription counts
@@ -263,7 +264,7 @@ def _target_expiry(order: dict, client) -> int:
     anybody paid for. A negative expiry is 3x-ui's "this long from the first
     connection", a term not yet started, and it is added to rather than lost.
     """
-    days = order["tariff"]["expire_days"]
+    now_ms = now_ms or _now_ms()
     if days <= 0:
         return 0
     if client is not None:
@@ -271,10 +272,15 @@ def _target_expiry(order: dict, client) -> int:
         if current == 0:
             return 0
         if current < 0:
-            return _now_ms() - current + days * DAY_MS
+            return now_ms - current + days * DAY_MS
     else:
         current = 0
-    return max(_now_ms(), current) + days * DAY_MS
+    return max(now_ms, current) + days * DAY_MS
+
+
+def _target_expiry(order: dict, client) -> int:
+    """The end of the term this payment buys; see extend_target."""
+    return extend_target(client, order["tariff"]["expire_days"])
 
 
 def apply(order_id: str) -> bool:

@@ -15,6 +15,7 @@
     <span class="muted">{{ code.tariff_name }}</span>
     {% endif %}
 
+    {% if code.bonus_days %}<span class="chip">{{ t("+{n} days", n=code.bonus_days) }}</span>{% endif %}
     {% if code.discount_text %}<span class="chip">{{ t("−{discount} off", discount=code.discount_text) }}</span>{% endif %}
 
     {% if code.note %}<span class="note">{{ code.note }}</span>{% endif %}

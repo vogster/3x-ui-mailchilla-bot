@@ -132,6 +132,14 @@ def _clean_code(raw: dict) -> dict:
         # without a discount already is — and it would skip the payment
         # providers with an invoice for nothing.
         raise ValueError(i18n.t("a discount of 100% or more is a free tariff: leave the discount empty instead"))
+    try:
+        bonus_days = max(int(raw.get("bonus_days") or 0), 0)
+    except (TypeError, ValueError):
+        raise ValueError(i18n.t("the bonus days must be a whole number"))
+    if bonus_days and discount:
+        # One offers time for nothing, the other a lower price; a word doing
+        # both would leave nobody sure which it was going to do.
+        raise ValueError(i18n.t("a code gives either a discount or bonus days, not both"))
     uses_left = raw.get("uses_left")
     if uses_left is not None and str(uses_left).strip() != "":
         uses_left = max(int(uses_left), 0)
@@ -162,6 +170,10 @@ def _clean_code(raw: dict) -> dict:
         # tariff for less, and nobody gets in until they pay.
         "discount": discount,
         "discount_unit": unit,
+        # Days added to whoever writes the word: to an existing client's term,
+        # or as the whole term of a newcomer registered on the code's tariff.
+        # 0 is an ordinary word. Each address can use a given one only once.
+        "bonus_days": bonus_days,
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
 
@@ -460,6 +472,20 @@ def delete_code(word: str) -> bool:
         return True
 
 
+def has_used(word: str, address: str) -> bool:
+    """
+    Whether this address is on record as having used the word already.
+
+    As far as the record goes: used_by keeps the last USED_BY_KEPT addresses,
+    so on a word used by more people than that, somebody far enough back
+    could use it again. For bonus days on an open word that is a small leak,
+    and the price of the list not growing without end.
+    """
+    code = get_code(word)
+    needle = str(address or "").strip().lower()
+    return bool(code and any(str(x).strip().lower() == needle for x in code["used_by"]))
+
+
 def discounted_price(price: int, code: dict = None) -> int:
     """
     What the tariff costs through this code, in whole rubles.
@@ -551,7 +577,7 @@ def live_words(free_only: bool = False) -> list:
         return [c["word"] for c in _state["codes"]
                 if c["enabled"] and (c["uses_left"] is None or c["uses_left"] > 0)
                 and not is_expired(c)
-                and not (free_only and c["discount"])]
+                and not (free_only and (c["discount"] or c["bonus_days"]))]
 
 
 def spend(word: str, email: str):

@@ -261,6 +261,13 @@ GROUPS = [
             ("notice.domain_blocked_text", "Throwaway address — text", TEXT,
              "Sent instead of a free registration to an address at a throwaway mail service. "
              "Every line is a paragraph."),
+            ("notice.bonus_added_subject", "Bonus days added — subject", LINE, ""),
+            ("notice.bonus_added_text", "Bonus days added — text", TEXT,
+             "Sent to a client who wrote a word with bonus days. Substitutions: {days}, {until}. "
+             "Every line is a paragraph."),
+            ("notice.bonus_used_subject", "Bonus word used already — subject", LINE, ""),
+            ("notice.bonus_used_text", "Bonus word used already — text", TEXT,
+             "Each address can use a given bonus word once. Every line is a paragraph."),
             ("notice.forwarded_subject", "Passed on to support — subject", LINE, ""),
             ("notice.forwarded_text", "Passed on to support — text", TEXT,
              "Sent to a client whose letter was passed on to support. Every line is a paragraph."),
@@ -437,6 +444,13 @@ DEFAULTS_BY_LANG = {
         "notice.domain_blocked_text":
             "Free registration is not available from temporary mail services. Write to us "
             "from the address you actually use.",
+        "notice.bonus_added_subject": "Bonus days added",
+        "notice.bonus_added_text":
+            "We have added **{days}** days to your subscription. It is now valid until **{until}**.",
+        "notice.bonus_used_subject": "This word has been used already",
+        "notice.bonus_used_text":
+            "The bonus days from this word were already added to your subscription — each word "
+            "works once per address.",
         "notice.forwarded_subject": "Your letter has been passed on",
         "notice.forwarded_text":
             "The bot did not recognise a command in your letter, so it has been passed "
@@ -614,6 +628,13 @@ DEFAULTS_BY_LANG = {
         "notice.domain_blocked_text":
             "Бесплатная регистрация с временных почтовых сервисов недоступна. Напишите нам "
             "с адреса, которым вы пользуетесь.",
+        "notice.bonus_added_subject": "Бонусные дни начислены",
+        "notice.bonus_added_text":
+            "Мы добавили к подписке **{days}** дн. Теперь она действует до **{until}**.",
+        "notice.bonus_used_subject": "Это слово уже использовано",
+        "notice.bonus_used_text":
+            "Бонусные дни по этому слову уже начислены вашей подписке — каждое слово работает "
+            "один раз для одного адреса.",
         "notice.forwarded_subject": "Ваше письмо передано",
         "notice.forwarded_text":
             "Бот не нашёл в письме команды, поэтому передал его в поддержку. Вам ответит "
