@@ -419,6 +419,65 @@ class Referrals(OrdersCase):
         self.assertEqual(self.referrals.words(), [])
 
 
+class TrafficPacks(OrdersCase):
+    """A pack adds to a client's limit, once per payment, and touches nothing else."""
+
+    PACK = {"id": "p1", "name": "+50 GB", "limit_gb": 50, "expire_days": 0,
+            "inbound_ids": [], "price": 99, "pack": True}
+
+    def paid_pack(self, email="ann@example.com"):
+        order = payments.create(email, self.PACK, "manual")
+        payments.mark_paid(order["id"], "admin")
+        return order["id"]
+
+    def test_the_limit_grows_and_nothing_else_changes(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com",
+                                    "expiryTime": NOW_MS + 5 * DAY_MS, "totalGB": 100 * 1024 ** 3}))
+        self.assertTrue(purchases.apply(self.paid_pack()))
+        update = xui.updates[0]
+        self.assertEqual(update["total_bytes"], 150 * 1024 ** 3)
+        self.assertNotIn("expiry_ms", update)
+        self.assertNotIn("group", update)
+        self.assertEqual(xui.resets, [])
+
+    def test_a_retry_does_not_add_the_pack_twice(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com",
+                                    "expiryTime": 0, "totalGB": 100 * 1024 ** 3}, fail=True))
+        order_id = self.paid_pack()
+        self.assertFalse(purchases.apply(order_id))
+        # Meanwhile the first attempt went through after all.
+        xui.fail = False
+        xui.client["totalGB"] = 150 * 1024 ** 3
+        purchases.apply(order_id)
+        self.assertEqual(xui.updates[0]["total_bytes"], 150 * 1024 ** 3)
+
+    def test_unlimited_stays_unlimited(self):
+        xui = self.use_xui(FakeXui({"uuid": "u", "email": "ann@example.com", "expiryTime": 0,
+                                    "totalGB": 0}))
+        purchases.apply(self.paid_pack())
+        self.assertEqual(xui.updates[0]["total_bytes"], 0)
+
+    def test_nobody_to_add_it_to_waits_for_the_administrator(self):
+        self.use_xui(FakeXui(None))
+        order_id = self.paid_pack()
+        self.assertFalse(purchases.apply(order_id))
+        self.assertTrue(payments.get(order_id)["error"])
+
+    def test_offered_only_to_a_client_with_a_limit(self):
+        real = (purchases.tariffs.for_sale, purchases.tariffs.packs_for_sale)
+        purchases.tariffs.for_sale = lambda: [dict(TARIFF)]
+        purchases.tariffs.packs_for_sale = lambda: [dict(self.PACK)]
+        self.use_providers(PollingProvider())
+        try:
+            limited = purchases.build_offer("a@example.com", client={"totalGB": 10})
+            unlimited = purchases.build_offer("b@example.com", client={"totalGB": 0})
+            stranger = purchases.build_offer("c@example.com")
+            gift = purchases.build_offer("d@example.com", gift=True, client={"totalGB": 10})
+        finally:
+            purchases.tariffs.for_sale, purchases.tariffs.packs_for_sale = real
+        self.assertEqual([len(x) for x in (limited, unlimited, stranger, gift)], [2, 1, 1, 1])
+
+
 class WatchingTheInvoices(OrdersCase):
     def test_a_paid_invoice_is_noticed_and_applied(self):
         provider = PollingProvider(answer=payments.PAID)

@@ -180,7 +180,9 @@ def tariff_choices() -> list:
             "expire_days": t["expire_days"],
             "inbound_ids": t["inbound_ids"],
         }
-        for t in tariffs.all_tariffs()
+        # Not the traffic packs: a client is made on a subscription, and a
+        # pack is something added to one.
+        for t in tariffs.all_tariffs() if not t["pack"]
     ]
 
 

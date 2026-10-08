@@ -341,9 +341,11 @@ def get_offer_email(blocks, code=None, now_ms=None, gift=False, referral_discoun
                            if block.get("price", tariff["price"]) == tariff["price"]
                            else text("offer.value_discounted", price=block["price"],
                                      full=tariff["price"])),
-            "term_text": (text("welcome.value_forever") if not tariff["expire_days"]
+            "term_text": (text("offer.value_pack_term") if tariff.get("pack")
+                          else text("welcome.value_forever") if not tariff["expire_days"]
                           else text("welcome.value_days", days=tariff["expire_days"])),
-            "limit_text": (text("welcome.value_unlimited") if not tariff["limit_gb"]
+            "limit_text": (text("offer.value_pack_gb", gb=tariff["limit_gb"]) if tariff.get("pack")
+                           else text("welcome.value_unlimited") if not tariff["limit_gb"]
                            else text("welcome.value_gb", gb=tariff["limit_gb"])),
             "ways": [{
                 "url": way["url"],

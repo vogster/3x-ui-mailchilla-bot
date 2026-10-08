@@ -214,7 +214,8 @@ async def tariff_save(request: Request,
                       name: str = Form(""),
                       limit_gb: str = Form("0"),
                       expire_days: str = Form("0"),
-                      price: str = Form("0")):
+                      price: str = Form("0"),
+                      pack: str = Form("")):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
@@ -226,6 +227,7 @@ async def tariff_save(request: Request,
         "limit_gb": limit_gb or 0,
         "expire_days": expire_days or 0,
         "price": price or 0,
+        "pack": pack == "on",
         # The checkboxes are absent when 3x-ui did not answer with a list; an
         # edit made while the panel is unreachable then keeps what it had
         # rather than quietly emptying the tariff.

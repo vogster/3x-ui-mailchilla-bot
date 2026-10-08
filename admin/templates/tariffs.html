@@ -97,7 +97,15 @@
     <div class="tariff">
         <div class="tariff-head">
             <h3><a href="/tariffs/{{ tariff.id }}">{{ tariff.name }}</a></h3>
-            {% if not tariff.live_codes %}
+            {% if tariff.pack %}
+            <span class="chip">{{ t("traffic pack · {price} ₽", price=tariff.price) }}</span>
+            {% elif tariff.price %}
+            <span class="chip">{{ tariff.price }} ₽</span>
+            {% endif %}
+            {% if tariff.pack %}
+            {# A pack is bought, never entered by a word: "no working code" would
+               read as a fault where there is none. #}
+            {% elif not tariff.live_codes %}
             <span class="muted">{{ t("no working code — nobody can register on it by mail") }}</span>
             {% endif %}
             <div class="tariff-actions">

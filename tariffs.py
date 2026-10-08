@@ -91,6 +91,8 @@ def _clean_tariff(raw: dict) -> dict:
     # Order matters: a client is added down the list and the first failure
     # stops it, exactly as the old single setting behaved.
     inbound_ids = list(dict.fromkeys(int(i) for i in ids))
+    if raw.get("pack") and limit_gb <= 0:
+        raise ValueError(i18n.t("a traffic pack needs a size in GB"))
     return {
         "id": str(raw.get("id") or _new_id()),
         "name": name,
@@ -101,6 +103,11 @@ def _clean_tariff(raw: dict) -> dict:
         # given out by code words only, which is every tariff from before
         # payments existed — an older file has no price and stays as it was.
         "price": price,
+        # A traffic pack rather than a subscription: bought by an existing
+        # client, it adds limit_gb to their current limit and changes nothing
+        # else — no term, no group, no inbounds. A renewal later sets the
+        # limit back to the tariff's, so a pack lasts to the end of the term.
+        "pack": bool(raw.get("pack")),
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
 
@@ -278,8 +285,13 @@ def all_tariffs() -> list:
 
 
 def for_sale() -> list:
-    """The tariffs a client can buy: those with a price."""
-    return [t for t in all_tariffs() if t["price"] > 0]
+    """The subscriptions a client can buy: tariffs with a price, packs aside."""
+    return [t for t in all_tariffs() if t["price"] > 0 and not t["pack"]]
+
+
+def packs_for_sale() -> list:
+    """The traffic packs on sale."""
+    return [t for t in all_tariffs() if t["price"] > 0 and t["pack"]]
 
 
 def all_codes() -> list:
@@ -411,6 +423,12 @@ def save_code(values: dict, was: str = None) -> dict:
         tariff = get(code["tariff_id"])
         if not tariff:
             raise ValueError(i18n.t("the tariff was not found"))
+        if tariff["pack"]:
+            # A word lets somebody in or sells a subscription; a pack is
+            # neither, and registering a newcomer on one would give them
+            # traffic and no term at all.
+            raise ValueError(i18n.t("{name} is a traffic pack; a code word cannot open it",
+                                    name=tariff["name"]))
         if code["discount"]:
             # A discount is off a price, and a tariff without one is not sold.
             if not tariff["price"]:

@@ -1058,4 +1058,16 @@ TEXTS = {
     "A friend who writes a client's word gets an offer of every tariff at the discount below — on their first purchase only. When they pay, the client who invited them gets the bonus days. Needs something for sale.": "Друг, написавший слово клиента, получает предложение всех тарифов со скидкой ниже — только на первую покупку. Когда он оплатит, пригласивший получает бонусные дни. Нужно, чтобы было что продавать.",
     "The friend's discount, %": "Скидка другу, %",
     "Days for the one who invited": "Дней пригласившему",
+    # Traffic packs
+    "A traffic pack's term": "Срок пакета трафика",
+    "Shown in place of a term for a traffic pack.": "Показывается вместо срока у пакета трафика.",
+    "A traffic pack's traffic": "Трафик пакета",
+    "Receipt — for a traffic pack": "Квитанция — за пакет трафика",
+    "Substitutions: {order}, {gb}, {total}. Every line is a paragraph.": "Подстановки: {order}, {gb}, {total}. Каждая строка — абзац.",
+    "A pack needs a subscription to add to, and this address has none": "Пакету нужна подписка, к которой его добавить, а у этого адреса её нет",
+    "{name} is a traffic pack; a code word cannot open it": "{name} — пакет трафика; кодовое слово не может его открывать",
+    "a traffic pack needs a size in GB": "у пакета трафика должен быть объём в ГБ",
+    "This is a traffic pack": "Это пакет трафика",
+    "Not a subscription: a client who has one buys it through /buy, and the traffic limit above is added to theirs until the subscription ends. The term and the inbounds are not used. Offered only to clients with a traffic limit.": "Не подписка: клиент с подпиской покупает его через /buy, и лимит трафика выше добавляется к его лимиту до конца подписки. Срок и inbound'ы не используются. Предлагается только клиентам с ограниченным трафиком.",
+    "traffic pack · {price} ₽": "пакет трафика · {price} ₽",
 }

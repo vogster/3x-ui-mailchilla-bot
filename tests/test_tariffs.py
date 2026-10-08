@@ -739,3 +739,22 @@ class Discounts(StorageCase):
     def test_an_older_code_has_no_discount(self):
         code = tariffs._clean_code({"word": "OLD", "tariff_id": self.tariff["id"]})
         self.assertEqual((code["discount"], code["discount_unit"]), (0, "%"))
+
+
+class Packs(StorageCase):
+    def test_a_pack_needs_a_size(self):
+        with self.assertRaises(ValueError):
+            tariffs.save_tariff({"name": "Pack", "limit_gb": 0, "price": 99, "pack": True})
+
+    def test_a_code_cannot_open_a_pack(self):
+        pack = tariffs.save_tariff({"name": "Pack", "limit_gb": 50, "price": 99, "pack": True})
+        with self.assertRaises(ValueError):
+            tariffs.save_code({"word": "PACKWORD", "tariff_id": pack["id"]})
+
+    def test_packs_are_sold_apart_from_subscriptions(self):
+        self.make(name="Month", word="")
+        tariffs.save_tariff({**tariffs.all_tariffs()[0], "price": 300})
+        tariffs.save_tariff({"name": "Pack", "limit_gb": 50, "price": 99, "pack": True})
+        self.assertEqual([t["name"] for t in tariffs.for_sale()], ["Month"])
+        self.assertEqual([t["name"] for t in tariffs.packs_for_sale()], ["Pack"])
+

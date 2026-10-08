@@ -96,6 +96,7 @@ def _clean(raw: dict) -> dict:
             "limit_gb": int((raw.get("tariff") or {}).get("limit_gb") or 0),
             "expire_days": int((raw.get("tariff") or {}).get("expire_days") or 0),
             "inbound_ids": [int(i) for i in (raw.get("tariff") or {}).get("inbound_ids") or []],
+            "pack": bool((raw.get("tariff") or {}).get("pack")),
         },
         "amount": int(raw.get("amount") or 0),
         # The price before the discount, and the word that gave it. Equal to
@@ -127,6 +128,10 @@ def _clean(raw: dict) -> dict:
         # attempt to apply it, and stored before 3x-ui is touched. A retry sets
         # the same absolute date again instead of adding the days a second time.
         "target_expiry": raw.get("target_expiry"),
+        # The same for a traffic pack: the client's new limit in bytes, worked
+        # out from the limit they had on the first attempt. Adding the pack
+        # again on a retry would sell it twice for one payment.
+        "target_total": raw.get("target_total"),
         "attempts": int(raw.get("attempts") or 0),
         "next_try_at": int(raw.get("next_try_at") or 0),
         "error": str(raw.get("error") or ""),

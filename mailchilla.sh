@@ -487,6 +487,8 @@ def one_line(value):
     return " ".join(str(value).split())
 
 for t in all_tariffs:
+    if t.get("pack"):
+        continue
     if not t["inbound_ids"]:
         print("EMPTY", one_line(t["name"]))
     else:

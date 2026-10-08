@@ -143,7 +143,8 @@ def _blocks(orders: list) -> list:
     return list(blocks.values())
 
 
-def build_offer(email: str, code: dict = None, gift: bool = False, referral: str = ""):
+def build_offer(email: str, code: dict = None, gift: bool = False, referral: str = "",
+                client: dict = None):
     """
     Creates the invoices for one offer letter.
 
@@ -160,6 +161,11 @@ def build_offer(email: str, code: dict = None, gift: bool = False, referral: str
         for_sale = [tariff] if tariff and tariff["price"] else []
     else:
         for_sale = tariffs.for_sale()
+        # Traffic packs, after the subscriptions: only for somebody who has a
+        # subscription with a limit to add to. Not as a gift — a pack is added
+        # to the buyer's own limit — and not to anybody unlimited.
+        if not gift and client and int(client.get("totalGB") or 0) > 0:
+            for_sale = for_sale + tariffs.packs_for_sale()
     ways = providers.enabled()
     if not for_sale or not ways:
         return None
@@ -210,7 +216,7 @@ def send_offer(email: str, code: dict = None, gift: bool = False, referral: str 
         else:
             referrals.note_invited(referral, email)
     reused = _open_offer(email, code, gift, referral)
-    blocks = _blocks(reused) if reused else build_offer(email, code, gift, referral)
+    blocks = _blocks(reused) if reused else build_offer(email, code, gift, referral, client)
     if not blocks:
         logger.info(f"{email} asked to buy, but there is nothing on sale "
                     f"(tariffs with a price: {len(tariffs.for_sale())}, "
@@ -319,6 +325,8 @@ def apply(order_id: str) -> bool:
         return False
     if order["gift"]:
         return _apply_gift(order)
+    if order["tariff"]["pack"]:
+        return _apply_pack(order)
     tariff = order["tariff"]
     email = order["email"]
 
@@ -410,6 +418,56 @@ def _reward_referrer(order: dict):
                                 templates.get_notice("referral_reward", days=days, until=until))
     except Exception as e:
         logger.error(f"Referral reward for order {order['id']} failed: {e}")
+
+
+def _apply_pack(order: dict) -> bool:
+    """
+    A paid traffic pack: the client's limit grows by its size, nothing else
+    changes. The new limit is stored on the order before 3x-ui is touched —
+    adding is not something a retry may do twice.
+    """
+    email = order["email"]
+    pack_bytes = order["tariff"]["limit_gb"] * 1024 ** 3
+    xui = get_shared_client()
+    client = xui.find_client_by_email(email)
+    if not client:
+        payments.update(order["id"], error=i18n.t("A pack needs a subscription to add to, and "
+                                                  "this address has none"))
+        logger.error(f"Pack order {order['id']}: {email} is not a client; nothing to add the traffic to.")
+        return False
+    target = order["target_total"]
+    if target is None:
+        current = int(client.get("totalGB") or 0)
+        # Unlimited stays unlimited: there is no limit to add to, and turning
+        # "none" into the pack's size would take traffic away.
+        target = 0 if current == 0 else current + pack_bytes
+        order = payments.update(order["id"], target_total=target)
+    if not xui.update_client(xui.client_key(client), total_bytes=target, enable=True, client_obj=client):
+        attempts = order["attempts"] + 1
+        wait = RETRY_MS[min(attempts, len(RETRY_MS)) - 1]
+        payments.update(order["id"], attempts=attempts, next_try_at=_now_ms() + wait,
+                        error=i18n.t("3x-ui refused the change; trying again"))
+        logger.error(f"Pack order {order['id']} for {email} could not be applied (attempt {attempts}).")
+        return False
+    payments.update(order["id"], status=payments.APPLIED, applied_at=_now_ms(), error="")
+    if order["code"]:
+        tariffs.spend(order["code"], email)
+    total_text = (templates.text("welcome.value_unlimited") if not target
+                  else templates.text("welcome.value_gb", gb=round(target / 1024 ** 3, 2)))
+    logger.info(f"Pack order {order['id']}: {email} +{order['tariff']['limit_gb']} GB, limit now {total_text}.")
+    try:
+        mailer.send_email_reply(email, templates.text("paid.subject"),
+                                templates.get_notice_email(
+                                    title=templates.text("paid.subject"),
+                                    paragraphs=templates._split(templates.text(
+                                        "paid.pack_text", order=order["id"],
+                                        gb=order["tariff"]["limit_gb"], total=total_text))))
+    except Exception as e:
+        logger.error(f"Pack order {order['id']} is applied, but the letter did not go: {e}")
+    notify.push("payment", i18n.t("Payment received"),
+                i18n.t("{email} paid {amount} ₽ for {tariff}.", email=email,
+                       amount=order["amount"], tariff=order["tariff"]["name"]))
+    return True
 
 
 def _apply_gift(order: dict) -> bool:

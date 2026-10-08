@@ -244,7 +244,15 @@ class PagesOpen(PanelCase):
         self.assertFalse(response.json()["ok"])
 
     def test_the_tariff_form_asks_for_a_price(self):
-        self.assertIn('name="price"', self.page(f"/tariffs/{self.tariff['id']}/edit"))
+        body = self.page(f"/tariffs/{self.tariff['id']}/edit")
+        self.assertIn('name="price"', body)
+        self.assertIn('name="pack"', body)
+
+    def test_a_pack_is_marked_on_the_tariffs_page_and_kept_out_of_the_create_form(self):
+        tariffs.save_tariff({"name": "Plus 50", "limit_gb": 50, "price": 99, "pack": True})
+        self.assertIn("Plus 50", self.page("/tariffs"))
+        from admin.routes_clients import tariff_choices
+        self.assertNotIn("Plus 50", [t["name"] for t in tariff_choices()])
 
     def test_the_code_form_offers_a_discount(self):
         body = self.page("/tariffs/codes/AURORA/edit")

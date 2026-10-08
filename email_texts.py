@@ -183,6 +183,9 @@ GROUPS = [
             ("offer.code_line", "The word with a discount", TEXT,
              "Added to the introduction when the letter answers a code word that "
              "carries a discount. Substitutions: {word}, {discount}."),
+            ("offer.value_pack_term", "A traffic pack's term", LINE,
+             "Shown in place of a term for a traffic pack."),
+            ("offer.value_pack_gb", "A traffic pack's traffic", LINE, "Substitution: {gb}"),
             ("offer.button", "Pay button", LINE,
              "Substitution: {provider}, the name of the way of paying."),
             ("offer.manual", "Paying by transfer", TEXT,
@@ -207,6 +210,8 @@ GROUPS = [
             ("paid.subject", "Receipt — subject", LINE, "Substitution: {service}"),
             ("paid.text", "Receipt — text", TEXT,
              "Substitutions: {order}, {tariff}, {until}. Every line is a paragraph."),
+            ("paid.pack_text", "Receipt — for a traffic pack", TEXT,
+             "Substitutions: {order}, {gb}, {total}. Every line is a paragraph."),
             ("paid.new_link", "Receipt — for a new client", TEXT,
              "Added when the payment made somebody a client just now; the "
              "subscription link follows it."),
@@ -393,6 +398,8 @@ DEFAULTS_BY_LANG = {
         "offer.value_price": "{price} ₽",
         "offer.value_discounted": "{price} ₽ instead of {full} ₽",
         "offer.code_line": "The word **{word}** gives you **{discount}** off.",
+        "offer.value_pack_term": "Until your subscription ends",
+        "offer.value_pack_gb": "+{gb} GB to your limit",
         "offer.button": "Pay: {provider}",
         "offer.manual":
             "**By transfer:** {details}\n"
@@ -421,6 +428,9 @@ DEFAULTS_BY_LANG = {
         "paid.text":
             "Thank you! The payment for order **{order}** has arrived.\n"
             "Tariff: **{tariff}**. Your subscription is valid until **{until}**.",
+        "paid.pack_text":
+            "Thank you! The payment for order **{order}** has arrived.\n"
+            "**{gb} GB** added to your limit, which is now **{total}** until the subscription ends.",
         "paid.new_link":
             "The subscription link is below. Send **/help** for how to add it to an app.",
 
@@ -601,6 +611,8 @@ DEFAULTS_BY_LANG = {
         "offer.value_price": "{price} ₽",
         "offer.value_discounted": "{price} ₽ вместо {full} ₽",
         "offer.code_line": "Слово **{word}** даёт скидку **{discount}**.",
+        "offer.value_pack_term": "До конца подписки",
+        "offer.value_pack_gb": "+{gb} ГБ к лимиту",
         "offer.button": "Оплатить: {provider}",
         "offer.manual":
             "**Переводом:** {details}\n"
@@ -628,6 +640,9 @@ DEFAULTS_BY_LANG = {
         "paid.text":
             "Спасибо! Оплата по заказу **{order}** получена.\n"
             "Тариф: **{tariff}**. Подписка действует до **{until}**.",
+        "paid.pack_text":
+            "Спасибо! Оплата по заказу **{order}** получена.\n"
+            "К лимиту добавлено **{gb} ГБ** — теперь он **{total}** до конца подписки.",
         "paid.new_link":
             "Ссылка на подписку — ниже. Как добавить её в приложение, расскажет письмо с **/help**.",
 

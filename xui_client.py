@@ -599,7 +599,7 @@ class XuiClient:
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
                       group: str = None, client_obj: dict = None,
-                      expiry_ms: int = None) -> bool:
+                      expiry_ms: int = None, total_bytes: int = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -645,7 +645,9 @@ class XuiClient:
             payload["email"] = new_remark
         if new_comment is not None:
             payload["comment"] = new_comment
-        if total_gb is not None:
+        if total_bytes is not None:
+            payload["totalGB"] = max(int(total_bytes), 0)
+        elif total_gb is not None:
             payload["totalGB"] = total_gb * 1024 * 1024 * 1024 if total_gb > 0 else 0
         if expiry_ms is not None:
             payload["expiryTime"] = max(int(expiry_ms), 0)

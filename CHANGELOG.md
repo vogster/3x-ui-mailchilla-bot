@@ -12,6 +12,14 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **Traffic packs.** A tariff can be marked as a traffic pack: a price and a
+  size, no term. A client with a traffic limit sees the packs in the answer to
+  /buy, below the subscriptions, and one bought adds its size to their current
+  limit until the subscription ends — the term, the tariff and the traffic
+  already used stay as they are, and the next renewal sets the limit back to
+  the tariff's. Unlimited clients are not offered packs, and a pack can be
+  neither opened by a code word nor chosen when creating a client.
+
 - **Inviting friends.** Switched on in the Payments tab, a client who writes
   **/invite** gets a word of their own. A friend who writes it gets every
   tariff at a discount (10% by default) on their first purchase, and when that

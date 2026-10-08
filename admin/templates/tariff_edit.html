@@ -33,6 +33,12 @@
             <label for="price">{{ t("Price, ₽") }} {{ fields.help(t("What a client pays for this tariff by /buy. 0 means it is not for sale and is given out by code words only.")) }}</label>
             <input type="number" id="price" name="price" min="0" step="1" value="{{ tariff.price or 0 }}">
         </div>
+        <div class="checkbox-row">
+            <input type="checkbox" class="switch" id="pack" name="pack" {% if tariff.pack %}checked{% endif %}>
+            <label for="pack">{{ t("This is a traffic pack") }}
+                {{ fields.help(t("Not a subscription: a client who has one buys it through /buy, and the traffic limit above is added to theirs until the subscription ends. The term and the inbounds are not used. Offered only to clients with a traffic limit.")) }}
+            </label>
+        </div>
     </div>
 </div>
 
