@@ -5,7 +5,8 @@ python-dotenv==1.0.1
 segno==1.6.6
 # DNS TXT lookups for the deliverability check (SPF, DMARC): the standard
 # library resolves addresses only. Pure Python, nothing to compile.
-dnspython==2.8.0
+# 2.7.0, not newer: 2.8 needs Python 3.10, and CI and Debian 11 run 3.9.
+dnspython==2.7.0
 
 # Веб-админка
 fastapi==0.115.6
