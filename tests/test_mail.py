@@ -6,6 +6,8 @@ unread letter as one it still owes an answer, so the panel opening a letter must
 not change a single flag — every test that touches the fake server checks that
 it was only ever examined, and only ever peeked at.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import time

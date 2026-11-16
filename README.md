@@ -397,6 +397,8 @@ python -m unittest discover -s tests   # what CI runs
 
 Most of the tests are pure — the settings coercion, the code-word matching, the letter texts. `tests/test_panel_routes.py` is the other kind: it drives the panel through `fastapi.testclient` with 3x-ui stubbed out, and exists for one failure in particular — a template reading a context key the route never sent. Jinja resolves that to Undefined in silence, the page still renders, and the missing part is found by somebody clicking a week later. A new page or a new context key wants a line in that file.
 
+A test run leaves the project directory as it found it: every test module starts with `import sandbox`, which moves `settings.json`, `email_texts.json` and `tariffs.json` to a temporary directory and switches the log file off before anything is loaded. A new test file needs that line too, and `tests/test_sandbox.py` fails for one without it.
+
 ```bash
 git checkout -b feature/my-feature
 # ...

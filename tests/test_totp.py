@@ -6,6 +6,8 @@ implementation that agrees with itself and with nobody's phone is the usual
 way this goes wrong. The rest is about what a code is worth to somebody who
 was not meant to have it.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import unittest

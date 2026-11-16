@@ -7,6 +7,8 @@ nobody teaches the stand to answer it, and the page that calls it either breaks
 on the stand alone or — worse — reaches for whatever panel a stray .env names.
 The first test here is the one that notices.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import inspect
 import os
 import shutil

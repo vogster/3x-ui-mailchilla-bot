@@ -4,6 +4,8 @@ Noticing a newer version.
 Version comparison is the part worth pinning down: `sort -V` in the shell gets
 pre-release tags backwards, which is why this lives in Python at all.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config

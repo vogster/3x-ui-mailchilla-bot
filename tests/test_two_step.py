@@ -10,6 +10,8 @@ without a code from the app.
 settings.SETTINGS_PATH is moved to a temporary directory for every test here:
 these save for real, and the real file is an installation's passwords.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import json
 import logging
 import os

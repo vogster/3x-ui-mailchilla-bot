@@ -5,6 +5,8 @@ The layer the panel owns.
 of the code will trust, so each branch is checked — including the refusals,
 which is where a typo turns into a broken installation rather than an error.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config

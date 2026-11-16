@@ -10,6 +10,8 @@ memory or its time, or carry the administrator's answer somewhere else.
 
 Each test below is a letter or a request that did one of those.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import imaplib
 import os
 import sys

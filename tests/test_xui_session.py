@@ -8,6 +8,8 @@ expired. And a panel that could not be reached read as a panel that knew no
 such client, so a registered person asking for their status during an outage
 was told they had never registered.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import unittest

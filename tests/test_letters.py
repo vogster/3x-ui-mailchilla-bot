@@ -4,6 +4,8 @@ Building a letter.
 Every letter goes out in two forms, and the welcome letter carries a picture —
 which is one more MIME layer, and only when there is a picture to carry.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config

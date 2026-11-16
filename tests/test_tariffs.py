@@ -12,6 +12,8 @@ The storage is exercised against a temporary file: tariffs.TARIFFS_PATH is
 built from the module's own __file__, so a test that forgot to redirect it
 would write over the installation's real tariffs.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import json
 import os
 import tempfile

@@ -16,6 +16,8 @@ The tariffs live in a temporary file, for the reason tests/test_tariffs.py
 gives at length: tariffs.TARIFFS_PATH is built from the module's own __file__,
 and a test that forgot would write over a real installation's tariffs.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import re
 import tempfile

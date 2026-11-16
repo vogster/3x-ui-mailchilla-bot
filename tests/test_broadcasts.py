@@ -8,6 +8,8 @@ shown at all. These are the tests of the record that replaced that, of the
 sending writing into it whichever way it was started, and of the Broadcast
 page saying what it holds.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import unittest

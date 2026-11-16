@@ -7,6 +7,8 @@ that answers every reply, a sender who never stops, and a From header that
 anybody can type. None of these breaks loudly — the symptom is a mailbox
 talking to itself all night, or a broadcast nobody on the team sent.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import email
 import os
 import sys

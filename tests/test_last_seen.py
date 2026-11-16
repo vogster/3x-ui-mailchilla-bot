@@ -7,6 +7,8 @@ row misread by a factor of a thousand lands in 1970 rather than showing an
 error. And the wording has to stay short enough for a table cell while a client
 nobody has ever seen must read as a dash, not as "just now".
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config

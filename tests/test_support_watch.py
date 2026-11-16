@@ -11,6 +11,8 @@ runs, or the same letter again after a restart. Too little: a letter that
 arrived while the process was down, never mentioned. And one thing it must
 never do at all, which is change anything in the mailbox it is looking at.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import imaplib
 import os
 import sys

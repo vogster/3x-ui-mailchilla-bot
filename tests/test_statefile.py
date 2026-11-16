@@ -6,6 +6,8 @@ open(), which under systemd means world-readable — and nothing ever shows it:
 the panel works, the bot works, and any other account on the server can read
 the password.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import json
 import os
 import stat

@@ -5,6 +5,8 @@ The one part of the bot that removes something rather than adding it, which is
 why the tests here are mostly about what it must leave alone: the unread
 letters, and everything at all when the Trash cannot be found.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import unittest

@@ -6,6 +6,8 @@ pared-down character set rather than a mailbox, and because a client added by
 hand may carry no address at all. Every case below is one the panel has actually
 produced.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import email_bot

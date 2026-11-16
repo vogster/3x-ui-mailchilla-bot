@@ -5,6 +5,8 @@ Modelled on tests/test_cleanup.py: the schedule is checked the same way the
 mailbox cleanup is, and what matters about the sweep itself is who it leaves
 alone as much as who it mails.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import os
 import sys
 import unittest

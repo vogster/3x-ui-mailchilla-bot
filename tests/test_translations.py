@@ -6,6 +6,8 @@ so it shows up as English text sitting in a Russian panel, and only if somebody
 happens to look at that page. This is the pass that looks for all of them at
 once, which is exactly the mistake it was written after.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import glob
 import os
 import re

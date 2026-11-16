@@ -10,6 +10,8 @@ client and drops the limit without a word, so a tariff goes on promising two
 devices that nothing enforces — which is why the registration reads the client
 back and says so.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import logging
 import os
 import sys
