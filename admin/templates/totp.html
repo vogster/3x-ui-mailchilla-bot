@@ -10,11 +10,13 @@
 {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
 {% if done == "on" and on %}
 <div class="flash success">{{ t("Two-step sign-in is on. From the next sign-in the panel asks for a code.") }}</div>
+{% elif done == "new" and on and not replacing %}
+<div class="flash success">{{ t("The new entry is in force. Codes from the old one no longer work — remove it from the app.") }}</div>
 {% elif done == "off" and not on %}
 <div class="flash">{{ t("Two-step sign-in is off. The panel opens with the password alone.") }}</div>
 {% endif %}
 
-{% if on %}
+{% if on and not replacing %}
 <div class="panel">
     <div class="panel-head">
         <h2>{{ t("Status") }}</h2>
@@ -22,16 +24,20 @@
     </div>
     <div style="padding: 24px;">
         <p class="muted" style="margin: 0 0 18px 0; max-width: 560px;">
-            {{ t("To move to another phone, switch it off and set it up again: the secret is shown only once, while the app is being set up, and cannot be read back here.") }}
+            {{ t("For another phone, or simply a fresh secret, choose «Set up again»: a new QR code is shown, and the entry your app has now keeps working until the new one has produced a right code. The secret itself cannot be read back here.") }}
         </p>
+        {# One field and two things to do with it. «Set up again» comes first
+           on purpose: Enter in the field presses the first button of a form,
+           and of the two that is the one which takes nothing away. #}
         <form method="post" action="/settings/totp/disable" class="form-grid" autocomplete="off">
             <div>
                 <label for="code">{{ t("Code from the app") }}</label>
                 <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
                        maxlength="7" placeholder="000000" class="mono" style="max-width: 160px;" required>
-                <div class="hint">{{ t("Switching off takes a code as well: an open session is not enough to take the second step away.") }}</div>
+                <div class="hint">{{ t("Either takes a code: an open session is not enough to take the second step away, or to swap its secret.") }}</div>
             </div>
             <div class="form-actions">
+                <button type="submit" class="btn" formaction="/settings/totp/replace">{{ t("Set up again") }}</button>
                 <button type="submit" class="btn danger">{{ t("Switch off") }}</button>
                 <a href="/settings" class="btn">{{ t("Back to the settings") }}</a>
             </div>
@@ -39,6 +45,11 @@
     </div>
 </div>
 {% else %}
+{% if replacing %}
+<div class="flash">
+    {{ t("Two-step sign-in stays on, with the entry your app already has, until a code from the new one below is right. Only then does the old entry stop working.") }}
+</div>
+{% endif %}
 <div class="panel" style="margin-bottom: 20px;">
     <div class="panel-head">
         <h2>{{ t("1. Add the panel to the app") }}</h2>
@@ -70,7 +81,7 @@
 <div class="panel">
     <div class="panel-head">
         <h2>{{ t("2. Enter the code the app shows") }}</h2>
-        <span class="muted">{{ t("nothing is switched on until the code is right") }}</span>
+        <span class="muted">{% if replacing %}{{ t("the code from the new entry, not the old one") }}{% else %}{{ t("nothing is switched on until the code is right") }}{% endif %}</span>
     </div>
     <div style="padding: 24px;">
         <form method="post" action="/settings/totp/confirm" class="form-grid" autocomplete="off">
@@ -80,7 +91,7 @@
                        maxlength="7" placeholder="000000" class="mono" style="max-width: 160px;" required autofocus>
             </div>
             <div class="form-actions">
-                <button type="submit" class="btn primary">{{ t("Switch on") }}</button>
+                <button type="submit" class="btn primary">{% if replacing %}{{ t("Replace the entry") }}{% else %}{{ t("Switch on") }}{% endif %}</button>
                 <button type="submit" class="btn" formaction="/settings/totp/cancel" formnovalidate>{{ t("Cancel") }}</button>
             </div>
         </form>

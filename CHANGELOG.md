@@ -213,7 +213,9 @@ read as something a person wants to know before updating.
   back; nothing is switched on until that code is right, so an entry that
   never scanned cannot lock you out. A code works once, five wrong ones close
   the door for five minutes, and switching the second step off takes a code
-  too. It is off until you switch it on, and nothing changes for an
+  too. *Set up again* moves it to a new phone without a gap: the old entry
+  keeps working until the new one has produced a right code. It is off until
+  you switch it on, and nothing changes for an
   installation that does not. If the phone is lost, `mailchilla totp-off` on
   the server takes the second step off.
 

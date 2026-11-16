@@ -537,5 +537,152 @@ class SwitchingItOff(TwoStepCase):
         self.assertNotIn("TOTP_SECRET", caught)
 
 
+class SettingItUpAgain(TwoStepCase):
+    """
+    A new phone, or a secret thought to have been seen. Done as "switch off,
+    then set up", the panel would stand on its password for as long as the
+    setting up took — and for good if it was abandoned half-way. So the old
+    secret stays the second step until the new one has produced a code.
+    """
+
+    def begin(self, old: str) -> str:
+        """Asks for a new secret with a code for the old one; returns the new one shown."""
+        response = self.client.post("/settings/totp/replace", data={"code": totp.code(old)},
+                                    follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        return self.shown(self.page("/settings/totp"))
+
+    def test_the_page_offers_it(self):
+        self.switch_on()
+        body = self.page("/settings/totp")
+        self.assertIn('formaction="/settings/totp/replace"', body)
+        self.assertIn("Set up again", body)
+
+    def test_it_takes_a_code(self):
+        old = self.switch_on()
+        for code in ("", "000000x"):
+            with self.subTest(code=code):
+                response = self.client.post("/settings/totp/replace", data={"code": code})
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.shown(self.page("/settings/totp")), "")
+        self.assertEqual(config.TOTP_SECRET, old)
+        self.assertEqual(self.twostep._pending, {})
+
+    def test_a_code_buys_a_new_secret_and_changes_nothing_yet(self):
+        old = self.switch_on()
+        new = self.begin(old)
+        self.assertTrue(totp.valid_secret(new))
+        self.assertNotEqual(new, old)
+        body = self.page("/settings/totp")
+        self.assertIn("data:image/png;base64,", body)
+        self.assertIn("Two-step sign-in stays on", body)
+        self.assertIn("Replace the entry", body)
+        # The old one is still what the door asks for, in memory and on disk.
+        self.assertEqual(config.TOTP_SECRET, old)
+        self.assertEqual(self.written()["TOTP_SECRET"], old)
+        self.assertEqual(self.sign_in(code=self.next_code(old)).status_code, 303)
+        self.assertEqual(self.sign_in().status_code, 401)
+
+    def test_a_code_from_the_new_one_puts_it_in_force(self):
+        old = self.switch_on()
+        new = self.begin(old)
+        response = self.client.post("/settings/totp/confirm", data={"code": totp.code(new)},
+                                    follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("done=new", response.headers["location"])
+        self.assertEqual(config.TOTP_SECRET, new)
+        self.assertEqual(self.written()["TOTP_SECRET"], new)
+        body = self.page("/settings/totp?done=new")
+        self.assertIn("The new entry is in force", body)
+        self.assertEqual(self.shown(body), "")
+        # And the old entry makes codes for nothing.
+        self.assertEqual(self.sign_in(code=self.next_code(old)).status_code, 401)
+        self.assertEqual(self.sign_in(code=self.next_code(new)).status_code, 303)
+
+    def test_a_code_from_the_old_one_does_not(self):
+        # The easy slip: the app now holds two entries with the same name.
+        old = self.switch_on()
+        self.begin(old)
+        response = self.client.post("/settings/totp/confirm",
+                                    data={"code": self.next_code(old)})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(config.TOTP_SECRET, old)
+
+    def test_called_off_everything_is_as_it_was(self):
+        old = self.switch_on()
+        self.begin(old)
+        response = self.client.post("/settings/totp/cancel", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/settings/totp")
+        self.assertEqual(config.TOTP_SECRET, old)
+        self.assertEqual(self.twostep._pending, {})
+        self.assertEqual(self.shown(self.page("/settings/totp")), "")
+
+    def test_left_too_long_it_lapses_and_the_old_one_stays(self):
+        old = self.switch_on()
+        new = self.begin(old)
+        for owner, (kept, _) in list(self.twostep._pending.items()):
+            self.twostep._pending[owner] = (kept, time.time() - 1)
+        response = self.client.post("/settings/totp/confirm", data={"code": totp.code(new)},
+                                    follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(config.TOTP_SECRET, old)
+        self.assertEqual(self.shown(self.page("/settings/totp")), "")
+
+    def test_another_session_neither_sees_the_new_secret_nor_can_bring_one_in(self):
+        # It gave no code, so it has no say: an open session is not enough to
+        # swap the secret for one of its own.
+        old = self.switch_on()
+        new = self.begin(old)
+        other = self.signed_in_elsewhere_with(old)
+        body = other.get("/settings/totp").text
+        self.assertEqual(self.shown(body), "")
+        self.assertNotIn("data:image/png", body)
+        response = other.post("/settings/totp/confirm", data={"code": totp.code(new)},
+                              follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(config.TOTP_SECRET, old)
+
+    def signed_in_elsewhere_with(self, secret: str) -> TestClient:
+        other = TestClient(self.app)
+        response = other.post("/login", follow_redirects=False, data={
+            "username": USER, "password": PASSWORD, "code": self.next_code(secret)})
+        self.assertEqual(response.status_code, 303)
+        return other
+
+    def test_the_lock_is_on_the_door_not_only_on_the_page(self):
+        # A secret-in-waiting left from before the second step was on must not
+        # become the secret because somebody knows a code for it.
+        old = self.switch_on()
+        stray = totp.new_secret()
+        self.twostep._pending["a-session"] = (stray, time.time() + 600)
+        self.assertFalse(self.twostep.confirm("a-session", totp.code(stray)))
+        self.assertEqual(config.TOTP_SECRET, old)
+
+    def test_switching_off_in_the_middle_ends_it(self):
+        old = self.switch_on()
+        self.begin(old)
+        self.client.post("/settings/totp/disable", data={"code": self.next_code(old)},
+                         follow_redirects=False)
+        self.assertFalse(settings.two_step_on())
+        self.assertEqual(self.twostep._pending, {})
+        self.assertEqual(self.twostep._replacing, set())
+
+    def test_wrong_codes_run_out_here_too(self):
+        old = self.switch_on()
+        for _ in range(self.twostep.CODE_ATTEMPTS):
+            self.client.post("/settings/totp/replace", data={"code": ""})
+        response = self.client.post("/settings/totp/replace", data={"code": totp.code(old)})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(self.twostep._pending, {})
+
+    def test_not_without_signing_in(self):
+        self.switch_on()
+        response = TestClient(self.app).post("/settings/totp/replace", data={"code": "000000"},
+                                             follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("/login", response.headers["location"])
+
+
 if __name__ == "__main__":
     unittest.main()

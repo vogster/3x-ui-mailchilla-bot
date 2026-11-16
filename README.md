@@ -278,7 +278,7 @@ Then open `http://localhost:8080`.
 
 The alternative is a reverse proxy with HTTPS. Setting `ADMIN_PANEL_HOST=0.0.0.0` without one is a bad idea.
 
-**Two-step sign-in.** Settings → General → *Signing in* adds a second step: a six-digit code from an authenticator app (TOTP - Google Authenticator, Aegis, 2FAS, a password manager, any of them). The page shows a QR code, the app scans it, and nothing is switched on until the app has produced a right code - so a code that never scanned cannot lock you out. From then on the password alone does not open the panel. A code works once, wrong ones run out after five in five minutes, and switching the second step off takes a code too. Lost the phone? `mailchilla totp-off` on the server takes it off; that needs a shell there, which is exactly what a stolen password does not give.
+**Two-step sign-in.** Settings → General → *Signing in* adds a second step: a six-digit code from an authenticator app (TOTP - Google Authenticator, Aegis, 2FAS, a password manager, any of them). The page shows a QR code, the app scans it, and nothing is switched on until the app has produced a right code - so a code that never scanned cannot lock you out. From then on the password alone does not open the panel. A code works once, wrong ones run out after five in five minutes, and switching the second step off takes a code too. For a new phone there is *Set up again* on the same page: one code buys a new QR code, and the old entry keeps working until the new one has produced a right code. Lost the phone? `mailchilla totp-off` on the server takes it off; that needs a shell there, which is exactly what a stolen password does not give.
 
 ---
 

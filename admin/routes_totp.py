@@ -11,6 +11,10 @@ Both directions ask for a code. Switching on, because a secret is only worth
 keeping once the app has shown it holds the same one. Switching off, because
 the panel is then one password from anybody again, and a session left open on
 somebody else's computer should not be able to arrange that.
+
+«Set up again» is the two in one, for a new phone or a secret thought to have
+been seen: a code for the secret in force buys a new QR code, and the old
+secret goes on working until the new one has produced a code of its own.
 """
 import base64
 import logging
@@ -53,15 +57,21 @@ def _setup_id(request: Request, make: bool = False) -> str:
 
 
 def _page(request: Request, error: str = "", done: str = "", status_code: int = 200):
+    on = twostep.on()
+    owner = _setup_id(request, make=not on)
+    replacing = on and twostep.replacing(owner)
     context = {
         "request": request,
         "service_name": config.SERVICE_NAME,
-        "on": twostep.on(),
+        "on": on,
+        # Setting a new secret up beside the one in force: the page then shows
+        # the QR code although the second step is on.
+        "replacing": replacing,
         "error": error,
-        "done": done if done in ("on", "off") else "",
+        "done": done if done in ("on", "off", "new") else "",
     }
-    if not context["on"]:
-        secret = twostep.pending(_setup_id(request, make=True))
+    if not on or replacing:
+        secret = twostep.pending(owner)
         address = totp.uri(secret, config.ADMIN_PANEL_USER, config.SERVICE_NAME)
         png = mail_templates.qr_png(address)
         context.update(
@@ -89,15 +99,21 @@ def totp_page(request: Request, done: str = ""):
 
 @router.post("/settings/totp/confirm")
 def totp_confirm(request: Request, code: str = Form("")):
-    """Switches the second step on, once the app has produced a code from the secret shown."""
+    """
+    Switches the second step on — or over to a new secret — once the app has
+    produced a code from the secret shown.
+    """
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    if twostep.on():
-        # A second tab, or the form posted twice: it is on already.
+    owner = _setup_id(request)
+    replacing = twostep.replacing(owner)
+    if twostep.on() and not replacing:
+        # A second tab, or the form posted twice: it is on already. Also a
+        # replacement left so long that its secret lapsed.
         return RedirectResponse(url="/settings/totp", status_code=303)
     try:
-        confirmed = twostep.confirm(_setup_id(request), code)
+        confirmed = twostep.confirm(owner, code)
     except (ValueError, TypeError, OSError) as e:
         logger.error(f"Could not write the two-step secret to settings.json: {e}")
         return _page(request, status_code=500,
@@ -107,6 +123,10 @@ def totp_confirm(request: Request, code: str = Form("")):
             "That is not the code. Check that the app took the QR code on this page — "
             "it changes if the page is left open for long — and that the phone's clock is right."))
     request.session.pop(SETUP_KEY, None)
+    if replacing:
+        logger.warning(f"Panel: the two-step secret was replaced by {request.session.get('user')}; "
+                       f"codes from the old one no longer work.")
+        return RedirectResponse(url="/settings/totp?done=new", status_code=303)
     logger.info(f"Panel: two-step sign-in switched on by {request.session.get('user')}.")
     return RedirectResponse(url="/settings/totp?done=on", status_code=303)
 
@@ -119,7 +139,51 @@ def totp_cancel(request: Request):
         return auth_redirect
     twostep.drop_pending(_setup_id(request))
     request.session.pop(SETUP_KEY, None)
-    return RedirectResponse(url="/settings", status_code=303)
+    # A replacement called off leaves the second step as it was, and the page
+    # to come back to is its own.
+    return RedirectResponse(url="/settings/totp" if twostep.on() else "/settings",
+                            status_code=303)
+
+
+def _code_refused(request: Request, code: str, what: str):
+    """
+    The page to answer with when the code for the secret in force is not
+    right, or None when it is. Shared by the two things that take one.
+    """
+    # Counted apart from the sign-in form's wrong codes: see twostep.SWITCH_OFF.
+    verdict = twostep.check(code, twostep.SWITCH_OFF)
+    if verdict == twostep.OK:
+        return None
+    if verdict == twostep.LOCKED:
+        return _page(request, status_code=429,
+                     error=i18n.t("Too many wrong codes. Wait a few minutes and try again."))
+    logger.warning(f"Panel: a wrong code was given to {what} "
+                   f"(user {request.session.get('user')}).")
+    return _page(request, status_code=400, error=i18n.t(
+        "That is not the code, or it has been used already — a code works once. "
+        "Wait for the next one."))
+
+
+@router.post("/settings/totp/replace")
+def totp_replace(request: Request, code: str = Form("")):
+    """
+    Starts setting up a new secret, for a code from the one in force.
+
+    Nothing changes yet: the old secret goes on being the second step until
+    /settings/totp/confirm has seen a code from the new one.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    if not twostep.on():
+        return RedirectResponse(url="/settings/totp", status_code=303)
+    refused = _code_refused(request, code, "set two-step sign-in up again")
+    if refused:
+        return refused
+    twostep.begin_replacing(_setup_id(request, make=True))
+    logger.info(f"Panel: {request.session.get('user')} is setting two-step sign-in up again; "
+                f"the secret in force stays until the new one is confirmed.")
+    return RedirectResponse(url="/settings/totp", status_code=303)
 
 
 @router.post("/settings/totp/disable")
@@ -130,17 +194,9 @@ def totp_disable(request: Request, code: str = Form("")):
         return auth_redirect
     if not twostep.on():
         return RedirectResponse(url="/settings/totp", status_code=303)
-    # Counted apart from the sign-in form's wrong codes: see twostep.SWITCH_OFF.
-    verdict = twostep.check(code, twostep.SWITCH_OFF)
-    if verdict == twostep.LOCKED:
-        return _page(request, status_code=429,
-                     error=i18n.t("Too many wrong codes. Wait a few minutes and try again."))
-    if verdict != twostep.OK:
-        logger.warning(f"Panel: a wrong code was given to switch two-step sign-in off "
-                       f"(user {request.session.get('user')}).")
-        return _page(request, status_code=400, error=i18n.t(
-            "That is not the code, or it has been used already — a code works once. "
-            "Wait for the next one."))
+    refused = _code_refused(request, code, "switch two-step sign-in off")
+    if refused:
+        return refused
     try:
         twostep.switch_off()
     except (ValueError, TypeError, OSError) as e:

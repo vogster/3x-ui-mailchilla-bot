@@ -63,6 +63,12 @@ PENDING_SECONDS = 900
 # somebody making sessions, and the oldest go.
 PENDING_KEPT = 8
 _pending = {}        # the session's setup id -> (secret, good until)
+# Of those, the sessions bringing a new secret in while the second step is on:
+# each got here by giving a code for the secret in force. The old secret goes
+# on working until the new one is proved — replacing by switching off first
+# would leave the panel on its password for as long as the setting up took,
+# and for good if it was abandoned half-way.
+_replacing = set()
 
 
 def _reset():
@@ -71,6 +77,7 @@ def _reset():
         for door in _wrong:
             _wrong[door] = []
         _pending.clear()
+        _replacing.clear()
 
 
 def on() -> bool:
@@ -122,13 +129,39 @@ def pending(owner: str) -> str:
     """
     now = time.time()
     with _lock:
-        for stale in [key for key, (_, until) in _pending.items() if now >= until]:
-            del _pending[stale]
-        if owner not in _pending:
-            while len(_pending) >= PENDING_KEPT:
-                del _pending[min(_pending, key=lambda key: _pending[key][1])]
-            _pending[owner] = (totp.new_secret(), now + PENDING_SECONDS)
-        return _pending[owner][0]
+        return _pending_locked(owner, now)
+
+
+def _pending_locked(owner: str, now: float) -> str:
+    for stale in [key for key, (_, until) in _pending.items() if now >= until]:
+        del _pending[stale]
+        _replacing.discard(stale)
+    if owner not in _pending:
+        while len(_pending) >= PENDING_KEPT:
+            oldest = min(_pending, key=lambda key: _pending[key][1])
+            del _pending[oldest]
+            _replacing.discard(oldest)
+        _pending[owner] = (totp.new_secret(), now + PENDING_SECONDS)
+    return _pending[owner][0]
+
+
+def begin_replacing(owner: str):
+    """
+    Starts setting up a new secret beside the one in force. The caller has
+    checked a code for the old one — that check is what this session's right
+    to bring a new secret in rests on.
+    """
+    now = time.time()
+    with _lock:
+        _pending.pop(owner, None)
+        _pending_locked(owner, now)
+        _replacing.add(owner)
+
+
+def replacing(owner: str) -> bool:
+    """Whether this session is in the middle of that, with a secret still good."""
+    with _lock:
+        return bool(owner) and owner in _replacing and time.time() < _pending.get(owner, ("", 0.0))[1]
 
 
 def drop_pending(owner: str = None):
@@ -141,13 +174,16 @@ def drop_pending(owner: str = None):
     with _lock:
         if owner is None:
             _pending.clear()
+            _replacing.clear()
         else:
             _pending.pop(owner, None)
+            _replacing.discard(owner)
 
 
 def confirm(owner: str, code) -> bool:
     """
-    Switches the second step on, if the code is one the app made from the
+    Switches the second step on — or, for a session that is replacing the
+    secret, over to the new one — if the code is one the app made from the
     secret this session was shown.
 
     That check is the whole point of asking: a secret written down before the
@@ -158,6 +194,11 @@ def confirm(owner: str, code) -> bool:
     with _lock:
         secret, until = _pending.get(owner or "", ("", 0.0))
         if time.time() >= until:
+            secret = ""
+        # With a secret in force, only a session that gave a code for it may
+        # bring another in. The routes ask the same; this is the lock on the
+        # door rather than the sign beside it.
+        if config.TOTP_SECRET and owner not in _replacing:
             secret = ""
     if not secret or not totp.accept(secret, code):
         return False
