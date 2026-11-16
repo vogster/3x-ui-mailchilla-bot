@@ -10,6 +10,7 @@
     {% if tariff %}{{ ui.stat(t("welcome.label_tariff"), tariff) }}{% endif %}
     {{ ui.stat(t("welcome.label_expire"), expire_text) }}
     {{ ui.stat(t("welcome.label_limit"), limit_text) }}
+    {% if devices_text %}{{ ui.stat(t("welcome.label_devices"), devices_text) }}{% endif %}
 </table>
 
 {{ ui.button(sub_url, t("welcome.button_main")) }}

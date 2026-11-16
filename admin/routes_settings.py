@@ -603,11 +603,19 @@ def _sample_email(group: str, kind: str = "info"):
     if group == "welcome":
         return (mail_templates.welcome_subject(False),
                 mail_templates.get_welcome_email(demo_sub, config.EXPIRE_DAYS, config.LIMIT_GB,
-                                                 tariff=_demo_tariff_name()))
+                                                 tariff=_demo_tariff_name(),
+                                                 # A sample is where the texts are looked
+                                                 # at, the "devices" line among them — and
+                                                 # it is drawn only when there is a limit.
+                                                 limit_hwid=2))
     if group == "status":
         return (mail_templates.text("status.subject"),
                 mail_templates.get_status_email(demo_mail, True, 8 * 1024**3, 34 * 1024**3,
-                                                100 * 1024**3, now_ms + 21 * 86400 * 1000))
+                                                100 * 1024**3, now_ms + 21 * 86400 * 1000,
+                                                # With every slot taken, so that the sample
+                                                # shows all the device texts being edited.
+                                                device_limit=2,
+                                                devices=["Pixel 9", "iPhone 15"]))
     if group == "help":
         return (mail_templates.text("help.subject"),
                 mail_templates.get_help_email(demo_mail, demo_sub))

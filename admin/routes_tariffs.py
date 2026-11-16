@@ -181,7 +181,8 @@ def _form_context(request: Request, tariff: dict = None, error: str = ""):
         "request": request,
         "service_name": config.SERVICE_NAME,
         "tariff": tariff or {"id": "", "name": "", "limit_gb": config.LIMIT_GB,
-                             "expire_days": config.EXPIRE_DAYS, "inbound_ids": []},
+                             "expire_days": config.EXPIRE_DAYS, "limit_hwid": 0,
+                             "inbound_ids": []},
         "inbounds": _inbound_picker((tariff or {}).get("inbound_ids")),
         "error": error,
     }
@@ -217,11 +218,17 @@ async def tariff_save(request: Request,
         return auth_redirect
 
     form = await request.form()
+    known = tariffs.get(tariff_id) or {}
     values = {
         "id": tariff_id or None,
         "name": name,
         "limit_gb": limit_gb or 0,
         "expire_days": expire_days or 0,
+        # Kept when the form did not carry the field at all — a tab left open
+        # since before the field existed still posts the old form, and that is
+        # no instruction to lift a limit.
+        "limit_hwid": (form.get("limit_hwid") or 0) if "limit_hwid" in form
+                      else known.get("limit_hwid", 0),
         # The checkboxes are absent when 3x-ui did not answer with a list; an
         # edit made while the panel is unreachable then keeps what it had
         # rather than quietly emptying the tariff.

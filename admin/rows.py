@@ -153,4 +153,10 @@ def client_row(client_obj: dict, online: set = None, last_online: dict = None) -
         "percent": percent,
         "expiry": _fmt_expiry(client_obj.get("expiryTime", 0)),
         "sub_id": client_obj.get("subId", ""),
+        # How many devices may use the subscription; 0 is no limit. The second
+        # says whether the panel knows such a thing at all: a 3x-ui from before
+        # HWID limits returns no field, and offering to set one there would be
+        # offering something that is not kept.
+        "limit_hwid": XuiClient.device_limit(client_obj) or 0,
+        "hwid_known": XuiClient.device_limit(client_obj) is not None,
     }

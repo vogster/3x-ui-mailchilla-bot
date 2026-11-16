@@ -221,6 +221,27 @@ class FindWords(unittest.TestCase):
 
     def test_a_cyrillic_word_keeps_its_boundaries(self):
         self.assertEqual(email_bot.find_words("хочу подписку", ["подписка"]), [])
+
+    def test_a_word_that_is_the_start_of_another_is_not_found_inside_it(self):
+        # AURORA and AURORA-FAMILY are the obvious pair to hand out, and a
+        # hyphen is not a letter: the short word was found whole inside the
+        # long one, the letter read as carrying two words, and whoever wrote
+        # AURORA-FAMILY was asked which subscription they meant.
+        words = ["AURORA", "AURORA-FAMILY"]
+        self.assertEqual(email_bot.find_words("AURORA-FAMILY", words), ["AURORA-FAMILY"])
+        self.assertEqual(email_bot.find_words("aurora-family, please", list(reversed(words))),
+                         ["AURORA-FAMILY"])
+        self.assertEqual(email_bot.find_words("AURORA", words), ["AURORA"])
+
+    def test_but_it_is_found_when_it_also_stands_alone(self):
+        # Then the letter really does carry both, and the sender is asked.
+        words = ["AURORA", "AURORA-FAMILY"]
+        self.assertEqual(email_bot.find_words("AURORA or AURORA-FAMILY?", words), words)
+
+    def test_the_end_and_the_middle_of_a_longer_word_are_not_found_either(self):
+        words = ["FAMILY", "AURORA-FAMILY-2026", "AURORA-FAMILY"]
+        self.assertEqual(email_bot.find_words("AURORA-FAMILY-2026", words),
+                         ["AURORA-FAMILY-2026"])
         self.assertEqual(email_bot.find_words("слово: подписка", ["подписка"]), ["подписка"])
 
 

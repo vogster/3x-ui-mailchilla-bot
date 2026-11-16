@@ -26,7 +26,8 @@
         {% endif %}
         <a href="/tariffs/codes/{{ code.word }}/edit" class="btn primary">{{ t("Edit") }}</a>
         <form method="post" action="/tariffs/codes/{{ code.word }}/delete"
-              onsubmit="return confirm({{ t("Remove this code from the list? Switching it off is usually enough — a removed one leaves no record of who came in through it.")|tojson }});">
+              data-confirm="{{ t("Remove this code from the list? Switching it off is usually enough — a removed one leaves no record of who came in through it.") }}"
+              data-confirm-danger="1">
             <button type="submit" class="btn danger">{{ t("Remove") }}</button>
         </form>
     </div>

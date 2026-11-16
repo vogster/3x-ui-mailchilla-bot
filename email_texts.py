@@ -103,6 +103,10 @@ GROUPS = [
             ("welcome.value_days", "The expiry value", LINE, "Substitution: {days}"),
             ("welcome.value_unlimited", "The 'unlimited' value", LINE, ""),
             ("welcome.value_gb", "The limit value", LINE, "Substitution: {gb}"),
+            ("welcome.label_devices", "The 'devices' line", LINE,
+             "Shown only when the client has a device limit; without one the line "
+             "is left out."),
+            ("welcome.value_devices", "The devices value", LINE, "Substitution: {count}"),
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
@@ -147,6 +151,20 @@ GROUPS = [
             ("status.used_of", "The value with a limit", LINE, "Substitutions: {used}, {total}"),
             ("status.used_nolimit", "The value without a limit", LINE, "Substitution: {used}"),
             ("status.meter_text", "The caption under the bar", LINE, "Substitution: {percent}"),
+            ("status.label_devices", "The 'devices' line", LINE,
+             "Shown only when the client has a device limit; without one the line "
+             "is left out."),
+            ("status.value_devices", "The devices value", LINE,
+             "Substitutions: {used}, {limit}"),
+            ("status.value_devices_limit", "The devices value when they cannot be counted", LINE,
+             "Used when 3x-ui states the limit but does not list the devices. "
+             "Substitution: {limit}"),
+            ("status.devices_list", "The list of devices", LINE,
+             "Under the figures, naming the devices that said what they are. "
+             "Substitution: {names}"),
+            ("status.devices_full", "Every device slot is taken", TEXT,
+             "Added when as many devices are registered as the limit allows. "
+             "Empty means nothing is added."),
             ("status.outro", "Closing", TEXT, ""),
         ],
     },
@@ -254,6 +272,8 @@ DEFAULTS_BY_LANG = {
         "welcome.value_days": "{days} days",
         "welcome.value_unlimited": "Unlimited",
         "welcome.value_gb": "{gb} GB",
+        "welcome.label_devices": "Devices",
+        "welcome.value_devices": "up to {count}",
         "welcome.button_main": "Get the settings",
         "welcome.apps_intro": "Or add the subscription straight to an app:",
         "welcome.button_app": "Add to {app}",
@@ -278,6 +298,13 @@ DEFAULTS_BY_LANG = {
         "status.used_of": "{used} of {total}",
         "status.used_nolimit": "{used} (no limit)",
         "status.meter_text": "{percent}% of the limit spent",
+        "status.label_devices": "Devices",
+        "status.value_devices": "{used} of {limit}",
+        "status.value_devices_limit": "up to {limit}",
+        "status.devices_list": "Registered devices: {names}",
+        "status.devices_full":
+            "**Every device slot is taken.** Another device will not be let in until one "
+            "of these is removed — ask the administrator to free a slot.",
         "status.outro":
             "To import the subscription again, send a letter with **/help** in it — "
             "we will reply with the link and the instructions.",
@@ -378,6 +405,8 @@ DEFAULTS_BY_LANG = {
         "welcome.value_days": "{days} дней",
         "welcome.value_unlimited": "Безлимит",
         "welcome.value_gb": "{gb} ГБ",
+        "welcome.label_devices": "Устройств",
+        "welcome.value_devices": "до {count}",
         "welcome.button_main": "Получить настройки",
         "welcome.apps_intro": "Или добавьте подписку прямо в приложение:",
         "welcome.button_app": "Добавить в {app}",
@@ -402,6 +431,13 @@ DEFAULTS_BY_LANG = {
         "status.used_of": "{used} из {total}",
         "status.used_nolimit": "{used} (без лимита)",
         "status.meter_text": "Израсходовано {percent}% лимита",
+        "status.label_devices": "Устройства",
+        "status.value_devices": "{used} из {limit}",
+        "status.value_devices_limit": "до {limit}",
+        "status.devices_list": "Зарегистрированы: {names}",
+        "status.devices_full":
+            "**Все места заняты.** Новое устройство не подключится, пока не убрано одно "
+            "из этих, — попросите администратора освободить место.",
         "status.outro":
             "Чтобы импортировать подписку заново, отправьте письмо с текстом **/help** — "
             "пришлём ссылку и инструкцию.",

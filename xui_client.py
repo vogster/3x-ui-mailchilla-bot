@@ -152,7 +152,7 @@ class XuiClient:
 
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
                    inbound_ids: list = None, comment: str = "", flow: str = None,
-                   group: str = ""):
+                   group: str = "", limit_hwid: int = 0):
         """
         Adds a new client to every inbound listed.
         :param email: the client's unique email/identifier (a limited character
@@ -161,6 +161,10 @@ class XuiClient:
         :param group: the client group, which this project uses for the tariff
                       name. 3x-ui creates the group on first use, so there is
                       nothing to set up beforehand and this stays one request.
+        :param limit_hwid: how many devices may use the subscription, counted by
+                           the hardware id an app sends; 0 is no limit. A panel
+                           too old to know the field takes the client and drops
+                           it in silence — see device_limit().
         :param flow: the flow value (taken from the settings when not given)
         :param client_uuid: the client UUID (a new one is generated when absent)
         :param limit_gb: traffic limit in GB (taken from the config when absent)
@@ -223,6 +227,11 @@ class XuiClient:
             },
             "inboundIds": inbound_ids
         }
+        # Only when there is a limit to set. Without one the panel is asked
+        # exactly what it was asked before the field existed, so an older 3x-ui
+        # is never handed a key it has not heard of for the sake of a zero.
+        if limit_hwid and int(limit_hwid) > 0:
+            payload["client"]["limitHwid"] = int(limit_hwid)
         
         try:
             response = self._request("POST", "/panel/api/clients/add", json=payload)
@@ -231,7 +240,8 @@ class XuiClient:
                 resp_json = response.json()
                 if resp_json.get("success"):
                     logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}"
-                                + (f", group {group!r}" if group else ""))
+                                + (f", group {group!r}" if group else "")
+                                + (f", devices {int(limit_hwid)}" if limit_hwid else ""))
                     return client_uuid, inbound_ids
                 else:
                     logger.error(f"Could not add client {email}: {resp_json.get('msg')}")
@@ -443,6 +453,105 @@ class XuiClient:
             logger.error(f"Exception while renaming the group {old_name!r}: {e}")
             return False
 
+    # ----------------------------------------------------------------------
+    # Devices
+    # ----------------------------------------------------------------------
+    # 3x-ui can limit how many devices use one subscription. It tells them
+    # apart by the hardware id (HWID) an app sends when it fetches the
+    # subscription, keeps a list of the ones it has let in, and refuses the
+    # next once the list is as long as the client's limitHwid. A device stays
+    # on that list until somebody takes it off — which is the whole of what the
+    # two calls below are for: a client with a new phone is otherwise locked
+    # out by the old one.
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    def device_limit(client_obj: dict):
+        """
+        A client's device limit as the panel holds it, or None when the panel
+        does not know the field at all.
+
+        None and 0 are different answers. 0 is "no limit", and a build from
+        before HWID limits returns no such key — so a client just created with
+        a limit that comes back as None was created without it, and the tariff
+        is promising something nothing enforces.
+        """
+        if not client_obj or "limitHwid" not in client_obj:
+            return None
+        try:
+            return max(int(client_obj.get("limitHwid") or 0), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def device_label(device: dict) -> str:
+        """
+        What a registered device calls itself: its model, or failing that its
+        system — "Pixel 9", "windows 11" — and "" when it said neither.
+
+        A phone names its model; a desktop app as a rule sends only the system
+        it runs on. The empty answer is left to the caller, because the words
+        for "unknown" differ: the panel has its own language and a letter has
+        another.
+        """
+        model = str((device or {}).get("deviceModel") or "").strip()
+        if model:
+            return model
+        return " ".join(str((device or {}).get(key) or "").strip()
+                        for key in ("deviceOs", "osVersion")).strip()
+
+    def get_client_devices(self, email: str) -> list or None:
+        """
+        The devices registered against a client's limit, as the panel lists
+        them: id, deviceModel, deviceOs, osVersion, userAgent, a short
+        fingerprint, firstSeen and lastSeen.
+
+        None when the panel cannot say — an older build has no such route —
+        which is not the same as an empty list and must not be shown as one.
+        """
+        try:
+            # A POST that changes nothing, like the online list.
+            response = self._request("POST", f"/panel/api/clients/hwids/{quote(str(email), safe='')}")
+            if response.status_code != 200:
+                logger.debug(f"The panel does not list devices for {email}: {response.status_code}")
+                return None
+            resp_json = response.json()
+            if not resp_json.get("success"):
+                logger.debug(f"The panel returned no devices for {email}: {resp_json.get('msg')}")
+                return None
+            devices = resp_json.get("obj") or []
+            return [d for d in devices if isinstance(d, dict)] if isinstance(devices, list) else None
+        except Exception as e:
+            logger.debug(f"Exception while fetching the devices of {email}: {e}")
+            return None
+
+    def forget_client_devices(self, email: str, device_id=None) -> bool:
+        """
+        Takes one device off a client's list, or all of them when no id is given.
+
+        Nothing is disconnected by it: the slot is freed, and whichever device
+        fetches the subscription next takes it.
+        """
+        endpoint = f"/panel/api/clients/hwids/{quote(str(email), safe='')}"
+        what = "every device"
+        if device_id is not None:
+            endpoint += f"/{quote(str(device_id), safe='')}"
+            what = f"device {device_id}"
+        try:
+            response = self._request("DELETE", endpoint)
+            if response.status_code != 200:
+                logger.error(f"Unexpected status while forgetting {what} of {email}: "
+                             f"{response.status_code}")
+                return False
+            resp_json = response.json()
+            if resp_json.get("success"):
+                logger.info(f"Forgot {what} of client {email}.")
+                return True
+            logger.error(f"The panel refused to forget {what} of {email}: {resp_json.get('msg')}")
+        except Exception as e:
+            logger.error(f"Exception while forgetting {what} of {email}: {e}")
+        return False
+
     def get_last_online(self) -> dict or None:
         """
         When the panel last saw each client: identifier -> milliseconds.
@@ -640,7 +749,8 @@ class XuiClient:
     def update_client(self, client_uuid: str, total_gb: int = None,
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
-                      group: str = None, client_obj: dict = None) -> bool:
+                      group: str = None, limit_hwid: int = None,
+                      client_obj: dict = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -651,6 +761,8 @@ class XuiClient:
         :param expire_days: new length in days from now (None leaves it; 0 never expires)
         :param enable: True/False to switch on or off (None leaves it)
         :param group: the client group — this project's tariff name (None leaves it)
+        :param limit_hwid: how many devices may use the subscription (None leaves
+                           it; 0 lifts the limit)
         :param new_remark: a new value for the client's email field (None leaves it)
         :param new_comment: a new comment/name (None leaves it)
         :param client_obj: a client object already fetched — lets the caller avoid
@@ -698,6 +810,8 @@ class XuiClient:
             # Everything else about the group is the panel's own business: it
             # makes one on first use and forgets an empty one on its own.
             payload["group"] = group
+        if limit_hwid is not None:
+            payload["limitHwid"] = max(int(limit_hwid), 0)
 
         endpoint = f"/panel/api/clients/update/{quote(str(current_remark), safe='')}"
 

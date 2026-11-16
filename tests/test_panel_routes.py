@@ -40,21 +40,61 @@ INBOUNDS = [
 CLIENTS = [
     {"uuid": "c0ffee01", "id": 1, "email": "ben@example.com", "comment": "Ben",
      "enable": True, "totalGB": 0, "expiryTime": 0, "subId": "sub01",
-     "inboundIds": [1], "group": "Basic", "traffic": {"up": 1, "down": 2}},
+     "inboundIds": [1], "group": "Basic", "limitHwid": 2,
+     "traffic": {"up": 1, "down": 2}},
     {"uuid": "c0ffee02", "id": 2, "email": "old-timer@example.com", "comment": "",
      "enable": True, "totalGB": 0, "expiryTime": 0, "subId": "sub02",
-     "inboundIds": [1], "group": "", "traffic": {"up": 0, "down": 0}},
+     "inboundIds": [1], "group": "", "limitHwid": 0,
+     "traffic": {"up": 0, "down": 0}},
+]
+# What the stubbed panel lists for a client with a device limit.
+DEVICES = [
+    {"id": 7, "firstSeen": 1735000000000, "lastSeen": 1735100000000,
+     "userAgent": "Happ/1.0", "deviceOs": "android", "osVersion": "15",
+     "deviceModel": "Pixel 9", "fingerprint": "6ad17c93e821"},
 ]
 
 
 class FakeXui:
     """Every call the panel makes, answered without a network."""
 
+    # A panel from before device limits returns clients without the field.
+    knows_devices = True
+
+    def __init__(self):
+        self.devices = [dict(d) for d in DEVICES]
+        self.asked_devices = []
+        self.forget_ok = True
+        self.created = []
+
+    def _shape(self, client):
+        client = dict(client)
+        if not self.knows_devices:
+            client.pop("limitHwid", None)
+        return client
+
     def get_inbounds(self):
         return [dict(i) for i in INBOUNDS]
 
     def get_all_clients(self):
-        return [dict(c) for c in CLIENTS]
+        return [self._shape(c) for c in CLIENTS + self.created]
+
+    def get_client_devices(self, email):
+        self.asked_devices.append(email)
+        return None if self.devices is None else [dict(d) for d in self.devices]
+
+    def forget_client_devices(self, email, device_id=None):
+        self.forgot = (email, device_id)
+        return self.forget_ok
+
+    def add_client(self, **kwargs):
+        self.added = kwargs
+        self.created.append({
+            "uuid": "c0ffee99", "id": 99, "email": kwargs["email"], "comment": "",
+            "enable": True, "totalGB": 0, "expiryTime": 0, "subId": "sub99",
+            "inboundIds": list(kwargs["inbound_ids"]), "group": kwargs.get("group", ""),
+            "limitHwid": kwargs.get("limit_hwid", 0), "traffic": {"up": 0, "down": 0}})
+        return "c0ffee99", list(kwargs["inbound_ids"])
 
     def get_online_emails(self):
         return ["ben@example.com"]
@@ -66,11 +106,12 @@ class FakeXui:
         return None
 
     def find_client_by_uuid(self, uuid):
-        return next((dict(c) for c in CLIENTS
+        return next((self._shape(c) for c in CLIENTS + self.created
                      if c["uuid"] == uuid or str(c["id"]) == str(uuid)), None)
 
     def find_client_by_email(self, email, strict=False):
-        return next((dict(c) for c in CLIENTS if c["email"] == email), None)
+        return next((self._shape(c) for c in CLIENTS + self.created
+                     if c["email"] == email), None)
 
     def get_client_links(self, email):
         return []
@@ -598,3 +639,176 @@ class SignInIsNotGuessable(PanelCase):
         self.attempt("wrong")
         self.attempt("wrong")
         self.assertEqual(self.attempt(PASSWORD).status_code, 303)
+
+
+class DeviceLimit(PanelCase):
+    """
+    How many devices may use one subscription: a figure on the tariff, a field
+    on the client, and — because a device stays registered until somebody takes
+    it off — a list on the client's card with a way to clear it.
+    """
+
+    def save_tariff(self, **extra):
+        data = {"tariff_id": self.tariff["id"], "name": "Basic", "limit_gb": "100",
+                "expire_days": "90", "inbounds_present": "1", "inbound_ids": ["1"]}
+        data.update(extra)
+        return self.client.post("/tariffs/save", data=data, follow_redirects=False)
+
+    def test_the_tariff_form_has_the_field_and_saves_it(self):
+        self.assertIn('name="limit_hwid"', self.page(f"/tariffs/{self.tariff['id']}/edit"))
+        self.assertEqual(self.save_tariff(limit_hwid="3").status_code, 303)
+        self.assertEqual(tariffs.get(self.tariff["id"])["limit_hwid"], 3)
+        self.assertIn('name="limit_hwid" min="0" step="1" value="3"',
+                      self.page(f"/tariffs/{self.tariff['id']}/edit"))
+
+    def test_a_form_without_the_field_does_not_lift_the_limit(self):
+        # A tab left open since before the update still posts the old form.
+        self.save_tariff(limit_hwid="3")
+        self.save_tariff()
+        self.assertEqual(tariffs.get(self.tariff["id"])["limit_hwid"], 3)
+
+    def test_the_tariffs_page_and_the_card_show_it(self):
+        # The list names it only when there is one; the card always has the
+        # tile, so it is the figure that has to be looked for there.
+        self.assertNotIn("Devices:", self.page("/tariffs"))
+        self.save_tariff(limit_hwid="3")
+        self.assertIn('Devices: <span class="mono">3</span>', self.page("/tariffs"))
+        card = self.page(f"/tariffs/{self.tariff['id']}")
+        self.assertIn('<div class="label">Devices</div>\n        <div class="value">3</div>', card)
+
+    def test_the_create_forms_offer_it_and_take_it_from_the_tariff(self):
+        self.save_tariff(limit_hwid="3")
+        for url in ("/clients/new", "/clients"):
+            body = self.page(url)
+            self.assertIn('name="limit_hwid"', body)
+            self.assertIn('data-hwid="3"', body)
+
+    def test_a_client_made_by_hand_gets_the_limit_from_the_form(self):
+        response = self.client.post("/clients/new", data={
+            "email": "new@example.com", "comment": "", "limit_gb": "10", "expire_days": "30",
+            "limit_hwid": "2", "tariff_id": self.tariff["id"], "inbound_ids": ["1"],
+        }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.fake.added["limit_hwid"], 2)
+
+    def test_the_card_counts_and_lists_the_devices(self):
+        body = self.page("/clients/c0ffee01")
+        cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
+        self.assertIn("1 / 2", cards)
+        self.assertIn("Pixel 9", body)
+        self.assertIn("6ad17c93e821", body)
+        self.assertIn("/clients/c0ffee01/devices/7/forget", body)
+
+    def test_a_client_without_a_limit_has_no_device_block(self):
+        body = self.page("/clients/c0ffee02")
+        self.assertNotIn("Registered devices", body)
+        self.assertEqual(self.fake.asked_devices, [], "a request the page had no use for")
+
+    def test_a_panel_that_cannot_list_them_shows_the_limit_alone(self):
+        self.fake.devices = None
+        body = self.page("/clients/c0ffee01")
+        self.assertNotIn("Registered devices", body)
+        # The limit without a count beside it: "0 / 2" would be a claim.
+        self.assertIn('<div class="label">Devices</div>\n        <div class="value">2</div>', body)
+
+    def test_a_device_reporting_nonsense_does_not_take_the_card_down(self):
+        self.fake.devices = [
+            {"id": 8, "lastSeen": "yesterday", "deviceModel": "<b>Phone</b>"},
+            {"deviceModel": "No id, so nothing to forget it by"},
+        ]
+        body = self.page("/clients/c0ffee01")
+        self.assertIn("&lt;b&gt;Phone&lt;/b&gt;", body)
+        self.assertNotIn("<b>Phone</b>", body)
+        self.assertNotIn("devices/None/forget", body)
+        self.assertNotIn("No id, so nothing", body)
+
+    def test_the_sample_letter_shows_the_devices_line(self):
+        # The line is drawn only when there is a limit, so a sample without one
+        # would never show the text somebody is editing.
+        import admin.routes_settings as routes_settings
+        subject, mail = routes_settings._sample_email("welcome")
+        self.assertIn("up to 2", mail.text)
+
+    def test_forgetting_every_device(self):
+        response = self.client.post("/clients/c0ffee01/devices/forget", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.fake.forgot, ("ben@example.com", None))
+
+    def test_forgetting_one(self):
+        response = self.client.post("/clients/c0ffee01/devices/7/forget", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.fake.forgot, ("ben@example.com", "7"))
+
+    def test_a_refusal_comes_back_as_an_error_on_the_card(self):
+        self.fake.forget_ok = False
+        response = self.client.post("/clients/c0ffee01/devices/forget", follow_redirects=False)
+        self.assertIn("error=", response.headers["location"])
+
+    def test_the_edit_form_carries_the_limit(self):
+        self.assertIn('name="limit_hwid" min="0" step="1" value="2"',
+                      self.page("/clients/c0ffee01/edit"))
+
+    def edit(self, **extra):
+        data = {"limit_gb": "0", "expire_days": "0", "enable": "on", "comment": "Ben",
+                "inbound_ids": ["1"]}
+        data.update(extra)
+        return self.client.post("/clients/c0ffee01/edit", data=data, follow_redirects=False)
+
+    def test_a_changed_limit_is_sent_to_the_panel(self):
+        self.assertEqual(self.edit(limit_hwid="4").status_code, 303)
+        self.assertEqual(self.fake.updated["limit_hwid"], 4)
+
+    def test_an_untouched_limit_is_not(self):
+        # The update replaces the whole row from what the panel returned, so
+        # the value survives; naming it again would only hand an older panel a
+        # field it does not know.
+        self.edit(limit_hwid="2")
+        self.assertIsNone(self.fake.updated["limit_hwid"])
+
+    def test_moving_to_a_tariff_offers_its_limit(self):
+        self.save_tariff(limit_hwid="3")
+        self.assertIn('data-hwid="3"', self.page("/clients/c0ffee01/edit"))
+
+
+class PanelsFromBeforeDeviceLimits(PanelCase):
+    """
+    A 3x-ui that has never heard of the field returns clients without it. The
+    panel then says nothing about devices on a client, rather than offering a
+    limit that would not be kept.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.fake.knows_devices = False
+
+    def test_the_card_has_no_device_tile(self):
+        body = self.page("/clients/c0ffee01")
+        cards = body.split('class="cards"', 1)[1].split("</div>\n</div>", 1)[0]
+        self.assertNotIn("Devices", cards)
+        self.assertEqual(self.fake.asked_devices, [])
+
+    def test_the_edit_form_has_no_field(self):
+        self.assertNotIn('name="limit_hwid"', self.page("/clients/c0ffee01/edit"))
+
+
+class DeletingAsksFirst(PanelCase):
+    """
+    Deleting a tariff and removing a code used to ask nothing. The question was
+    written as onsubmit="return confirm({{ ...|tojson }})", and tojson puts the
+    text in double quotes inside an attribute that is itself in double quotes:
+    the browser read `return confirm(` as the whole handler, could not compile
+    it, and submitted the form. The panel has a dialog of its own for this,
+    which only wants a data-confirm attribute.
+    """
+
+    def test_the_tariff_delete_button_asks(self):
+        body = self.page("/tariffs")
+        self.assertNotIn("onsubmit=", body)
+        form = body.split(f'action="/tariffs/{self.tariff["id"]}/delete"', 1)[1].split(">", 1)[0]
+        self.assertIn("data-confirm=", form)
+
+    def test_the_code_remove_button_asks(self):
+        body = self.page("/tariffs/codes/AURORA")
+        self.assertNotIn("onsubmit=", body)
+        form = body.split('action="/tariffs/codes/AURORA/delete"', 1)[1].split(">", 1)[0]
+        self.assertIn("data-confirm=", form)

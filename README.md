@@ -48,7 +48,7 @@ You write a letter with a command, in the subject or in the body - the bot handl
 | Command | What it does |
 |---|---|
 | the code word | creates the client in 3x-ui, sends back the subscription link |
-| `/status` | traffic left, expiry, status |
+| `/status` | traffic left, expiry, status, and the devices registered against the limit when there is one |
 | `/help` | instructions for setting up a client app |
 | `/broadcast` | a letter to every active client (from the administrator only) |
 
@@ -188,11 +188,14 @@ A tariff is what a client gets: traffic, term and the inbounds they are added to
 | Code word | the word a letter must carry. Unique across tariffs, matched as a whole word |
 | Traffic limit | in GB; 0 means unlimited |
 | Subscription length | in days; 0 means it never expires |
+| Device limit | how many devices may use the subscription; 0 means no limit. Needs a recent 3x-ui |
 | Inbounds | the client is added to each of them, in order |
 
 The dashboard counts who is on which tariff and what they have spent, the broadcast can be narrowed to one tariff, and `/status` tells a client which one they are on. Every tariff and every code has a card of its own: a tariff's shows who is on it, a code's shows everybody who came in through that word - each a click away from their own client card.
 
 **Who is on which tariff is kept in 3x-ui itself**, in the client's group, named after the tariff. Nothing has to be kept in step: the 3x-ui panel shows the same grouping, and a group changed there by hand is simply the truth. The client list shows the tariff beside the name and can filter by it, including "without one" - which is what anybody registered before tariffs existed will be. Renaming a tariff renames the group and carries its clients across, which is why two tariffs may not share a name. Deleting one leaves its clients exactly as they are: they hold their own limits, and the label they carry outlives the tariff - the list marks it with a dashed chip and the tariffs page counts such groups under "Groups without a tariff".
+
+**The device limit is 3x-ui's own**, counted by the hardware id an app sends when it fetches the subscription. A device stays registered until it is taken off, so a client's card lists theirs - model, system, app, first and last seen - with a button to forget one or all of them; that frees the slot for whichever device asks next, and is what to press when somebody writes that their new phone is not let in. The registration letter states the limit when there is one, and `/status` answers with how many devices are registered out of how many, which ones, and - once every slot is taken - that the administrator has to free one. A 3x-ui from before such limits takes the client and drops the limit without a word - the bot reads the client back, says so in the log, and leaves the line out of the letter.
 
 **A tariff is read once, when the client is created.** From that moment the values live on the client in 3x-ui, so editing a tariff changes nothing for anybody already registered - it describes the next client, not the last one.
 

@@ -118,6 +118,22 @@ read as something a person wants to know before updating.
   does not have — the four ways registration stops working without a line in
   the log.
 
+- **A tariff can limit how many devices use one subscription.** 3x-ui tells
+  devices apart by the hardware id the app sends and now holds a limit on the
+  client; the tariff has a field for it, beside the traffic and the term, and a
+  new client is created with it. The registration letter states the limit when
+  there is one, and `/status` answers with how many devices are registered out
+  of how many, names them, and says what to do once every slot is taken — the
+  new phone that will not connect is exactly when somebody asks for their
+  status. A device stays registered until somebody takes it off, so the
+  client's card lists the devices — model, system, app, when first and last
+  seen — with a button to forget one or all of them: that is what somebody with
+  a new phone will be writing to you about. The limit can also be set by hand
+  when creating or editing a client. **It needs a recent 3x-ui.** An older one
+  takes the client and ignores the limit; the bot notices and says so in the
+  log rather than letting the tariff promise something nothing enforces, and
+  the letter then leaves the line out.
+
 ### Changed
 
 - Dates are picked in a calendar of the panel's own making rather than the
@@ -176,6 +192,13 @@ read as something a person wants to know before updating.
 
 ### Fixed
 
+- **A code word that begins another no longer makes a letter ambiguous.** With
+  `AURORA` and `AURORA-FAMILY` both in use, a letter carrying the longer word
+  was read as carrying both, and its sender was asked which subscription they
+  meant instead of being registered.
+- **Deleting a tariff and removing a code ask before doing it.** Both buttons
+  were meant to and neither did: the question was written in a way the browser
+  could not read, so the form simply went through.
 - **A client with `login` in their address could not be managed.** The panel
   took any 3x-ui address containing those letters for its sign-in page, and the
   client's address is part of the address — so for `loginov@…` every request

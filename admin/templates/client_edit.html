@@ -18,13 +18,14 @@
         <form method="post" action="/clients/{{ client.uuid }}/edit" class="form-grid">
             {% if tariffs %}
             <div>
-                <label for="apply_tariff">{{ t("Move to a tariff") }} {{ fields.help(t("Fills the three fields below with the tariff's values — the traffic limit, a fresh term counted from today, and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.")) }}</label>
+                <label for="apply_tariff">{{ t("Move to a tariff") }} {{ fields.help(t("Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.")) }}</label>
                 <select id="apply_tariff" name="tariff_id">
                     <option value="">{{ t("leave as it is") }}</option>
                     {% for tariff in tariffs %}
                     <option value="{{ tariff.id }}"
                             data-limit="{{ tariff.limit_gb }}"
                             data-days="{{ tariff.expire_days }}"
+                            data-hwid="{{ tariff.limit_hwid or 0 }}"
                             data-inbounds="{{ tariff.inbound_ids|join(',') }}">{{ tariff.name }}</option>
                     {% endfor %}
                 </select>
@@ -38,6 +39,15 @@
                 <label for="expire_days">{{ t("Validity, days from now") }} {{ fields.help(t("0 means it never expires. Sets a new expiry of today plus N days.")) }}</label>
                 <input type="number" id="expire_days" name="expire_days" min="0" step="1" value="{{ days_left }}">
             </div>
+            {# Offered only when the panel knows such a limit: a 3x-ui from
+               before it returns clients without the field, and a box here
+               would be a promise the panel does not keep. #}
+            {% if client.hwid_known %}
+            <div>
+                <label for="limit_hwid">{{ t("Device limit") }} {{ fields.help(t("How many devices may use the subscription. 0 means no limit. Devices already registered are listed on the client's card, where they can be forgotten.")) }}</label>
+                <input type="number" id="limit_hwid" name="limit_hwid" min="0" step="1" value="{{ client.limit_hwid }}">
+            </div>
+            {% endif %}
             <div class="checkbox-row">
                 <input type="checkbox" id="enable" name="enable" {% if client.enable %}checked{% endif %}>
                 <label for="enable">{{ t("Subscription is active") }}</label>
@@ -114,6 +124,9 @@
             if (!option || !option.value) return;
             document.getElementById("limit_gb").value = option.dataset.limit;
             document.getElementById("expire_days").value = option.dataset.days;
+            // Absent on a panel that knows no device limits.
+            var devices = document.getElementById("limit_hwid");
+            if (devices) devices.value = option.dataset.hwid || 0;
             var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
             document.querySelectorAll('input[name="inbound_ids"]').forEach(function (box) {
                 box.checked = wanted.indexOf(box.value) !== -1;

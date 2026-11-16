@@ -226,7 +226,8 @@ def welcome_subject(renewed=False) -> str:
     return text("welcome.subject_again" if renewed else "welcome.subject_new")
 
 
-def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="") -> Email:
+def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="",
+                      limit_hwid=0) -> Email:
     """The letter carrying the subscription link, on registration or resent."""
     # Somebody reading their mail on a computer has the link on the wrong
     # machine, and carrying it across to the phone by hand is exactly the sort
@@ -255,12 +256,27 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="") 
                      else text("welcome.value_days", days=expire_days)),
         limit_text=(text("welcome.value_unlimited") if not limit_gb
                     else text("welcome.value_gb", gb=limit_gb)),
+        # How many devices may use the subscription. Empty when there is no
+        # limit, and the line is then left out: "Devices: unlimited" would be a
+        # line about a restriction that is not there. Stated when there is one,
+        # because the third phone being refused is otherwise the first the
+        # client hears of it.
+        devices_text=(text("welcome.value_devices", count=int(limit_hwid))
+                      if limit_hwid and int(limit_hwid) > 0 else ""),
     )
 
 
 def get_status_email(email, is_active, up, down, total, expiry_time_ms,
-                     tariff: str = "") -> Email:
-    """The letter with the subscription status and traffic spent."""
+                     tariff: str = "", device_limit: int = 0, devices=None) -> Email:
+    """
+    The letter with the subscription status and traffic spent.
+
+    `device_limit` is how many devices the client may use, 0 for no limit —
+    and then nothing about devices is said at all. `devices` is what the
+    registered ones call themselves, one string each and "" for one that did
+    not say; None means 3x-ui states the limit but would not list them, which
+    is not the same as nobody being registered.
+    """
     used = (up or 0) + (down or 0)
     percent = None
     if total and total > 0:
@@ -288,7 +304,35 @@ def get_status_email(email, is_active, up, down, total, expiry_time_ms,
         # tariff. Empty for anybody registered before tariffs existed, and the
         # line is then left out rather than showing a blank.
         tariff=tariff or "",
+        **_status_devices(device_limit, devices),
     )
+
+
+def _status_devices(device_limit, devices) -> dict:
+    """
+    What the status letter says about devices.
+
+    Somebody asks for their status when something is wrong, and "the new phone
+    will not connect" is that. The count against the limit tells them why; the
+    names tell them which device is in the way; and when every slot is taken
+    there is a line saying what to do, because the figures alone do not.
+    """
+    limit = int(device_limit or 0)
+    if limit <= 0:
+        return {"devices_text": "", "device_names": "", "devices_full": False}
+    if devices is None:
+        # The limit is known and the list is not. "0 of 2" would be a claim
+        # about something nobody was able to check.
+        return {"devices_text": text("status.value_devices_limit", limit=limit),
+                "device_names": "", "devices_full": False}
+    devices = list(devices)
+    return {
+        "devices_text": text("status.value_devices", used=len(devices), limit=limit),
+        # Only those that said what they are: a device that did not is still
+        # counted above, but a gap between two commas names nothing.
+        "device_names": ", ".join(str(d).strip() for d in devices if str(d or "").strip()),
+        "devices_full": len(devices) >= limit,
+    }
 
 
 def get_inactivity_email(email, days) -> Email:

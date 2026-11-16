@@ -19,13 +19,17 @@
 {% set toast = t("The client was created, the welcome letter is on its way") if created
    else t("The invitation with the subscription link is on its way") if sent == "welcome"
    else t("The letter is on its way") if sent == "message" else "" %}
-{% if toast %}
+{# Done by the time the page is back, so these say so plainly — unlike a
+   letter, which has only been handed to a background task. #}
+{% set done = t("The devices were forgotten: whichever fetch the subscription next take the slots") if sent == "devices"
+   else t("The device was forgotten, and its slot is free") if sent == "device" else "" %}
+{% if toast or done %}
 <script>
     // Success speaks through the toast, as everywhere else in the panel. The
     // handler waits for DOMContentLoaded because window.showToast is declared in
     // the base template, further down the document.
     window.addEventListener("DOMContentLoaded", function () {
-        window.showToast({{ (toast ~ " — " ~ t("the result is in the logs"))|tojson }});
+        window.showToast({{ (done or (toast ~ " — " ~ t("the result is in the logs")))|tojson }});
         // strip ?sent= from the address, or a refresh would repeat the toast
         if (window.history && history.replaceState) {
             history.replaceState(null, "", window.location.pathname);
@@ -118,6 +122,14 @@
         <div class="label">{{ t("Valid until") }}</div>
         <div class="value" style="font-size: 18px;">{{ client.expiry }}</div>
     </div>
+    {# Only for a client that has a limit. Without one there is nothing to
+       count, and on a panel from before device limits nothing to say. #}
+    {% if client.hwid_known and client.limit_hwid %}
+    <div class="card">
+        <div class="label">{{ t("Devices") }}</div>
+        <div class="value">{% if devices is not none %}{{ devices|length }} / {% endif %}{{ client.limit_hwid }}</div>
+    </div>
+    {% endif %}
     <div class="card">
         <div class="label">{{ t("Days left") }}</div>
         <div class="value" style="{% if client.expired %}color:#f87171;{% endif %}">
@@ -147,6 +159,57 @@
         </div>
     </div>
 </div>
+
+{% if devices is not none %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Registered devices") }} {{ fields.help(t("The devices 3x-ui has let in on this subscription, told apart by the hardware id the app sends. A device stays here until it is forgotten — so somebody with a new phone is kept out by the old one until its slot is freed.")) }}</h2>
+        {% if devices %}
+        <form method="post" action="/clients/{{ client.uuid }}/devices/forget"
+              data-confirm="{{ t('Forget every device? Nobody is disconnected: the slots are freed, and whichever devices fetch the subscription next take them.') }}">
+            <button type="submit" class="btn">{{ t("Forget all") }}</button>
+        </form>
+        {% endif %}
+    </div>
+    <div style="padding: 8px 20px 20px 20px;">
+        {% if devices %}
+        <div class="tscroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>{{ t("Device") }}</th>
+                        <th>{{ t("App") }}</th>
+                        <th>{{ t("First seen") }}</th>
+                        <th>{{ t("Last seen") }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for device in devices %}
+                    <tr>
+                        <td>
+                            {{ device.name }}
+                            <div class="muted mono">{% if device.system and device.system != device.name %}{{ device.system }} · {% endif %}{{ device.fingerprint }}</div>
+                        </td>
+                        <td class="mono">{{ device.app or "—" }}</td>
+                        <td class="mono">{{ device.first_seen }}</td>
+                        <td class="mono">{{ device.last_seen }}</td>
+                        <td style="text-align: right;">
+                            <form method="post" action="/clients/{{ client.uuid }}/devices/{{ device.id }}/forget">
+                                <button type="submit" class="btn">{{ t("Forget") }}</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted" style="margin: 12px 0 0 0;">{{ t("No device has registered yet.") }}</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div class="panel" style="margin-top: 20px;">
     <div class="panel-head"><h2>{{ t("Access") }}</h2></div>
@@ -234,7 +297,7 @@
                         <td class="mono">{% if client.flow and client.flow != "—" %}{{ client.flow }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</td>
                     </tr>
                     <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
-                    <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr><td class="muted">{{ t("IP limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
                     <tr>
                         <td class="muted">{{ t("Came in through") }} {{ fields.help(t("The code word this client registered with. It says how they arrived, not what they have now — a client can be moved to another tariff afterwards, and the word stays what it was. Empty for anybody registered before code words were kept, or added by hand in 3x-ui.")) }}</td>
                         <td class="mono">

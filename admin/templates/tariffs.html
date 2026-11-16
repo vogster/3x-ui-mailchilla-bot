@@ -109,7 +109,8 @@
                         <a href="/tariffs/{{ tariff.id }}/edit">{{ t("Edit") }}</a>
                         <hr>
                         <form method="post" action="/tariffs/{{ tariff.id }}/delete"
-                              onsubmit="return confirm({{ t("Delete the tariff {name}? Its codes go with it. The clients stay exactly as they are — their limits are their own, and they keep the tariff's name as a label in 3x-ui, which the list then shows as a group without a tariff.", name=tariff.name)|tojson }});">
+                              data-confirm="{{ t("Delete the tariff {name}? Its codes go with it. The clients stay exactly as they are — their limits are their own, and they keep the tariff's name as a label in 3x-ui, which the list then shows as a group without a tariff.", name=tariff.name) }}"
+                              data-confirm-danger="1">
                             <button type="submit" class="danger">{{ t("Delete") }}</button>
                         </form>
                     </div>
@@ -121,6 +122,11 @@
                 <span class="mono">{% if tariff.limit_gb %}{{ tariff.limit_gb }} {{ t("GB") }}{% else %}{{ t("no limit") }}{% endif %}</span></span>
             <span>{{ t("Subscription length, days") }}:
                 <span class="mono">{% if tariff.expire_days %}{{ tariff.expire_days }}{% else %}{{ t("No expiry") }}{% endif %}</span></span>
+            {# Only when there is one: most tariffs have no device limit, and a
+               line saying so on every card is a line nobody reads. #}
+            {% if tariff.limit_hwid %}
+            <span>{{ t("Devices") }}: <span class="mono">{{ tariff.limit_hwid }}</span></span>
+            {% endif %}
             <span>{{ t("Came in through it") }}: <span class="mono">{{ tariff.arrived }}</span></span>
         </div>
         <div class="chips">

@@ -28,6 +28,10 @@
         <div class="value">{% if tariff.expire_days %}{{ tariff.expire_days }}{% else %}∞{% endif %}</div>
     </div>
     <div class="card">
+        <div class="label">{{ t("Devices") }}</div>
+        <div class="value">{% if tariff.limit_hwid %}{{ tariff.limit_hwid }}{% else %}∞{% endif %}</div>
+    </div>
+    <div class="card">
         <div class="label">{{ t("Clients on it") }}</div>
         <div class="value">{{ clients|length }}</div>
     </div>

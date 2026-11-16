@@ -177,6 +177,7 @@ def tariff_choices() -> list:
             "name": t["name"],
             "limit_gb": t["limit_gb"],
             "expire_days": t["expire_days"],
+            "limit_hwid": t.get("limit_hwid", 0),
             "inbound_ids": t["inbound_ids"],
         }
         for t in tariffs.all_tariffs()
@@ -192,7 +193,8 @@ def default_tariff() -> dict:
     """
     choices = tariff_choices()
     return choices[0] if choices else {"id": "", "name": "", "limit_gb": 0,
-                                       "expire_days": 0, "inbound_ids": []}
+                                       "expire_days": 0, "limit_hwid": 0,
+                                       "inbound_ids": []}
 
 
 def new_dialog_context():
@@ -213,6 +215,7 @@ def new_dialog_context():
             "tariff_id": first["id"],
             "limit_gb": first["limit_gb"],
             "expire_days": first["expire_days"],
+            "limit_hwid": first["limit_hwid"],
             "flow": config.XUI_FLOW,
         },
     }
@@ -242,6 +245,7 @@ def _new_client_context(request: Request, form: dict = None, error: str = ""):
             "tariff_id": form.get("tariff_id", first["id"]),
             "limit_gb": form.get("limit_gb", first["limit_gb"]),
             "expire_days": form.get("expire_days", first["expire_days"]),
+            "limit_hwid": form.get("limit_hwid", first["limit_hwid"]),
             "xui_flow": form.get("xui_flow", config.XUI_FLOW),
             "send_email": form.get("send_email", True),
         },
@@ -301,6 +305,7 @@ def client_new_submit(
     comment: str = Form(""),
     limit_gb: str = Form(""),
     expire_days: str = Form(""),
+    limit_hwid: str = Form(""),
     send_email: str = Form(""),
     xui_flow: str = Form(""),
     tariff_id: str = Form(""),
@@ -315,6 +320,8 @@ def client_new_submit(
         "comment": (comment or "").strip(),
         "limit_gb": (limit_gb or "").strip(),
         "expire_days": (expire_days or "").strip(),
+        # An empty field is no limit, here as on the tariff.
+        "limit_hwid": (limit_hwid or "").strip() or "0",
         "inbound_ids": inbound_ids,
         "xui_flow": (xui_flow or "").strip(),
         "tariff_id": (tariff_id or "").strip(),
@@ -353,6 +360,7 @@ def client_new_submit(
     try:
         total_gb = parse_int(raw["limit_gb"], i18n.t("Limit, GB"))
         days = parse_int(raw["expire_days"], i18n.t("Term, days"))
+        devices = parse_int(raw["limit_hwid"], i18n.t("Device limit"))
     except ValueError as e:
         return fail(str(e))
 
@@ -377,6 +385,7 @@ def client_new_submit(
         comment=raw["comment"],
         flow=raw["xui_flow"],
         group=chosen["name"] if chosen else "",
+        limit_hwid=devices,
     )
 
     client_obj = xui.find_client_by_email(client_email)
@@ -386,11 +395,15 @@ def client_new_submit(
         logger.warning(f"The panel returned an error while creating {client_email}, "
                        f"yet the client appeared — probably partially. Check its inbounds.")
 
+    # What the panel actually kept, with a warning in the log when it is not
+    # what was asked for: an older 3x-ui drops the field without a word.
+    kept_devices = email_bot.kept_device_limit(client_obj, devices, f"Client {client_email}")
+
     key = XuiClient.client_key(client_obj)
     if raw["send_email"]:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_obj.get('subId')}"
         background_tasks.add_task(_send_welcome, client_email, sub_url, days, total_gb,
-                                  False, chosen["name"] if chosen else "")
+                                  False, chosen["name"] if chosen else "", kept_devices)
 
     target = f"/clients/{key}?created=1"
     if wants_json:
@@ -399,11 +412,11 @@ def client_new_submit(
 
 
 def _send_welcome(email_addr: str, sub_url: str, expire_days: int, limit_gb: int,
-                  renewed: bool = False, tariff: str = ""):
+                  renewed: bool = False, tariff: str = "", limit_hwid: int = 0):
     """The letter leaves after the response: sending takes seconds and has no reason to sit inside the request."""
     try:
         email_bot.send_welcome_email(email_addr, sub_url, expire_days, limit_gb,
-                                     renewed=renewed, tariff=tariff)
+                                     renewed=renewed, tariff=tariff, limit_hwid=limit_hwid)
         logger.info(f"Welcome letter sent to {email_addr}.")
     except Exception as e:
         logger.error(f"Could not send the welcome letter to {email_addr}: {e}")
@@ -452,12 +465,99 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
             # arrived, not about what they have now — the two can differ, since
             # a client can be moved to another tariff afterwards.
             "came_by": _came_by(client_obj),
+            # The devices registered against the limit; None when there is no
+            # limit to register against, or the panel cannot list them.
+            "devices": _devices(xui, client_obj),
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
             "sent": sent,
             "error": error,
         },
     )
+
+
+def _devices(xui, client_obj: dict):
+    """
+    The devices a client has registered, shaped for the card — or None.
+
+    Asked only of a client that has a limit: without one 3x-ui registers
+    nobody, and a request per card view for a list that is always empty is a
+    request the page has no use for.
+    """
+    if not XuiClient.device_limit(client_obj):
+        return None
+    listed = xui.get_client_devices(client_obj.get("email") or "")
+    if listed is None:
+        return None
+    rows = []
+    for device in listed:
+        # No id, nothing to forget it by: a row whose button led nowhere would
+        # be worse than no row.
+        if device.get("id") in (None, ""):
+            continue
+        system = " ".join(str(device.get(key) or "").strip()
+                          for key in ("deviceOs", "osVersion")).strip()
+        try:
+            last_seen_ms = int(device.get("lastSeen") or 0)
+        except (TypeError, ValueError):
+            # One odd timestamp is not a reason to lose the whole card.
+            last_seen_ms = 0
+        rows.append({
+            "id": device.get("id"),
+            "name": XuiClient.device_label(device) or i18n.t("unknown device"),
+            "system": system,
+            "app": str(device.get("userAgent") or "").strip(),
+            "fingerprint": str(device.get("fingerprint") or "").strip(),
+            "first_seen": _fmt_ts(device.get("firstSeen")),
+            "last_seen": _fmt_ts(device.get("lastSeen")),
+            "last_seen_ms": last_seen_ms,
+        })
+    # Most recently used first: the one to forget is usually at the bottom.
+    rows.sort(key=lambda r: r["last_seen_ms"], reverse=True)
+    return rows
+
+
+def _forget_devices(request: Request, client_uuid: str, device_id=None):
+    """Takes one device off a client's list, or all of them, and returns to the card."""
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+
+    xui = get_shared_client()
+    client_obj = xui.find_client_by_uuid(client_uuid)
+    if not client_obj:
+        raise HTTPException(status_code=404, detail=i18n.t("The client was not found"))
+
+    remark = client_obj.get("email") or ""
+    logger.info(f"Panel: forgetting "
+                + (f"device {device_id}" if device_id is not None else "every device")
+                + f" of client {remark!r}.")
+    if not xui.forget_client_devices(remark, device_id=device_id):
+        return RedirectResponse(
+            url=f"/clients/{client_uuid}?error="
+                + quote(i18n.t("The panel did not forget the device — the details are in the logs")),
+            status_code=303)
+    return RedirectResponse(
+        url=f"/clients/{client_uuid}?sent=" + ("device" if device_id is not None else "devices"),
+        status_code=303)
+
+
+@router.post("/clients/{client_uuid}/devices/forget")
+def client_forget_devices(request: Request, client_uuid: str):
+    """
+    Clears a client's device list, so that any device can register again.
+
+    The button for "I have a new phone and the old one is in the way": nobody
+    is disconnected, the slots are simply free for whoever fetches the
+    subscription next.
+    """
+    return _forget_devices(request, client_uuid)
+
+
+@router.post("/clients/{client_uuid}/devices/{device_id}/forget")
+def client_forget_device(request: Request, client_uuid: str, device_id: str):
+    """Takes a single device off the list, freeing one slot."""
+    return _forget_devices(request, client_uuid, device_id)
 
 
 def _safe_back(back: str, client_uuid: str) -> str:
@@ -513,6 +613,7 @@ def client_resend_welcome(request: Request, client_uuid: str, background_tasks: 
         # Whatever group the client carries in 3x-ui, including one a deleted
         # tariff left behind: the letter reports, it does not decide.
         client_obj.get("group") or "",
+        XuiClient.device_limit(client_obj) or 0,
     )
     return RedirectResponse(url=f"/clients/{client_uuid}?sent=welcome", status_code=303)
 
@@ -625,6 +726,7 @@ def client_edit_submit(
     client_uuid: str,
     limit_gb: str = Form(""),
     expire_days: str = Form(""),
+    limit_hwid: str = Form(""),
     enable: str = Form(""),
     comment: str = Form(""),
     keep_comment: str = Form(""),
@@ -656,6 +758,13 @@ def client_edit_submit(
 
     total_gb = parse_int(limit_gb, i18n.t("Limit, GB"))
     days = parse_int(expire_days, i18n.t("Term, days"))
+    # Sent only when it has changed. The update replaces the whole row from
+    # what the panel returned, so an untouched limit survives by itself — and a
+    # panel from before device limits, whose form has no such field, is not
+    # handed one.
+    devices = parse_int(limit_hwid, i18n.t("Device limit"))
+    if devices is not None and devices == (XuiClient.device_limit(client_obj) or 0):
+        devices = None
 
     # enable arrives from the checkbox
     new_enable = enable == "on"
@@ -674,6 +783,7 @@ def client_edit_submit(
     logger.info(
         f"Panel: editing client {client_obj.get('email')!r} — limit={total_gb}, "
         f"days={days}, enabled={new_enable}, name={new_comment!r}"
+        + (f", devices={devices}" if devices is not None else "")
         + (f", moved to the {moved['name']!r} tariff." if moved else ".")
     )
     ok = xui.update_client(
@@ -683,6 +793,7 @@ def client_edit_submit(
         enable=new_enable,
         new_comment=new_comment,
         group=moved["name"] if moved else None,
+        limit_hwid=devices,
         client_obj=client_obj,
     )
     if not ok:

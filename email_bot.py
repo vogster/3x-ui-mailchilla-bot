@@ -91,8 +91,42 @@ def build_client_email(email_addr: str) -> str:
         logger.warning(f"Address {raw!r} reduced to {cleaned!r} for the email field in 3x-ui.")
     return cleaned
 
+def kept_device_limit(client_obj: dict, wanted: int, who: str) -> int:
+    """
+    The device limit a client actually has, with a warning when it is not the
+    one that was asked for.
+
+    A 3x-ui from before HWID limits takes the client and drops the field
+    without a word. Nothing fails — the tariff simply goes on promising a limit
+    nobody enforces, and the first sign of it would be a subscription shared
+    round an office. So whoever creates a client reads it back through this,
+    and tells the client what the panel kept rather than what the tariff says.
+    """
+    kept = XuiClient.device_limit(client_obj)
+    wanted = int(wanted or 0)
+    if wanted > 0 and kept is None:
+        logger.warning(
+            f"{who} was meant to be limited to {wanted} device(s), but this 3x-ui "
+            f"does not know device limits at all — the client was created without "
+            f"one. HWID limits need a recent 3x-ui; until the panel is updated the "
+            f"tariff's device limit is not enforced.")
+    elif wanted > 0 and kept != wanted:
+        # A panel that knows the field and still did not keep it. 3x-ui applies
+        # the limit only when the client went into every inbound asked for, so
+        # this is what a half-finished creation looks like — not an old panel,
+        # and blaming the version would send somebody to update for nothing.
+        logger.warning(
+            f"{who} was meant to be limited to {wanted} device(s), but 3x-ui "
+            f"holds {kept}. The panel sets the limit only when the client was "
+            f"added to every inbound, so the creation most likely failed on one "
+            f"of them — check the client's inbounds, then set the limit on its "
+            f"card.")
+    return kept or 0
+
+
 def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
-                       limit_gb: int = None, renewed: bool = False, tariff: str = ""):
+                       limit_gb: int = None, renewed: bool = False, tariff: str = "",
+                       limit_hwid: int = 0):
     """
     The welcome letter carrying the subscription link.
 
@@ -103,6 +137,10 @@ def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
     the tariff the client is actually on — their group in 3x-ui — rather than
     the one the word they wrote would have given them: a letter that named a
     tariff somebody is not on would be worse than one naming none.
+
+    `limit_hwid` is how many devices the client may use, and follows the same
+    rule: what the client has in 3x-ui, not what a tariff says. 0 leaves the
+    line out.
     """
     if expire_days is None:
         expire_days = config.EXPIRE_DAYS
@@ -111,7 +149,8 @@ def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
 
     send_email_reply(email_addr, templates.welcome_subject(renewed),
                      templates.get_welcome_email(sub_url, expire_days, limit_gb,
-                                                 renewed=renewed, tariff=tariff))
+                                                 renewed=renewed, tariff=tariff,
+                                                 limit_hwid=limit_hwid))
 
 
 def send_personal_email(email_addr: str, subject: str, message_body: str, kind="plain"):
@@ -155,7 +194,8 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         # Their own tariff, not the one the word opens: an existing client keeps
         # what they have, and the letter has to say the same thing.
         send_welcome_email(email_addr, sub_url, renewed=True,
-                           tariff=client_info.get("group") or "")
+                           tariff=client_info.get("group") or "",
+                           limit_hwid=XuiClient.device_limit(client_info) or 0)
         logger.info(f"Client {email_addr} is already registered; the link was sent again. "
                     f"The {tariff['name']!r} tariff was not applied — an existing client keeps what it has.")
         return
@@ -177,6 +217,7 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         # answer to "who is on what" lives — in the panel that owns the client,
         # not in a file of ours that could disagree with it.
         group=tariff["name"],
+        limit_hwid=tariff.get("limit_hwid", 0),
     )
     if not success_uuid:
         logger.error(f"The panel refused to create a client for {email_addr}.")
@@ -195,7 +236,9 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
     if client_info:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_info.get('subId')}"
         send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"],
-                           tariff=tariff["name"])
+                           tariff=tariff["name"],
+                           limit_hwid=kept_device_limit(client_info, tariff.get("limit_hwid", 0),
+                                                        f"Client {email_addr}"))
         logger.info(f"Client {email_addr} registered successfully on {tariff['name']!r}.")
         # The code is spent only now. Burning it before the client exists would
         # lose an invitation to a 3x-ui that happened to be unreachable.
@@ -239,10 +282,24 @@ def handle_status(email_addr: str):
 
         is_active = enable and is_user_enable
 
+        # The devices registered against the limit, when there is one. Asked
+        # only then: without a limit 3x-ui registers nobody, and on a panel
+        # from before such limits there is no such question to ask. A list the
+        # panel would not give leaves None, and the letter then states the
+        # limit alone rather than going unsent over it.
+        device_limit = XuiClient.device_limit(client_info) or 0
+        devices = None
+        if device_limit:
+            listed = xui.get_client_devices(client_info.get("email", email_addr))
+            if listed is not None:
+                devices = [XuiClient.device_label(d) for d in listed]
+
         send_email_reply(email_addr, templates.text("status.subject"),
                          templates.get_status_email(email_addr, is_active, up, down, total,
                                                     expiry_time,
-                                                    tariff=(client_info.get("group") or "").strip()))
+                                                    tariff=(client_info.get("group") or "").strip(),
+                                                    device_limit=device_limit,
+                                                    devices=devices))
     else:
         send_email_reply(email_addr, templates.notice_subject("status_error"),
                          templates.get_notice("status_error"))
@@ -424,14 +481,42 @@ def find_words(text: str, words) -> list:
     a registration against the wrong tariff hands out the wrong limits, and the
     sender is right there to be asked.
     """
-    seen, out = set(), []
+    seen, found = set(), []
     for word in words or []:
         key = tariffs.normalise_word(word)
-        if key in seen or not contains_word(text, word):
+        if key in seen:
             continue
-        seen.add(key)
+        spans = _word_spans(text, word)
+        if spans:
+            seen.add(key)
+            found.append((word, spans))
+
+    # A word that only ever appears as a piece of a longer word that is itself
+    # a code was not written by anybody: AURORA inside AURORA-FAMILY. The
+    # boundary contains_word draws lets punctuation stand inside a word, which
+    # is what makes AURORA-2026 one word — and also what found the short word
+    # whole inside the long one, since a hyphen is not a letter. The letter
+    # then read as carrying two words, and whoever wrote the long one was asked
+    # which subscription they meant. Standing alone somewhere as well, it still
+    # counts, and the letter is as ambiguous as it looks.
+    out = []
+    for word, spans in found:
+        longer = [other for candidate, others in found if candidate is not word
+                  for other in others]
+        if all(any(o[0] <= s[0] and s[1] <= o[1] and o != s for o in longer) for s in spans):
+            continue
         out.append(word)
     return out
+
+
+def _word_spans(text: str, word: str) -> list:
+    """Where `word` stands in the text as a word of its own: (start, end) pairs."""
+    word = str(word or "").strip()
+    if not word:
+        return []
+    pattern = rf"(?<!\w){re.escape(word)}(?!\w)"
+    return [match.span() for match in re.finditer(pattern, text or "",
+                                                  re.IGNORECASE | re.UNICODE)]
 
 
 def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn,

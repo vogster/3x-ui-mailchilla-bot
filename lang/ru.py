@@ -86,7 +86,7 @@ TEXTS = {
     "The values come from the tariff; they can be changed for this client": "Значения взяты из тарифа, для этого клиента их можно изменить",
     "Move to a tariff": "Перевести на тариф",
     "leave as it is": "оставить как есть",
-    "Fills the three fields below with the tariff's values — the traffic limit, a fresh term counted from today, and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.": "Подставляет в поля ниже значения тарифа: лимит трафика, новый срок от сегодняшнего дня и его inbound'ы. Ничего не сохраняется, пока вы не нажмёте «Сохранить», и нигде не запоминается, какой это был тариф: тариф — шаблон, а дальше это просто собственные значения клиента.",
+    "Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.": "Подставляет в поля ниже значения тарифа: лимит трафика, новый срок от сегодняшнего дня, лимит устройств и его inbound'ы. Ничего не сохраняется, пока вы не нажмёте «Сохранить», и нигде не запоминается, какой это был тариф: тариф — шаблон, а дальше это просто собственные значения клиента.",
     # Codes: the words that open a tariff. One object — a word with a number of
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
@@ -431,6 +431,7 @@ TEXTS = {
     "Belongs to no inbound.": "Не состоит ни в одном inbound.",
     "Technical details": "Технические данные",
     "Device limit": "Лимит устройств",
+    "IP limit": "Лимит IP",
     "Created": "Создан",
     "Changed": "Изменён",
     "A letter to the client": "Письмо пользователю",
@@ -588,6 +589,29 @@ TEXTS = {
     "Substitution: {days}": "Подстановка: {days}",
     "The 'unlimited' value": "Значение «безлимит»",
     "The limit value": "Значение лимита",
+    "The 'devices' line": "Строка «устройств»",
+    "Shown only when the client has a device limit; without one the line "
+    "is left out.":
+        "Показывается, только когда у клиента есть лимит устройств; без него "
+        "строки нет.",
+    "The devices value": "Значение лимита устройств",
+    "Substitutions: {used}, {limit}": "Подстановки: {used}, {limit}",
+    "The devices value when they cannot be counted":
+        "Значение, когда устройства нельзя сосчитать",
+    "Used when 3x-ui states the limit but does not list the devices. "
+    "Substitution: {limit}":
+        "Используется, когда 3x-ui сообщает лимит, но не отдаёт список устройств. "
+        "Подстановка: {limit}",
+    "The list of devices": "Список устройств",
+    "Under the figures, naming the devices that said what they are. "
+    "Substitution: {names}":
+        "Под цифрами: перечисляет устройства, которые назвали себя. "
+        "Подстановка: {names}",
+    "Every device slot is taken": "Все места для устройств заняты",
+    "Added when as many devices are registered as the limit allows. "
+    "Empty means nothing is added.":
+        "Добавляется, когда зарегистрировано столько устройств, сколько разрешает лимит. "
+        "Пустое значение — ничего не добавлять.",
     "Substitution: {gb}": "Подстановка: {gb}",
     "The main button": "Основная кнопка",
     "The line above the app buttons": "Подпись перед кнопками приложений",
@@ -671,6 +695,37 @@ TEXTS = {
     "the inbounds for new clients": "inbound'ы для новых клиентов",
     "the administrator address": "адрес администратора",
     "The login or the password is wrong": "Неверный логин или пароль",
+    # --- the device limit ("Device limit" itself is further up) ---
+    "Devices": "Устройства",
+    "How many devices may use the subscription, told apart by the hardware id the app sends. 0 means no limit. Needs a recent 3x-ui: an older one ignores it.":
+        "Сколько устройств может пользоваться подпиской; они различаются по аппаратному "
+        "идентификатору, который присылает приложение. 0 — без ограничения. Нужна свежая "
+        "3x-ui: старая это поле игнорирует.",
+    "How many devices may use the subscription. 0 means no limit. Devices already registered are listed on the client's card, where they can be forgotten.":
+        "Сколько устройств может пользоваться подпиской. 0 — без ограничения. Уже "
+        "зарегистрированные устройства перечислены в карточке клиента, там же их можно забыть.",
+    "Registered devices": "Зарегистрированные устройства",
+    "The devices 3x-ui has let in on this subscription, told apart by the hardware id the app sends. A device stays here until it is forgotten — so somebody with a new phone is kept out by the old one until its slot is freed.":
+        "Устройства, которые 3x-ui пустила по этой подписке; они различаются по аппаратному "
+        "идентификатору, который присылает приложение. Устройство остаётся в списке, пока его "
+        "не забудут, — поэтому клиента с новым телефоном не пускает старый, пока его место "
+        "не освободят.",
+    "Forget every device? Nobody is disconnected: the slots are freed, and whichever devices fetch the subscription next take them.":
+        "Забыть все устройства? Никто не отключится: места освободятся, и их займут те "
+        "устройства, которые следующими запросят подписку.",
+    "Forget all": "Забыть все",
+    "Forget": "Забыть",
+    "Device": "Устройство",
+    "App": "Приложение",
+    "First seen": "Впервые",
+    "Last seen": "Последний раз",
+    "No device has registered yet.": "Пока не зарегистрировано ни одного устройства.",
+    "unknown device": "неизвестное устройство",
+    "The devices were forgotten: whichever fetch the subscription next take the slots":
+        "Устройства забыты: места займут те, кто следующими запросят подписку",
+    "The device was forgotten, and its slot is free": "Устройство забыто, место свободно",
+    "The panel did not forget the device — the details are in the logs":
+        "Панель не забыла устройство — подробности в логах",
     "letters are waiting: 3x-ui does not answer": "письма ждут: 3x-ui не отвечает",
     "Too many failed attempts. Wait a minute and try again.":
         "Слишком много неудачных попыток. Подождите минуту и попробуйте снова.",

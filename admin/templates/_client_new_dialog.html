@@ -24,6 +24,7 @@
                         <option value="{{ tariff.id }}"
                                 data-limit="{{ tariff.limit_gb }}"
                                 data-days="{{ tariff.expire_days }}"
+                                data-hwid="{{ tariff.limit_hwid or 0 }}"
                                 data-inbounds="{{ tariff.inbound_ids|join(',') }}"
                                 {% if tariff.id == new_defaults.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
                         {% else %}
@@ -40,6 +41,11 @@
                     <label for="nc-days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires")) }}</label>
                     <input type="number" id="nc-days" name="expire_days" min="0" step="1"
                            value="{{ new_defaults.expire_days }}">
+                </div>
+                <div>
+                    <label for="nc-hwid">{{ t("Device limit") }} {{ fields.help(t("How many devices may use the subscription, told apart by the hardware id the app sends. 0 means no limit. Needs a recent 3x-ui: an older one ignores it.")) }}</label>
+                    <input type="number" id="nc-hwid" name="limit_hwid" min="0" step="1"
+                           value="{{ new_defaults.limit_hwid or 0 }}">
                 </div>
             </div>
 
@@ -93,6 +99,7 @@
             if (!option || !option.value) return;
             document.getElementById("nc-limit").value = option.dataset.limit;
             document.getElementById("nc-days").value = option.dataset.days;
+            document.getElementById("nc-hwid").value = option.dataset.hwid || 0;
             var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
             document.querySelectorAll(".nc-inbound").forEach(function (box) {
                 box.checked = wanted.indexOf(box.value) !== -1;

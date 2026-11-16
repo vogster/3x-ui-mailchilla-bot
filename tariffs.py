@@ -79,7 +79,11 @@ def _clean_tariff(raw: dict) -> dict:
         raise ValueError(i18n.t("the tariff needs a name"))
     limit_gb = int(raw.get("limit_gb") or 0)
     expire_days = int(raw.get("expire_days") or 0)
-    if limit_gb < 0 or expire_days < 0:
+    # How many devices may use the subscription, which 3x-ui counts by the
+    # hardware id an app sends and holds on the client as limitHwid. 0 is no
+    # limit, and so is a tariff written before the field existed.
+    limit_hwid = int(raw.get("limit_hwid") or 0)
+    if limit_gb < 0 or expire_days < 0 or limit_hwid < 0:
         raise ValueError(i18n.t("the value cannot be negative"))
     ids = raw.get("inbound_ids") or []
     if isinstance(ids, str):
@@ -92,6 +96,7 @@ def _clean_tariff(raw: dict) -> dict:
         "name": name,
         "limit_gb": limit_gb,
         "expire_days": expire_days,
+        "limit_hwid": limit_hwid,
         "inbound_ids": inbound_ids,
         "created_at": int(raw.get("created_at") or _now_ms()),
     }
