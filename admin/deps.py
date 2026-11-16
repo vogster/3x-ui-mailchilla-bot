@@ -12,6 +12,7 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import broadcasts
 import config
 import i18n
 import settings
@@ -72,6 +73,9 @@ templates.env.globals["setup_status"] = setup_status
 # Reads only what the background check left in memory, so it costs a page
 # render nothing and never reaches the network itself.
 templates.env.globals["update_status"] = updater.status
+# Whether letters are going out right now, for the dot on the menu's Broadcast
+# link — a count read from memory, like the two above.
+templates.env.globals["broadcasts_running"] = broadcasts.running
 
 
 def check_panel_configured():

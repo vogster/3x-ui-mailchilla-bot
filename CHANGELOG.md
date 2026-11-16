@@ -12,6 +12,18 @@ read as something a person wants to know before updating.
 
 ### Added
 
+- **The Broadcast page says what is being sent.** Until now a running
+  broadcast was visible on one page only — the one the browser was sent to
+  after Send — and once that tab was closed nothing in the panel said whether
+  letters were still going out. A broadcast started by mail, with
+  `/broadcast`, was never shown at all. The page now opens with a list: what
+  is being sent right now, with its progress, and what went out before it —
+  how many letters left and how many did not arrive. Each row opens the
+  broadcast's own page, which now names the addresses a letter did not reach.
+  A dot on the menu's Broadcast link breathes while letters are going out,
+  and pressing Send while a broadcast is still running asks first. The list
+  lives in memory and starts empty after a restart.
+
 - **A Support mailbox, with replies.** The Mail page can now hold a second
   account, set up on its own tab in Settings — a mailbox a person answers
   from, as against the bot's own. Once both its halves (IMAP and SMTP) are

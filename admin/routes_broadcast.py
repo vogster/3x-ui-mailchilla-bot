@@ -1,13 +1,11 @@
 """The broadcast route: the composer form plus background sending to the chosen clients."""
 import logging
-import secrets
-import threading
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Form
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, Response
 
+import broadcasts
 import config
 import i18n
 import tariffs
@@ -35,58 +33,63 @@ router = APIRouter()
 #
 # The state lives in the process's memory: the panel has a single user, and there
 # is nothing here worth surviving a restart.
+#
+# The record itself is kept in `broadcasts`, below this module and the bot's
+# `/broadcast` command alike, and written by the sending rather than from
+# here. It used to be a dictionary of this module's own, which the status page
+# of one broadcast could read and nothing else did: close that tab and the
+# panel could not say whether letters were still going out, and a broadcast
+# started by mail was never in it at all.
 # ---------------------------------------------------------------------------
-_jobs = {}
-_jobs_lock = threading.Lock()
-_MAX_JOBS = 20
 
-
-def _create_job(subject: str, message: str, total: int) -> str:
-    job_id = secrets.token_urlsafe(8)
-    with _jobs_lock:
-        # Keep the dictionary from growing without end: only the latest jobs stay.
-        if len(_jobs) >= _MAX_JOBS:
-            for stale in sorted(_jobs, key=lambda k: _jobs[k]["started_at"])[:len(_jobs) - _MAX_JOBS + 1]:
-                _jobs.pop(stale, None)
-        _jobs[job_id] = {
-            "subject": subject,
-            "message": message,
-            "total": total,
-            "sent": 0,
-            "failed": 0,
-            "done": False,
-            "error": "",
-            "started_at": datetime.now(),
-        }
-    return job_id
-
-
-def _update_job(job_id: str, **fields):
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-        if job:
-            job.update(fields)
-
-
-def _get_job(job_id: str):
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-        return dict(job) if job else None
+# How many the Broadcast page lists. The record keeps more, for links to an
+# older status page.
+LISTED = 6
 
 
 def _run_broadcast(job_id: str, message: str, subject: str, emails: list, kind: str = "plain"):
     """Runs in the background, after the response has already gone to the browser."""
-    def on_progress(sent, failed):
-        _update_job(job_id, sent=sent, failed=failed)
-
     try:
         email_bot.handle_broadcast(message, subject=subject, emails=emails,
-                                   on_progress=on_progress, kind=kind)
+                                   kind=kind, job_id=job_id)
     except Exception as e:
         logger.error(f"Broadcast {job_id} broke off: {e}", exc_info=True)
-        _update_job(job_id, error=str(e))
+        broadcasts.finish(job_id, error=str(e))
     finally:
-        _update_job(job_id, done=True)
+        # The sending closes its own record; this is for a broadcast that broke
+        # before it got as far as sending, which would otherwise be shown as
+        # running for as long as the process lived.
+        broadcasts.finish(job_id)
+
+
+def _view(job: dict) -> dict:
+    """A record as the templates want it: the figures worked out, the times as text."""
+    processed = job["sent"] + job["failed"]
+    if not job["done"]:
+        state = "running"
+    elif job["error"]:
+        state = "cut"
+    elif job["failed"]:
+        state = "partial"
+    else:
+        state = "ok"
+    finished = job["finished_at"]
+    return dict(
+        job,
+        processed=processed,
+        percent=round(processed / job["total"] * 100) if job["total"] else 100,
+        state=state,
+        started=job["started_at"].strftime("%d.%m.%Y %H:%M"),
+        finished=finished.strftime("%d.%m.%Y %H:%M") if finished else "",
+    )
+
+
+def _jobs_context() -> dict:
+    """What the list of broadcasts is drawn from, on the page and in its refresh."""
+    return {
+        "jobs": [_view(job) for job in broadcasts.recent(LISTED)],
+        "jobs_running": broadcasts.running(),
+    }
 
 
 @router.get("/broadcast", response_class=HTMLResponse)
@@ -144,8 +147,28 @@ def broadcast_form(request: Request, error: str = ""):
                                    | {r["tariff"] for r in recipients if r["tariff"]}),
             "kinds": mail_templates.broadcast_kind_options(),
             "error": error,
+            **_jobs_context(),
         },
     )
+
+
+@router.get("/broadcast/jobs", response_class=HTMLResponse)
+def broadcast_jobs(request: Request):
+    """
+    The list of broadcasts alone, for the Broadcast page to re-read while one
+    is running.
+
+    A fragment of the page rather than JSON, so the markup exists once. And a
+    401 rather than the redirect every other route answers a lapsed session
+    with: the page puts whatever comes back into itself, and a followed
+    redirect would be the sign-in form sitting inside the Broadcast page.
+    """
+    if require_auth(request):
+        return Response(status_code=401)
+    response = templates.TemplateResponse(
+        "_broadcast_jobs.html", {"request": request, **_jobs_context()})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.post("/broadcast")
@@ -178,7 +201,12 @@ def broadcast_send(
     if kind not in mail_templates.BROADCAST_KINDS:
         kind = mail_templates.DEFAULT_KIND
 
-    job_id = _create_job(subject, message, len(selected_emails))
+    # The subject the letters will carry, settled here rather than left to
+    # the sending: the record is opened before any of it runs, and a
+    # broadcast listed with no subject is one nobody can tell from another.
+    subject = subject or mail_templates.text("notice.broadcast_default_subject")
+    job_id = broadcasts.start(subject, message, len(selected_emails), kind,
+                              source=broadcasts.PANEL)
     background_tasks.add_task(_run_broadcast, job_id, message, subject, selected_emails, kind)
     logger.info(f"Broadcast {job_id} queued in the background: {len(selected_emails)} recipients.")
 
@@ -191,12 +219,10 @@ def broadcast_status(request: Request, job_id: str):
     if auth_redirect:
         return auth_redirect
 
-    job = _get_job(job_id)
+    job = broadcasts.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=i18n.t("That broadcast task was not found"))
-
-    processed = job["sent"] + job["failed"]
-    percent = round(processed / job["total"] * 100) if job["total"] else 100
+    job = _view(job)
 
     return templates.TemplateResponse(
         "broadcast_result.html",
@@ -210,6 +236,13 @@ def broadcast_status(request: Request, job_id: str):
             "total_recipients": job["total"],
             "done": job["done"],
             "error": job["error"],
-            "percent": percent,
+            "percent": job["percent"],
+            "source": job["source"],
+            "started": job["started"],
+            "finished": job["finished"],
+            # The addresses a letter did not reach, and how many more there
+            # were than are kept by name.
+            "failed_addresses": job["failed_addresses"],
+            "failed_unnamed": max(job["failed"] - len(job["failed_addresses"]), 0),
         },
     )

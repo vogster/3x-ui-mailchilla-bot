@@ -76,7 +76,7 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Broadcast](docs/screenshots/broadcast.png)
 
-A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
+A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. The Broadcast page lists what is being sent right now and what went out before it - how many letters have left, how many did not arrive and to whom - whether it was started from the panel or by mail with `/broadcast`, and a dot on the menu link breathes for as long as letters are going out. Pressing Send while one is still running asks first. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
 
 The recipient list has search, filters (active, disabled, limit spent, traffic running low) and sorting. "All" and "None" act on whatever the filter left - so "everyone who ran out of traffic" is two movements.
 
@@ -370,6 +370,7 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `inbox.py` | reading: the IMAP poll loop and the health of it |
 | `mailfolders.py` | the mailbox as the panel shows it: folders, letters, copies of sent ones |
 | `support_watch.py` | a look at Support's mailbox once a minute, and a push about what is new |
+| `broadcasts.py` | the record of broadcasts being sent and recently sent |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |
 | `email_texts.py` | the editable letter texts, one set per language |

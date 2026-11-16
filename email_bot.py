@@ -17,6 +17,7 @@ import time
 import uuid
 from email.utils import parseaddr
 
+import broadcasts
 import config
 import tariffs
 import templates
@@ -357,12 +358,19 @@ def get_all_active_emails_from_xui(xui_client) -> list:
     return active_emails
 
 def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = None,
-                     on_progress=None, kind="plain"):
+                     kind="plain", job_id: str = None):
     """
     Broadcasts a message to the chosen clients, or to every active one.
 
-    :param on_progress: an optional callback (sent, failed) invoked after each
-                        recipient — the web panel draws its progress from it.
+    Every broadcast is written into `broadcasts` as it goes, here rather than
+    by whoever asked for it: the panel's Broadcast page shows what is being
+    sent from that record, and one started by mail has no other way of
+    getting onto it.
+
+    :param job_id: the record to write into, when the caller has opened one
+                   already — the panel does, because it needs the id for the
+                   page it sends the browser to before any letter has left.
+                   Without it a record is opened here, as one started by mail.
     """
     if not subject:
         subject = templates.text("notice.broadcast_default_subject")
@@ -372,27 +380,37 @@ def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = No
 
     if not emails:
         logger.info("No active clients to broadcast to.")
+        if job_id:
+            broadcasts.finish(job_id)
         return 0
 
     message = templates.get_broadcast_email(subject, broadcast_body, kind)
+    job = job_id or broadcasts.start(subject, broadcast_body, len(emails), kind,
+                                     source=broadcasts.MAIL)
 
     logger.info(f"Starting a broadcast to {len(emails)} clients...")
     success_count = 0
     failed_count = 0
-    for to_email in emails:
-        try:
-            time.sleep(0.5)
-            send_email_reply(to_email, subject, message)
-            success_count += 1
-        except Exception as e:
-            failed_count += 1
-            logger.error(f"Could not send the broadcast to {to_email}: {e}")
-
-        if on_progress is not None:
+    try:
+        for to_email in emails:
+            failed_address = ""
             try:
-                on_progress(success_count, failed_count)
+                time.sleep(0.5)
+                send_email_reply(to_email, subject, message)
+                success_count += 1
             except Exception as e:
-                logger.debug(f"Error in the broadcast progress callback: {e}")
+                failed_count += 1
+                failed_address = to_email
+                logger.error(f"Could not send the broadcast to {to_email}: {e}")
+            broadcasts.progress(job, success_count, failed_count, failed_address)
+    except BaseException as e:
+        # Not a letter that failed — those are counted above — but the loop
+        # itself. Said in the record, or the page would show a broadcast that
+        # ended a third of the way through as one that simply finished.
+        broadcasts.finish(job, error=f"{type(e).__name__}: {e}")
+        raise
+    finally:
+        broadcasts.finish(job)
 
     logger.info(f"Broadcast finished. Sent successfully: {success_count}/{len(emails)}.")
     return success_count
