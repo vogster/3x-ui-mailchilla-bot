@@ -56,11 +56,14 @@ def _sender_domain(smtp_user: str = None) -> str:
     return domain or "localhost"
 
 def build_message(to_email: str, subject: str, message,
-                  smtp_user: str = None, service_name: str = None):
+                  smtp_user: str = None, service_name: str = None, extra_headers: dict = None):
     """
     Assembles the finished MIME letter.
 
     :param message: a templates.Email (text plus HTML), or a string of HTML.
+    :param extra_headers: set after everything else, so a caller building a
+        reply can add In-Reply-To/References — the two headers that thread it
+        under the letter it answers in the recipient's own mail client.
 
     Inside multipart/alternative the parts run from plain to rich: the client
     takes the last one it can display. The text part is not only for such
@@ -98,6 +101,9 @@ def build_message(to_email: str, subject: str, message,
     # dialect Exchange listens to.
     msg['Auto-Submitted'] = "auto-generated"
     msg['X-Auto-Response-Suppress'] = "All"
+    for name, value in (extra_headers or {}).items():
+        if value:
+            msg[name] = value
 
     # quoted-printable instead of base64 for both parts: MIME_BASE64_TEXT fires
     # on HTML too, and the letter stays readable in its source.
@@ -141,16 +147,19 @@ def probe_smtp(server_host: str, port: int, user: str, password: str):
             pass
 
 def send_email_via(server_host: str, port: int, user: str, password: str,
-                   to_email: str, subject: str, message, service_name: str = None):
+                   to_email: str, subject: str, message, service_name: str = None,
+                   extra_headers: dict = None):
     """
     Sends a letter with the parameters given, bypassing config.
 
     The panel's connection check needs this: it works with whatever is typed in
     the fields, and must neither save those values nor swap config out for the
-    duration — the bot is alive in its own thread alongside.
+    duration — the bot is alive in its own thread alongside. The Support
+    mailbox's replies use it for the same reason: a second identity, sent
+    without ever touching config.SMTP_*, which stays the bot's alone.
     """
     msg = build_message(to_email, subject, message,
-                        smtp_user=user, service_name=service_name)
+                        smtp_user=user, service_name=service_name, extra_headers=extra_headers)
     # The envelope carries the plain address: with a display name the server
     # would refuse it.
     _, envelope = parseaddr(user or "")
@@ -163,17 +172,48 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
             server.quit()
         except Exception:
             pass
+    return msg
 
-def send_email_reply(to_email: str, subject: str, message):
-    """Sends a letter over SMTP using the settings from config."""
+def send_email_reply(to_email: str, subject: str, message, keep_copy: bool = True):
+    """
+    Sends a letter over SMTP using the settings from config.
+
+    :param keep_copy: False for a letter that only exists to be looked at, not
+        answered — the sample sends on the Settings > Letters tab, say. Those
+        share this function because they want the same logging and error
+        handling as a real letter, but they are not correspondence, and the
+        Sent folder in the Mail panel should not fill up with them.
+    """
     try:
-        send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
-                       config.SMTP_USER, config.SMTP_PASSWORD,
-                       to_email, subject, message)
+        msg = send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
+                             config.SMTP_USER, config.SMTP_PASSWORD,
+                             to_email, subject, message)
         logger.info(f"Letter sent to {to_email}. Subject: {subject}")
     except Exception as e:
         logger.error(f"Could not send the letter to {to_email}. Error: {e}")
         raise
+    if keep_copy:
+        _keep_copy(msg)
+
+
+def _keep_copy(msg):
+    """
+    Hands the letter just sent to the Sent folder, without waiting on it.
+
+    SMTP keeps nothing, so without this the panel's Sent folder would show only
+    what the provider happened to file by itself. The copy is queued, never
+    awaited: the letter has already gone, and neither a slow mailbox nor a
+    failing one has any business with whether a registration succeeded.
+    Imported here rather than at the top, because this module is otherwise
+    only about sending and the folders are a reading concern.
+    """
+    if msg is None:
+        return
+    try:
+        import mailfolders
+        mailfolders.save_sent_copy("bot", msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Could not queue a copy of the letter for the Sent folder: {e}")
 
 class _SafeFormat(dict):
     """An unknown substitution stays in the text rather than breaking the send."""

@@ -33,6 +33,19 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
+# A second, optional mailbox: the one a person answers from, as against the one
+# the bot polls for registrations. Empty by default — the Mail page then shows
+# only the bot's own mailbox, with no Support tab at all.
+SUPPORT_IMAP_SERVER = os.getenv("SUPPORT_IMAP_SERVER", "")
+SUPPORT_IMAP_PORT = int(os.getenv("SUPPORT_IMAP_PORT", "993"))
+SUPPORT_IMAP_USER = os.getenv("SUPPORT_IMAP_USER", "")
+SUPPORT_IMAP_PASSWORD = os.getenv("SUPPORT_IMAP_PASSWORD", "")
+
+SUPPORT_SMTP_SERVER = os.getenv("SUPPORT_SMTP_SERVER", "")
+SUPPORT_SMTP_PORT = int(os.getenv("SUPPORT_SMTP_PORT", "465"))
+SUPPORT_SMTP_USER = os.getenv("SUPPORT_SMTP_USER", "")
+SUPPORT_SMTP_PASSWORD = os.getenv("SUPPORT_SMTP_PASSWORD", "")
+
 # Set in the web panel (General tab); it survives in .env only as a fallback
 # for installations that run without the panel.
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()

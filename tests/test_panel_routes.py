@@ -17,12 +17,16 @@ gives at length: tariffs.TARIFFS_PATH is built from the module's own __file__,
 and a test that forgot would write over a real installation's tariffs.
 """
 import os
+import re
 import tempfile
 import unittest
 
 from fastapi.testclient import TestClient
 
 import config
+import email_bot
+import mailer
+import mailfolders
 import tariffs
 import xui_client
 
@@ -174,7 +178,7 @@ class PanelCase(unittest.TestCase):
         self.patched = []
         for name in ("admin.routes_tariffs", "admin.routes_clients",
                      "admin.routes_broadcast", "admin.routes_settings",
-                     "admin.routes_setup", "admin.app"):
+                     "admin.routes_setup", "admin.routes_mail", "admin.app"):
             module = __import__(name, fromlist=["x"])
             if hasattr(module, "get_shared_client"):
                 self.patched.append((module, module.get_shared_client))
@@ -812,3 +816,205 @@ class DeletingAsksFirst(PanelCase):
         self.assertNotIn("onsubmit=", body)
         form = body.split('action="/tariffs/codes/AURORA/delete"', 1)[1].split(">", 1)[0]
         self.assertIn("data-confirm=", form)
+
+
+class MailPages(PanelCase):
+    """
+    The mailbox pages, against an IMAP server in memory. What matters beyond
+    the page rendering is the client beside a letter — the reason these pages
+    are in the panel at all — and that nothing on them marks a letter read.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import imaplib
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fake_imap import FakeMailbox
+        from email.message import EmailMessage
+
+        self.box = FakeMailbox()
+        self.saved_mail = (imaplib.IMAP4_SSL, config.IMAP_USER, config.IMAP_PASSWORD)
+        imaplib.IMAP4_SSL = self.box.connect
+        config.IMAP_USER, config.IMAP_PASSWORD = "bot@example.com", "secret"
+
+        def letter(frm, subject, body, attachment=None):
+            msg = EmailMessage()
+            msg["From"], msg["To"], msg["Subject"] = frm, "bot@example.com", subject
+            msg.set_content(body)
+            if attachment:
+                msg.add_attachment(attachment[1], maintype="application",
+                                   subtype="pdf", filename=attachment[0])
+            return bytes(msg)
+
+        self.ben = self.box.add("INBOX", letter("Ben <ben@example.com>", "Help me",
+                                                "It stopped working", ("log.pdf", b"%PDF")))
+        self.stranger = self.box.add("INBOX", letter("who@example.com", "Hello?", "Who are you"))
+
+    def tearDown(self):
+        import imaplib
+        imaplib.IMAP4_SSL, config.IMAP_USER, config.IMAP_PASSWORD = self.saved_mail
+        self.assertEqual(self.box.writable_selects, [])
+        self.assertEqual(self.box.unpeeked_fetches, [])
+        super().tearDown()
+
+    def test_the_list_marks_who_is_a_client(self):
+        body = self.page("/mail/bot")
+        self.assertIn("Help me", body)
+        self.assertIn("Hello?", body)
+        # Ben is on Basic; the chip carries the tariff's name.
+        self.assertIn('class="client-chip', body)
+        self.assertIn(">Basic</span>", body)
+
+    def test_every_folder_opens(self):
+        for folder in ("inbox", "sent", "trash"):
+            with self.subTest(folder=folder):
+                self.page(f"/mail/bot?folder={folder}")
+
+    def test_a_letter_from_a_client_stands_beside_the_client(self):
+        body = self.page(f"/mail/bot/inbox/{self.ben}")
+        self.assertIn("It stopped working", body)
+        self.assertIn("/clients/c0ffee01", body)
+        self.assertIn("Basic", body)
+        self.assertIn("log.pdf", body)
+        self.assertIn("Unread", body)
+
+    def test_a_letter_from_a_stranger_says_so(self):
+        body = self.page(f"/mail/bot/inbox/{self.stranger}")
+        self.assertIn("Not a client", body)
+
+    def test_an_attachment_is_only_ever_a_download(self):
+        body = self.page(f"/mail/bot/inbox/{self.ben}")
+        href = re.search(r'href="(/mail/bot/inbox/\d+/attachments/\d+)"', body).group(1)
+        response = self.client.get(href)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"%PDF")
+        self.assertEqual(response.headers["content-type"], "application/octet-stream")
+        self.assertIn("attachment;", response.headers["content-disposition"])
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def test_a_letter_that_is_not_there(self):
+        self.assertEqual(self.client.get("/mail/bot/inbox/999").status_code, 404)
+        self.assertEqual(self.client.get("/mail/bot/spam/1").status_code, 404)
+
+    def test_a_mailbox_that_is_not_set_up_says_so_rather_than_failing(self):
+        config.IMAP_USER = ""
+        self.assertIn("The mailbox is not set up", self.page("/mail/bot"))
+
+    def test_no_support_tab_until_it_is_set_up(self):
+        body = self.page("/mail/bot")
+        self.assertNotIn("/mail/support", body)
+
+    def test_the_bot_letter_has_no_reply_form(self):
+        body = self.page(f"/mail/bot/inbox/{self.ben}")
+        self.assertNotIn("name=\"body\"", body)
+
+    def test_a_reply_to_the_bot_account_is_refused(self):
+        response = self.client.post(f"/mail/bot/inbox/{self.ben}/reply", data={"body": "hi"})
+        self.assertEqual(response.status_code, 404)
+
+
+class SupportMailbox(PanelCase):
+    """The Support account: a second mailbox, this one with a reply form."""
+
+    def setUp(self):
+        super().setUp()
+        import imaplib
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fake_imap import FakeMailbox
+        from email.message import EmailMessage
+
+        self.box = FakeMailbox()
+        self.saved_mail = (imaplib.IMAP4_SSL,
+                          config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD,
+                          config.SUPPORT_SMTP_USER, config.SUPPORT_SMTP_PASSWORD)
+        imaplib.IMAP4_SSL = self.box.connect
+        config.SUPPORT_IMAP_USER = "support@example.com"
+        config.SUPPORT_IMAP_PASSWORD = "secret"
+        config.SUPPORT_SMTP_USER = "support@example.com"
+        config.SUPPORT_SMTP_PASSWORD = "secret"
+
+        msg = EmailMessage()
+        msg["From"], msg["To"], msg["Subject"] = "Vera <vera@example.com>", "support@example.com", "Не работает"
+        msg["Message-ID"] = "<vera-1@example.com>"
+        msg.set_content("Что делать?")
+        self.vera = self.box.add("INBOX", bytes(msg))
+
+        self.saved_send = mailer.send_email_via
+        self.sent = []
+
+        def fake_send(server_host, port, user, password, to_email, subject, message,
+                     service_name=None, extra_headers=None):
+            built = mailer.build_message(to_email, subject, message, smtp_user=user,
+                                         service_name=service_name, extra_headers=extra_headers)
+            self.sent.append({"to": to_email, "subject": subject, "extra_headers": extra_headers})
+            return built
+        mailer.send_email_via = fake_send
+
+        self.saved_copy = mailfolders.save_sent_copy
+        self.queued = []
+        mailfolders.save_sent_copy = (
+            lambda account_key, message_id, raw: self.queued.append(account_key))
+
+    def tearDown(self):
+        import imaplib
+        mailer.send_email_via = self.saved_send
+        mailfolders.save_sent_copy = self.saved_copy
+        (imaplib.IMAP4_SSL, config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD,
+         config.SUPPORT_SMTP_USER, config.SUPPORT_SMTP_PASSWORD) = self.saved_mail
+        super().tearDown()
+
+    def test_the_tab_appears_once_it_is_set_up(self):
+        body = self.page("/mail/bot")
+        self.assertIn("/mail/support", body)
+
+    def test_the_reply_form_is_offered(self):
+        body = self.page(f"/mail/support/inbox/{self.vera}")
+        self.assertIn('name="body"', body)
+        self.assertIn("vera@example.com", body)
+        # required stays for a screen reader, but the form must carry
+        # novalidate too — with the browser's own popup left on, a click on
+        # Send with an empty box never reaches our own submit handler at all,
+        # and the button does nothing with no feedback either way.
+        form_start = body.index('id="reply-form"')
+        form_tag = body[max(0, form_start - 200):form_start + 50]
+        self.assertIn("novalidate", form_tag)
+
+    def test_sending_a_reply_threads_it_and_files_a_copy(self):
+        response = self.client.post(f"/mail/support/inbox/{self.vera}/reply",
+                                    data={"body": "Проверьте кабель."}, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("replied=1", response.headers["location"])
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self.sent[0]["to"], "vera@example.com")
+        self.assertEqual(self.sent[0]["subject"], "Re: Не работает")
+        self.assertEqual(self.sent[0]["extra_headers"]["In-Reply-To"], "<vera-1@example.com>")
+        # Filed the same way any other letter is, under the Support account.
+        self.assertEqual(self.queued, ["support"])
+
+    def test_an_empty_reply_sends_nothing(self):
+        self.client.post(f"/mail/support/inbox/{self.vera}/reply", data={"body": "   "})
+        self.assertEqual(self.sent, [])
+
+
+class SampleLetterIsNotCorrespondence(PanelCase):
+    """
+    The "send a sample letter" button on Settings > Letters previews the
+    wording; it must not turn up in the Mail page's Sent folder beside real
+    registrations and replies.
+    """
+
+    def test_the_preview_is_sent_without_keeping_a_copy(self):
+        calls = []
+        saved = email_bot.send_email_reply
+        email_bot.send_email_reply = lambda *a, **k: calls.append(k)
+        try:
+            response = self.client.post("/settings/texts/test", data={
+                "group": "welcome", "email": "admin@example.com", "kind": "info",
+            })
+        finally:
+            email_bot.send_email_reply = saved
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].get("keep_copy"), False)
