@@ -19,6 +19,16 @@ have one.
 
 ### Added
 
+- **A notification when Xray stops, and another when it is back.** Xray not
+  running is every client disconnected at once, and until now it was said
+  only on the dashboard, to whoever had it open. Once a minute the bot asks
+  3x-ui and tells Gotify when the answer has changed — stopped, failed with
+  the panel's own error text, running again — never one a minute while it
+  stays down. A stop is believed on the second look in a row, because 3x-ui
+  restarts Xray whenever its configuration changes; and the panel itself not
+  answering is said separately, since that is not the same thing. The switch
+  and the wording are on the Gotify tab. On as soon as Gotify is set up.
+
 - **The Broadcast page says what is being sent.** Until now a running
   broadcast was visible on one page only — the one the browser was sent to
   after Send — and once that tab was closed nothing in the panel said whether

@@ -1017,4 +1017,17 @@ TEXTS = {
     "Take a name only if you know it for your own mail server's host name. On a server that adds no header of its own, what heads the letters is whatever their senders wrote there.": "Берите имя, только если узнаёте в нём имя хоста своего почтового сервера. На сервере, который не добавляет своего заголовка, вверху писем стоит то, что туда вписали отправители.",
     "If the server writes one only for some letters, a letter it wrote none for proves nothing — which is the safe way round.": "Если сервер пишет его не для всех писем, письмо без него ничего не доказывает — и это безопасная сторона.",
     "the mail server's name may hold only letters, digits, dots, hyphens and underscores": "имя почтового сервера может состоять только из латинских букв, цифр, точек, дефисов и подчёркиваний",
+    # The push about Xray: the Gotify tab, and what the notification says
+    "Tell me when Xray stops, and when it is back": "Сообщать, когда Xray останавливается и когда снова работает",
+    "Xray not running is every client disconnected at once, and 3x-ui says so only on a page somebody has to open. Once a minute the bot asks the panel and sends a notification when the state has changed: stopped, failed, running again — never one a minute while it stays down. A stop is believed on the second look in a row, since 3x-ui restarts Xray whenever its configuration changes. If the panel itself stops answering, that is said separately, after three looks: it is not the same as Xray being down. Needs the connection above.": "Остановленный Xray — это все клиенты, отключённые разом, а 3x-ui говорит об этом только на странице, которую кто-то должен открыть. Раз в минуту бот спрашивает панель и шлёт уведомление, когда состояние изменилось: остановлен, сбой, снова работает — но не по уведомлению в минуту, пока он лежит. Остановке бот верит со второй проверки подряд, потому что 3x-ui перезапускает Xray при каждой смене конфигурации. Если перестаёт отвечать сама панель, об этом сообщается отдельно, после трёх проверок: это не то же самое, что упавший Xray. Нужно подключение выше.",
+    "Substitutions: {status}, {state}, {error}, {service}.": "Подстановки: {status}, {state}, {error}, {service}.",
+    "{status} is what happened, as a sentence in the panel's language, with the panel's own error text after it when there is one — so the text may be nothing else. {state} is the state as 3x-ui names it (running, stop, error; away when the panel does not answer), {error} the error text alone, {service} the service name.": "{status} — что произошло, фразой на языке панели, с текстом ошибки от самой панели после неё, если он есть, — поэтому текст может состоять только из неё. {state} — состояние, как его называет 3x-ui (running, stop, error; away, когда панель не отвечает), {error} — один текст ошибки, {service} — название сервиса.",
+    "3x-ui does not answer, so whether Xray is running is not known": "3x-ui не отвечает, поэтому неизвестно, работает ли Xray",
+    "3x-ui answers again, and Xray is running": "3x-ui снова отвечает, Xray работает",
+    "Xray is running again": "Xray снова работает",
+    "3x-ui answers again": "3x-ui снова отвечает",
+    "3x-ui answers again, but Xray is not running ({state})": "3x-ui снова отвечает, но Xray не работает ({state})",
+    "Xray has stopped": "Xray остановлен",
+    "Xray has failed": "Сбой Xray",
+    "Xray is not running ({state})": "Xray не работает ({state})",
 }

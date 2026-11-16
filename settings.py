@@ -50,6 +50,7 @@ MANAGED_KEYS = (
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
     "SUPPORT_NOTIFY_ENABLED", "SUPPORT_NOTIFY_TITLE", "SUPPORT_NOTIFY_MESSAGE",
     "SUPPORT_NOTIFY_MARK",
+    "XRAY_NOTIFY_ENABLED", "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
     "HAPP_URL", "INCY_URL",
     # The version check
@@ -215,7 +216,8 @@ def _coerce(key, value):
         if not 0 <= number <= 10:
             raise ValueError(i18n.t("the Gotify priority must be between 0 and 10"))
         return number
-    if key in ("GOTIFY_TITLE", "GOTIFY_MESSAGE", "SUPPORT_NOTIFY_TITLE", "SUPPORT_NOTIFY_MESSAGE"):
+    if key in ("GOTIFY_TITLE", "GOTIFY_MESSAGE", "SUPPORT_NOTIFY_TITLE", "SUPPORT_NOTIFY_MESSAGE",
+               "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
         text = str(value or "").strip()
         if not text:
             raise ValueError(i18n.t("the notification text cannot be empty"))
@@ -261,7 +263,7 @@ def _coerce(key, value):
         return number
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
                "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
-               "SUPPORT_NOTIFY_ENABLED",
+               "SUPPORT_NOTIFY_ENABLED", "XRAY_NOTIFY_ENABLED",
                "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
                "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED"):
         if isinstance(value, bool):

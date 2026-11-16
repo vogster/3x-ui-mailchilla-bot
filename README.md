@@ -128,7 +128,7 @@ The interface strings live in `lang/`, the letter texts in the panel itself, one
 
 ![Logs](docs/screenshots/logs.png)
 
-The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration, and on every letter that arrives for Support.
+The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration, on every letter that arrives for Support, and when Xray on the server stops - with another when it is running again.
 
 The panel also notices when a newer version has been released and says so in a banner, with a link to what changed and the command to run. It updates nothing by itself, and the check can be switched off.
 
@@ -251,7 +251,7 @@ Everything that changes during normal use is set in the panel and applies on the
 | **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, the mail server's name for the proof of a sender, clearing the mailbox out, connection check |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
-| **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support |
+| **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support, and of the one about Xray stopping |
 | **Letters** | the language letters go out in, every text of every letter, a switch for each block that can be left out, and — as its own item beside the templates — reminding a client who has gone quiet |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
@@ -384,6 +384,7 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `inbox.py` | reading: the IMAP poll loop and the health of it |
 | `mailfolders.py` | the mailbox as the panel shows it: folders, letters, copies of sent ones |
 | `support_watch.py` | a look at Support's mailbox once a minute, and a push about what is new |
+| `xray_watch.py` | a question to 3x-ui once a minute about Xray, and a push when the answer changes |
 | `broadcasts.py` | the record of broadcasts being sent and recently sent |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |

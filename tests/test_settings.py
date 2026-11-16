@@ -135,5 +135,21 @@ class TheMailServersName(unittest.TestCase):
         self.assertNotIn("MAIL_AUTH_SERVER", settings.SECRET_KEYS)
 
 
+class TheXrayPush(unittest.TestCase):
+    def test_its_settings_are_the_panels(self):
+        for key in ("XRAY_NOTIFY_ENABLED", "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
+            self.assertIn(key, settings.MANAGED_KEYS)
+
+    def test_the_switch_is_a_yes_or_a_no(self):
+        self.assertIs(settings._coerce("XRAY_NOTIFY_ENABLED", "on"), True)
+        self.assertIs(settings._coerce("XRAY_NOTIFY_ENABLED", ""), False)
+
+    def test_a_notification_with_no_words_is_refused(self):
+        for key in ("XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    settings._coerce(key, "   ")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1270,3 +1270,35 @@ class MailServersName(PanelCase):
         response = TestClient(self.app).post("/settings/mail/authserver/scan",
                                              follow_redirects=False)
         self.assertEqual(response.status_code, 401)
+
+class XrayPush(PanelCase):
+    """The push about Xray stopping: its switch and its wording, on the Gotify tab."""
+
+    def save(self, **fields):
+        import admin.routes_settings as routes_settings
+        caught = {}
+        real = routes_settings.settings.save
+        routes_settings.settings.save = lambda values: caught.update(values)
+        try:
+            response = self.client.post("/settings", data=fields, follow_redirects=False)
+        finally:
+            routes_settings.settings.save = real
+        self.assertEqual(response.status_code, 303)
+        return caught
+
+    def test_the_switch_and_the_wording_are_on_the_page(self):
+        body = self.page("/settings")
+        self.assertIn('name="xray_notify_enabled"', body)
+        self.assertIn('name="xray_notify_title"', body)
+        self.assertIn('name="xray_notify_message"', body)
+        self.assertIn("Tell me when Xray stops, and when it is back", body)
+
+    def test_they_go_through_the_form(self):
+        saved = self.save(xray_notify_enabled="on", xray_notify_title="[{service}] Xray",
+                          xray_notify_message="{status}")
+        self.assertIs(saved["XRAY_NOTIFY_ENABLED"], True)
+        self.assertEqual(saved["XRAY_NOTIFY_TITLE"], "[{service}] Xray")
+        self.assertEqual(saved["XRAY_NOTIFY_MESSAGE"], "{status}")
+
+    def test_unticked_it_is_saved_off(self):
+        self.assertIs(self.save()["XRAY_NOTIFY_ENABLED"], False)

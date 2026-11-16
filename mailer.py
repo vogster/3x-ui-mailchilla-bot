@@ -433,10 +433,16 @@ def render_template(text: str, **values) -> str:
     Substitutes values into the notification template.
     A malformed template — an unclosed brace and the like — has no business
     breaking a registration, so on error the text comes back unsubstituted.
+
+    On any error. The three str.format raises for a template that will not
+    parse were caught at first, and `{status.x}` is none of them: it parses,
+    and then asks a string for an attribute it has not got. The text is typed
+    into a settings field by a person, and what it can be made to raise is
+    whatever str.format can.
     """
     try:
         return (text or "").format_map(_SafeFormat(values))
-    except (ValueError, IndexError, KeyError) as e:
+    except Exception as e:
         logger.warning(f"Could not parse the notification template {text!r}: {e}")
         return text or ""
 

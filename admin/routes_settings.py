@@ -165,6 +165,9 @@ def settings_submit(
     support_notify_enabled: str = Form(""),
     support_notify_title: str = Form(""),
     support_notify_message: str = Form(""),
+    xray_notify_enabled: str = Form(""),
+    xray_notify_title: str = Form(""),
+    xray_notify_message: str = Form(""),
     xui_flow: str = Form(""),
     remark_include_name: str = Form(""),
     gotify_url: str = Form(""),
@@ -218,6 +221,9 @@ def settings_submit(
         "SUPPORT_NOTIFY_ENABLED": support_notify_enabled == "on",
         "SUPPORT_NOTIFY_TITLE": support_notify_title,
         "SUPPORT_NOTIFY_MESSAGE": support_notify_message,
+        "XRAY_NOTIFY_ENABLED": xray_notify_enabled == "on",
+        "XRAY_NOTIFY_TITLE": xray_notify_title,
+        "XRAY_NOTIFY_MESSAGE": xray_notify_message,
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:

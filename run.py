@@ -13,6 +13,7 @@ import logging
 import config
 import inactivity
 import support_watch
+import xray_watch
 import tariffs
 
 logging.basicConfig(
@@ -63,6 +64,12 @@ def run_bot_loop():
             support_watch.run_if_due()
         except Exception as e:
             logger.error(f"Error while looking at the Support mailbox: {e}", exc_info=True)
+        try:
+            # And a question to 3x-ui, once a minute, about whether Xray is
+            # running: a push when that changes.
+            xray_watch.run_if_due()
+        except Exception as e:
+            logger.error(f"Error while asking about Xray: {e}", exc_info=True)
         # Wait in a way that can be cut short by a signal
         _stop_event.wait(config.POLL_INTERVAL_SECONDS)
 

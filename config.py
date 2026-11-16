@@ -120,6 +120,18 @@ SUPPORT_NOTIFY_MESSAGE = "{sender}: {subject}"
 # the bot for itself, in settings.json alone; see support_watch.py.
 SUPPORT_NOTIFY_MARK = ""
 
+# A push when Xray stops and when it is back. On by default for the reason the
+# Support push is: it only ever tells the administrator something, and does
+# nothing until Gotify is set up.
+XRAY_NOTIFY_ENABLED = True
+# Its title and text. {status} is what happened, as a sentence in the panel's
+# language — "Xray has stopped: <what the panel says went wrong>", "Xray is
+# running again" — which is why the text needs no words of its own; {state} is
+# the state as 3x-ui names it, {error} its error text, {service} the service
+# name. The same in every language, so not among the translated defaults.
+XRAY_NOTIFY_TITLE = "Xray · {service}"
+XRAY_NOTIFY_MESSAGE = "{status}"
+
 # The name the mailbox's own server signs its Authentication-Results headers
 # with — its authserv-id, usually its host name. Empty leaves the proof of a
 # sender, which only /broadcast by mail asks for, to the top-most such header,

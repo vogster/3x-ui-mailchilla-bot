@@ -449,6 +449,33 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>Xray</h2>
+            <span class="muted">{{ t("substitutions:") }} <span class="mono">{status}</span>,
+                <span class="mono">{state}</span>, <span class="mono">{error}</span>,
+                <span class="mono">{service}</span></span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="xray_notify_enabled" name="xray_notify_enabled"
+                       {% if state.XRAY_NOTIFY_ENABLED.value %}checked{% endif %}>
+                <label for="xray_notify_enabled">{{ t("Tell me when Xray stops, and when it is back") }}
+                    {{ fields.help(t("Xray not running is every client disconnected at once, and 3x-ui says so only on a page somebody has to open. Once a minute the bot asks the panel and sends a notification when the state has changed: stopped, failed, running again — never one a minute while it stays down. A stop is believed on the second look in a row, since 3x-ui restarts Xray whenever its configuration changes. If the panel itself stops answering, that is said separately, after three looks: it is not the same as Xray being down. Needs the connection above.")) }}</label>
+            </div>
+            <div>
+                <label for="xray_notify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {status}, {state}, {error}, {service}.")) }}</label>
+                <input type="text" id="xray_notify_title" name="xray_notify_title"
+                       value="{{ state.XRAY_NOTIFY_TITLE.value }}">
+            </div>
+            <div>
+                <label for="xray_notify_message">{{ t("Text") }} {{ fields.help(t("{status} is what happened, as a sentence in the panel's language, with the panel's own error text after it when there is one — so the text may be nothing else. {state} is the state as 3x-ui names it (running, stop, error; away when the panel does not answer), {error} the error text alone, {service} the service name.")) }}</label>
+                <textarea id="xray_notify_message" name="xray_notify_message"
+                          style="min-height:70px;">{{ state.XRAY_NOTIFY_MESSAGE.value }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("The registration notification text") }}</h2>
             <span class="muted">{{ t("substitutions:") }} <span class="mono">{email}</span>,
                 <span class="mono">{name}</span>, <span class="mono">{service}</span></span>

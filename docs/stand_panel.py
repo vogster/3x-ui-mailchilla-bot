@@ -184,11 +184,11 @@ def install(panel: Panel) -> dict:
     ]
     stand_ins = {
         "_request": _refuse,
-        "login": lambda self: True,
+        "login": lambda self, quiet=False: True,
         "get_all_clients": lambda self: copy.deepcopy(panel.clients),
         "get_client_data": lambda self, email: copy.deepcopy(panel.find(email)),
         "get_inbounds": lambda self: [dict(i) for i in demo.INBOUNDS],
-        "get_server_status": lambda self: copy.deepcopy(demo.SERVER),
+        "get_server_status": lambda self, quiet=False: copy.deepcopy(demo.SERVER),
         "get_online_emails": lambda self: list(demo.ONLINE),
         "get_last_online": lambda self: demo.last_online(),
         "get_client_links": lambda self, email: copy.deepcopy(links),

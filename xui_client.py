@@ -100,8 +100,13 @@ class XuiClient:
         # answered something else.
         self._login_failure = ""
 
-    def login(self):
-        """Signs in to the 3x-ui panel and keeps the session cookies."""
+    def login(self, quiet: bool = False):
+        """
+        Signs in to the 3x-ui panel and keeps the session cookies.
+
+        :param quiet: say a failure at DEBUG. See get_server_status.
+        """
+        level = logging.DEBUG if quiet else logging.ERROR
         if self.api_token:
             self.is_logged_in = True
             return True
@@ -126,22 +131,29 @@ class XuiClient:
                     # proxy or a rate limiter in front of the panel, and that
                     # does pass.
                     self._login_failure = "refused"
-                    logger.error(f"Sign-in error from 3x-ui: {resp_json.get('msg')}")
+                    logger.log(level, f"Sign-in error from 3x-ui: {resp_json.get('msg')}")
             else:
-                logger.error(f"Could not sign in to 3x-ui. Status: {response.status_code}, body: {response.text}")
+                logger.log(level, f"Could not sign in to 3x-ui. Status: {response.status_code}, body: {response.text}")
         except requests.RequestException as e:
             self._login_failure = "unreachable"
-            logger.error(f"Exception while signing in to 3x-ui: {e}")
+            logger.log(level, f"Exception while signing in to 3x-ui: {e}")
         except Exception as e:
-            logger.error(f"Exception while signing in to 3x-ui: {e}")
+            logger.log(level, f"Exception while signing in to 3x-ui: {e}")
         
         self.is_logged_in = False
         return False
 
-    def _request(self, method, endpoint, **kwargs):
-        """A wrapper around requests that logs in again when the session expires."""
+    def _request(self, method, endpoint, quiet: bool = False, **kwargs):
+        """
+        A wrapper around requests that logs in again when the session expires.
+
+        :param quiet: say a failure to get through at DEBUG rather than as an
+                      error. For a caller that asks on a schedule — a panel
+                      that is away is then one line when it starts, said by
+                      whoever is watching, and not one a minute from here.
+        """
         with self._lock:
-            return self._request_locked(method, endpoint, **kwargs)
+            return self._request_locked(method, endpoint, quiet=quiet, **kwargs)
 
     @staticmethod
     def _landed_on_login(response, endpoint: str) -> bool:
@@ -166,9 +178,9 @@ class XuiClient:
             return False
         return "login" in path.lower()
 
-    def _request_locked(self, method, endpoint, **kwargs):
+    def _request_locked(self, method, endpoint, quiet: bool = False, **kwargs):
         if not self.is_logged_in:
-            if not self.login():
+            if not self.login(quiet=quiet):
                 raise self._sign_in_failed("No connection to the 3x-ui API (authorisation failed)")
 
         url = f"{self.base_url}{endpoint}"
@@ -180,7 +192,7 @@ class XuiClient:
                 
                 logger.info("The 3x-ui session has expired. Signing in again...")
                 self.is_logged_in = False
-                if self.login():
+                if self.login(quiet=quiet):
                     url = f"{self.base_url}{endpoint}"
                     response = self.session.request(method, url, timeout=10, **kwargs)
                     if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
@@ -202,7 +214,8 @@ class XuiClient:
                 self._hold_until = 0.0
             return response
         except requests.RequestException as e:
-            logger.error(f"Network error on a request to 3x-ui ({endpoint}): {e}")
+            logger.log(logging.DEBUG if quiet else logging.ERROR,
+                       f"Network error on a request to 3x-ui ({endpoint}): {e}")
             raise
 
     def _sign_in_failed(self, otherwise: str) -> Exception:
@@ -431,7 +444,7 @@ class XuiClient:
             logger.error(f"Exception while fetching the inbound list: {e}")
         return []
 
-    def get_server_status(self) -> dict or None:
+    def get_server_status(self, quiet: bool = False) -> dict or None:
         """
         How the machine behind the panel is doing: processor, memory, disk,
         uptime and the versions of the panel and of xray.
@@ -439,19 +452,25 @@ class XuiClient:
         Returns None when the panel does not answer — the dashboard then simply
         leaves the block out rather than showing zeroes that look like a dead
         server.
+
+        :param quiet: say a failure at DEBUG rather than as a warning. For a
+                      caller that asks on a schedule and does its own telling:
+                      xray_watch asks once a minute, and a panel that is away
+                      for an hour would otherwise be sixty warnings saying so.
         """
+        level = logging.DEBUG if quiet else logging.WARNING
         try:
-            response = self._request("GET", "/panel/api/server/status")
+            response = self._request("GET", "/panel/api/server/status", quiet=quiet)
             if response.status_code != 200:
-                logger.warning(f"Unexpected status while fetching the server status: {response.status_code}")
+                logger.log(level, f"Unexpected status while fetching the server status: {response.status_code}")
                 return None
             resp_json = response.json()
             if not resp_json.get("success"):
-                logger.warning(f"The panel returned an error for the server status: {resp_json.get('msg')}")
+                logger.log(level, f"The panel returned an error for the server status: {resp_json.get('msg')}")
                 return None
             obj = resp_json.get("obj") or {}
         except Exception as e:
-            logger.warning(f"Exception while fetching the server status: {e}")
+            logger.log(level, f"Exception while fetching the server status: {e}")
             return None
 
         def pair(section):

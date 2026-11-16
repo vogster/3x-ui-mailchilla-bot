@@ -16,6 +16,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import logging
+
 import requests
 
 from xui_client import XuiClient, XuiUnavailable
@@ -310,6 +312,49 @@ class RefusedIsNotAway(unittest.TestCase):
                     self.assertIn("refuses the bot's credentials", str(caught.exception))
         finally:
             email_bot.process_message = real
+
+
+
+class AskedQuietly(unittest.TestCase):
+    """
+    xray_watch asks for the server's status once a minute. A panel that is
+    away for an hour must not be sixty errors in the log saying so: whoever is
+    watching says it once.
+    """
+
+    def said(self, xui, quiet):
+        seen = []
+        watcher = logging.Handler()
+        watcher.emit = seen.append
+        logging.getLogger("xui_client").addHandler(watcher)
+        try:
+            self.assertIsNone(xui.get_server_status(quiet=quiet))
+        finally:
+            logging.getLogger("xui_client").removeHandler(watcher)
+        return [record for record in seen if record.levelno >= logging.WARNING]
+
+    def cases(self):
+        refused = FakeResponse(BASE + "/login", payload={"success": False, "msg": "wrong password"})
+        return {
+            "the panel is not there": lambda: with_session(Flaky(requests.ConnectionError("down"))),
+            "it answers with an error": lambda: with_session(Flaky(FakeResponse(BASE + "/x", 502))),
+            "it says the request failed": lambda: with_session(Flaky(
+                FakeResponse(BASE + "/x", payload={"success": False, "msg": "busy"}))),
+            "the sign-in is refused": lambda: with_session(Flaky(login=refused), token=""),
+            "the sign-in does not get through": lambda: with_session(
+                Flaky(login=requests.ConnectTimeout("slow")), token=""),
+        }
+
+    def test_asked_quietly_nothing_is_said_above_debug(self):
+        for name, make in self.cases().items():
+            with self.subTest(case=name):
+                self.assertEqual(self.said(make(), quiet=True), [])
+
+    def test_asked_the_ordinary_way_it_still_is(self):
+        # The dashboard asks this way, and a panel that is away is news there.
+        for name, make in self.cases().items():
+            with self.subTest(case=name):
+                self.assertTrue(self.said(make(), quiet=False))
 
 
 if __name__ == "__main__":

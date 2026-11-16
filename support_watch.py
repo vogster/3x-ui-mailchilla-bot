@@ -47,7 +47,9 @@ NAMED = 5
 
 _MARK = re.compile(r"(\d+):(\d+)\Z")
 
-_last_check = 0.0
+# When the mailbox was last looked at, by a clock that only goes forward;
+# None before the first time.
+_last_check = None
 # Whether the last look failed, so that a mailbox out of reach is said once
 # and not once a minute for as long as it lasts.
 _failing = False
@@ -56,7 +58,7 @@ _failing = False
 def _reset():
     """Forgets what is kept in memory, as a restart does. For the tests."""
     global _last_check, _failing
-    _last_check, _failing = 0.0, False
+    _last_check, _failing = None, False
 
 
 def enabled() -> bool:
@@ -159,10 +161,15 @@ def check():
 
 
 def run_if_due(now: float = None):
-    """Called on every poll of the bot loop; looks only when a minute has passed."""
+    """
+    Called on every poll of the bot loop; looks only when a minute has passed.
+
+    By a clock that does not go backwards. By the wall clock, a server whose
+    time was corrected an hour back looked at nothing for that hour.
+    """
     global _last_check
-    now = time.time() if now is None else now
-    if now - _last_check < CHECK_SECONDS and _last_check:
+    now = time.monotonic() if now is None else now
+    if _last_check is not None and 0 <= now - _last_check < CHECK_SECONDS:
         return
     _last_check = now
     check()
