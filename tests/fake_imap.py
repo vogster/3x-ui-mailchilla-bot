@@ -49,6 +49,11 @@ class FakeMailbox:
         }
         self.writable_selects = []
         self.unpeeked_fetches = []
+        # Every flag change asked for: (folder, uid, command, flags).
+        self.stored = []
+        # Changes when a server renumbers a folder; the numbers kept from
+        # before then mean nothing.
+        self.uidvalidity = 1
         self.appended = []
         self.connections = 0
         # Folder names on which the next SELECT/SEARCH should fail, for the
@@ -96,7 +101,14 @@ class FakeConnection:
         if not readonly:
             self.box.writable_selects.append(name)
         self.selected = name
+        self.readonly = readonly
         return "OK", [str(len(self.box.folders[name][1])).encode()]
+
+    def response(self, code):
+        """What imaplib keeps of the untagged responses to the last SELECT."""
+        if code.upper() == "UIDVALIDITY" and self.selected:
+            return code, [str(self.box.uidvalidity).encode()]
+        return code, [None]
 
     def close(self):
         return "OK", [b""]
@@ -117,7 +129,27 @@ class FakeConnection:
             return self._search(args)
         if command == "FETCH":
             return self._fetch(args[0], args[1])
+        if command == "STORE":
+            return self._store(args[0], args[1], args[2])
         raise AssertionError(f"the fake server does not know UID {command}")
+
+    def _store(self, uid_set, command, flags):
+        # As a real server has it: a folder that was only examined cannot be
+        # written to, whatever is asked.
+        if getattr(self, "readonly", True):
+            return "NO", [b"the folder was opened read-only"]
+        wanted = {int(u) for u in str(uid_set).split(",") if u}
+        named = set(re.findall(r"\\\w+", flags or ""))
+        for letter in self._letters():
+            if letter.uid in wanted:
+                if command.upper().startswith("+"):
+                    letter.flags |= named
+                elif command.upper().startswith("-"):
+                    letter.flags -= named
+                else:
+                    letter.flags = set(named)
+                self.box.stored.append((self.selected, letter.uid, command, sorted(named)))
+        return "OK", [b""]
 
     def _search(self, args):
         if self.selected in self.box.fail_search:
@@ -163,6 +195,14 @@ class FakeConnection:
                 return criteria[2].lower() in header(letter, criteria[1]), criteria[3:]
             if head == "SEEN":
                 return "\\Seen" in letter.flags, criteria[1:]
+            if head == "UID":
+                # "n:*" as a real server reads it: * is the highest uid there
+                # is, and a range is the same either way round — so 5:* in a
+                # folder whose highest is 3 matches letter 3, which callers
+                # have to be ready for.
+                top = max((l.uid for l in self._letters()), default=0)
+                ends = [top if part == "*" else int(part) for part in criteria[1].split(":")]
+                return min(ends) <= letter.uid <= max(ends), criteria[2:]
             raise AssertionError(f"the fake server does not know SEARCH {head}")
 
         found = [str(l.uid).encode() for l in self._letters() if matches(l, tokens)[0]]

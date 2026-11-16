@@ -22,6 +22,7 @@ provider has already filed it, which is checked by Message-ID first.
 """
 import base64
 import email
+import html
 import imaplib
 import logging
 import queue
@@ -32,7 +33,6 @@ from datetime import datetime
 from email import policy
 from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
-from html.parser import HTMLParser
 
 import config
 import i18n
@@ -59,6 +59,23 @@ _LETTER_FETCH = "(UID FLAGS INTERNALDATE BODY.PEEK[])"
 # because the frame the letter is drawn in cannot fetch from the panel. Past
 # this much the rest stay out: a page is not the place for a 30 MB photograph.
 INLINE_IMAGES_LIMIT = 5 * 1024 * 1024
+# And how much of them may be written into the page. The limit above counts
+# each picture once; the page writes it out once for every place the letter
+# names it, so without this one a hundred-kilobyte picture named a thousand
+# times was a hundred and thirty megabytes of markup — in the process the bot
+# shares, where running out of memory takes both down. Twice the pictures'
+# own size in base64: room for a logo at the top and again in the footer.
+INLINE_MARKUP_LIMIT = 2 * (INLINE_IMAGES_LIMIT * 4 // 3)
+# A letter's markup past this is not framed at all: its text is shown instead.
+# Every pass over the markup below is linear, but linear in something a
+# stranger chose the size of.
+HTML_LIMIT = 1_000_000
+# And a header past this is read only this far.
+HEADER_LIMIT = 4000
+# How much markup is turned into text when a letter has no text part of its
+# own. The standard library's HTML parser has had inputs it takes quadratic
+# time over, in releases this project still runs on.
+TEXT_FROM_HTML_LIMIT = 200_000
 
 
 class MailboxNotSetUp(Exception):
@@ -67,6 +84,14 @@ class MailboxNotSetUp(Exception):
 
 class FolderMissing(Exception):
     """The server has no folder of this kind that can be found."""
+
+
+class LetterUnreadable(Exception):
+    """
+    The letter is built in a way the parser gives up on — parts nested inside
+    parts until it runs out of stack. Two thousand levels fit in a hundred
+    kilobytes, and without this the page was a 500 with a traceback.
+    """
 
 
 class Account:
@@ -171,6 +196,11 @@ def _examine(mail, folder: str):
     its hands off the \\Seen flag of an examined folder even if a fetch without
     PEEK slipped through somewhere. Both guards stay: each is cheap.
     """
+    return _open(mail, folder, readonly=True)
+
+
+def _open(mail, folder: str, readonly: bool):
+    """_examine's work, for the one caller that has to write: mark_answered."""
     if folder == "inbox":
         name = "INBOX"
     elif folder == "sent":
@@ -181,7 +211,7 @@ def _examine(mail, folder: str):
         raise FolderMissing(folder)
     if not name:
         raise FolderMissing(folder)
-    status, data = mail.select(_quote(name), readonly=True)
+    status, data = mail.select(_quote(name), readonly=readonly)
     if status != "OK":
         # FolderMissing is deliberately not logged where it is caught (the
         # panel treats a not-yet-set-up mailbox as ordinary) — but this branch
@@ -283,7 +313,11 @@ def _text_header(msg, name: str) -> str:
     raw = _raw_header(msg, name)
     if not raw:
         return ""
-    unfolded = re.sub(r"\r?\n[ \t]*", " ", raw)
+    # Bounded before it is decoded: the decoding looks for encoded words, and
+    # on a header made of a hundred kilobytes of things that begin like one it
+    # takes six seconds — for every row of the list the letter is on. No
+    # subject, address or message id worth showing is that long.
+    unfolded = re.sub(r"\r?\n[ \t]*", " ", raw)[:HEADER_LIMIT]
     return decode_words(unfolded)
 
 
@@ -394,7 +428,11 @@ def _search_criteria(query: str):
     search, which also looks through the bodies. Close enough for a name typed
     in Cyrillic, and not worth a second round trip to narrow.
     """
-    query = (query or "").strip()
+    # Whitespace of every kind becomes one space first. A line break is the
+    # one that matters — see inbox.quote_astring for what it did — and the
+    # literal below is safe from it by construction, but a query is words, and
+    # there is no reason for the two paths to disagree about what was typed.
+    query = " ".join((query or "").split())
     if not query:
         return ["ALL"], None
     try:
@@ -492,65 +530,127 @@ def _part_text(part) -> str:
             return payload.decode("utf-8", errors="replace")
 
 
-class _TextOut(HTMLParser):
-    """The words of an HTML letter, for a letter that came with no text part."""
-
-    BLOCKS = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6",
-              "table", "blockquote", "section", "article", "header", "footer"}
-    SKIP = {"script", "style", "head", "title"}
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.out = []
-        self.skipping = 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self.skipping += 1
-        elif tag in self.BLOCKS:
-            self.out.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in self.SKIP:
-            self.skipping = max(0, self.skipping - 1)
-        elif tag in self.BLOCKS:
-            self.out.append("\n")
-
-    def handle_data(self, data):
-        if not self.skipping:
-            self.out.append(data)
-
-    def text(self):
-        joined = "".join(self.out)
-        lines = [re.sub(r"[ \t\xa0]+", " ", line).strip() for line in joined.splitlines()]
-        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+_BLOCKS = frozenset({"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+                     "table", "blockquote", "section", "article", "header", "footer"})
+_SKIPPED = frozenset({"script", "style", "head", "title"})
+# The name straight after the bracket, as HTML has it: "a < b" is not a tag.
+_TAG_NAME = re.compile(r"(/?)([a-zA-Z][a-zA-Z0-9]*)")
 
 
 def html_to_text(markup: str) -> str:
-    parser = _TextOut()
-    try:
-        parser.feed(markup or "")
-        parser.close()
-    except Exception:
-        return ""
-    return parser.text()
+    """
+    The words of an HTML letter, for one that came with no text part.
+
+    By hand rather than with html.parser, which this used to be. That parser
+    looks ahead for the end of whatever it is in the middle of, and on a
+    Python from before its fix a letter that is nothing but "<a " over and over
+    costs it forty seconds for forty kilobytes — every time the letter is
+    opened. This is one pass: the markup is cut at every "<", and each piece
+    is a tag up to its ">" and text after it. It knows far less than a parser
+    does, and for turning a letter into something to read and to quote that is
+    enough.
+    """
+    out = []
+    skipping = ""          # the element whose content is not text: script, style…
+    in_comment = False
+    pieces = (markup or "").split("<")
+    out.append(pieces[0])
+    for piece in pieces[1:]:
+        if in_comment:
+            closed = piece.find("-->")
+            if closed == -1:
+                continue
+            in_comment = False
+            if not skipping:
+                out.append(piece[closed + 3:])
+            continue
+        if piece.startswith("!--"):
+            closed = piece.find("-->", 3)
+            if closed == -1:
+                in_comment = True
+            elif not skipping:
+                out.append(piece[closed + 3:])
+            continue
+        end = piece.find(">")
+        if end != -1 and piece[:1] in ("!", "?"):
+            # A doctype or a processing instruction: neither a tag nor text.
+            if not skipping:
+                out.append(piece[end + 1:])
+            continue
+        name = _TAG_NAME.match(piece) if end != -1 else None
+        if name is None or name.end() > end:
+            # Not a tag: "a < b", or one that never closes. Text, as it stands.
+            if not skipping:
+                out.append("<" + piece)
+            continue
+        closing, tag = bool(name.group(1)), name.group(2).lower()
+        rest = piece[end + 1:]
+        if skipping:
+            if closing and tag == skipping:
+                skipping = ""
+                out.append(rest)
+            continue
+        if tag in _SKIPPED and not closing:
+            skipping = tag
+            continue
+        if tag in _BLOCKS:
+            out.append("\n")
+        out.append(rest)
+
+    joined = html.unescape("".join(out))
+    lines = [re.sub(r"[ \t\xa0]+", " ", line).strip() for line in joined.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 # Anything that makes the letter reach out: an image, a background, a stylesheet
 # or a font from somebody else's server. Each is a tracker as much as a picture.
+# Each alternative is one run of characters before the address, never two with
+# something optional between them. `\\s*=\\s*["']?\\s*` reads the same to a
+# person and is quadratic to the engine: on `src=` and a long run of spaces it
+# tries every way of dividing the run between the two `\\s*`. Twenty-four
+# thousand spaces took four seconds, and the engine holds the interpreter for
+# all of them — the bot's poll loop and every other page waited.
 _REMOTE = re.compile(
-    r"""(?:\b(?:src|background|poster|srcset)\s*=\s*["']?\s*(?:https?:)?//)"""
-    r"""|(?:url\(\s*["']?\s*(?:https?:)?//)"""
-    r"""|(?:<link\b[^>]*\bhref\s*=\s*["']?\s*(?:https?:)?//)"""
+    r"""(?:\b(?:src|background|poster|srcset)\s*=[\s"']*(?:https?:)?//)"""
+    r"""|(?:url\([\s"']*(?:https?:)?//)"""
+    # Any <link> at all, rather than one whose href can be seen to be remote:
+    # "a tag, then anything up to its bracket, then href" starts over at every
+    # <link that never closes, and sixty kilobytes of them took three seconds.
+    # The tag is taken out of the frame until images are asked for either way
+    # (see framed_html), so its mere presence is the honest answer to "does
+    # this letter reach out".
+    r"""|(?:<link\b)"""
     # An SVG <image> reaches out through xlink:href rather than src; a
     # stylesheet can @import a sheet by quoted string alone, with no url().
-    r"""|(?:\bxlink:href\s*=\s*["']?\s*(?:https?:)?//)"""
-    r"""|(?:@import\s+["']\s*(?:https?:)?//)""",
+    r"""|(?:\bxlink:href\s*=[\s"']*(?:https?:)?//)"""
+    r"""|(?:@import[\s"']+(?:https?:)?//)""",
     re.IGNORECASE)
 _CID = re.compile(r"""cid:([^"'\s)>]+)""", re.IGNORECASE)
-_REFRESH = re.compile(r"""<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh[^>]*>""", re.IGNORECASE)
-_BASE = re.compile(r"""<base\b[^>]*>""", re.IGNORECASE)
-_DOCTYPE = re.compile(r"""^\s*<!doctype[^>]*>""", re.IGNORECASE)
+# Tags a letter may not bring, made into tags that mean nothing rather than cut
+# out. Cutting needs the end of the tag, and both ways of finding it were
+# wrong: "up to the first >" stops inside a quoted value —
+# <meta content="0;url=//evil/?x=>" http-equiv=refresh> came through whole —
+# and "anything but > , then >" is quadratic on tags that never close. A
+# renamed tag has no end to find: <x-meta …> is an unknown element to every
+# browser, whatever follows it. Every <meta> goes, not only a refresh: the
+# letter's charset is already decoded, and a policy of its own could only
+# tighten ours.
+#
+# Anything that holds a document of its own goes the same way. A frame inside
+# the letter is a second document the page's own care does not reach into —
+# its links are not the ones given rel="noopener" — and with srcdoc it needs
+# no address to load, so the content policy has nothing to refuse.
+_DEFANG = re.compile(r"<(meta|base|iframe|frame|frameset|object|embed|applet)\b", re.IGNORECASE)
+# The same for <link>, but only until "show images": dns-prefetch and
+# preconnect tell the sender the letter was opened and are not the content
+# policy's to stop, while a stylesheet is what "show images" is asked for.
+_DEFANG_LINK = re.compile(r"<(link)\b", re.IGNORECASE)
+# HTML's own whitespace and no other. Python's \s also takes a no-break space,
+# a line separator and a dozen more that a browser reads as text: with one of
+# those in front, the pattern saw a doctype where the browser saw the body
+# already begun, and our head — the content policy with it — was put after it,
+# inside the body, where a browser ignores a policy altogether.
+_DOCTYPE = re.compile(r"""[\t\n\f\r ]*<!doctype[^>]*>""", re.IGNORECASE)
 
 
 def has_remote_content(markup: str) -> bool:
@@ -568,19 +668,29 @@ def framed_html(markup: str, inline: dict, remote: bool) -> str:
     "show images" — a meta CSP cannot be loosened by a later one, so a letter
     carrying its own does not undo it.
 
-    Our <base> comes first, and the first <base> is the one a browser obeys, so
-    every link opens in a new tab rather than inside the frame. A refresh is cut
-    out altogether: CSP has no say over it.
+    Our <base> comes first, and the letter's own is disarmed along with every
+    <meta> it carries — a refresh above all, which CSP has no say over — and,
+    until images are asked for, every <link>. See _DEFANG for why they are
+    renamed rather than cut out.
     """
     body = markup or ""
+    budget = INLINE_MARKUP_LIMIT
 
     def to_data(match):
+        nonlocal budget
         key = match.group(1).strip().strip("<>")
-        return inline.get(key, match.group(0))
+        data = inline.get(key)
+        # Past the budget the reference is left as it was and the picture shows
+        # broken: see INLINE_MARKUP_LIMIT for what the alternative cost.
+        if data is None or len(data) > budget:
+            return match.group(0)
+        budget -= len(data)
+        return data
 
+    body = _DEFANG.sub(r"<x-\1", body)
+    if not remote:
+        body = _DEFANG_LINK.sub(r"<x-\1", body)
     body = _CID.sub(to_data, body)
-    body = _REFRESH.sub("", body)
-    body = _BASE.sub("", body)
 
     sources = "data: https: http:" if remote else "data:"
     policy_value = (f"default-src 'none'; img-src {sources}; "
@@ -606,6 +716,18 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
     """
     Everything the letter page shows, out of the raw letter. No connection.
 
+    Raises LetterUnreadable for a letter nested past what the parser can walk.
+    """
+    try:
+        return _parse_letter(raw, remote_images)
+    except RecursionError:
+        raise LetterUnreadable() from None
+
+
+def _parse_letter(raw: bytes, remote_images: bool = False) -> dict:
+    """
+    parse_letter's work, without its guard.
+
     Attachments are numbered by their place among the letter's leaf parts, which
     is stable for the same bytes — the download route parses the letter again
     and takes the part by that number.
@@ -617,12 +739,19 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
     markup = _part_text(html_part) if html_part is not None else ""
     text = _part_text(text_part) if text_part is not None else ""
     if not text and markup:
-        text = html_to_text(markup)
+        text = html_to_text(markup[:TEXT_FROM_HTML_LIMIT])
+    # Too large to frame: the text is shown instead, and the page says why.
+    html_skipped = len(markup) > HTML_LIMIT
+    if html_skipped:
+        markup = ""
 
     inline = {}
     inline_bytes = 0
     attachments = []
     leaves = [p for p in msg.walk() if not p.is_multipart()]
+    # Found once, not looked for again per part: a letter is free to have
+    # twenty thousand parts and a megabyte of markup.
+    referenced = {found.strip().strip("<>") for found in _CID.findall(markup)}
     for index, part in enumerate(leaves):
         if part is html_part or part is text_part:
             continue
@@ -631,7 +760,7 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
         disposition = part.get_content_disposition()
         filename = part.get_filename() or ""
         if cid and ctype.startswith("image/") and disposition != "attachment" \
-                and markup and ("cid:" + cid) in markup:
+                and cid in referenced:
             payload = part.get_payload(decode=True) or b""
             if inline_bytes + len(payload) <= INLINE_IMAGES_LIMIT:
                 inline[cid] = f"data:{ctype};base64,{base64.b64encode(payload).decode('ascii')}"
@@ -678,6 +807,7 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
         "references": _text_header(msg, "References").strip(),
         "text": text,
         "html": framed_html(markup, inline, remote_images) if markup else "",
+        "html_skipped": html_skipped,
         "has_remote": remote,
         "remote_shown": bool(remote and remote_images),
         "attachments": attachments,
@@ -686,8 +816,11 @@ def parse_letter(raw: bytes, remote_images: bool = False) -> dict:
 
 def attachment_from(raw: bytes, index: int):
     """(filename, content type, bytes) of one leaf part, or None."""
-    msg = email.message_from_bytes(raw or b"", policy=policy.default)
-    leaves = [p for p in msg.walk() if not p.is_multipart()]
+    try:
+        msg = email.message_from_bytes(raw or b"", policy=policy.default)
+        leaves = [p for p in msg.walk() if not p.is_multipart()]
+    except RecursionError:
+        raise LetterUnreadable() from None
     if index < 0 or index >= len(leaves):
         return None
     part = leaves[index]
@@ -697,7 +830,9 @@ def attachment_from(raw: bytes, index: int):
 
 def fetch_raw(account: Account, folder: str, uid: str):
     """(raw bytes, flags) of one letter, or None when there is no such uid."""
-    if not str(uid).isdigit():
+    # ASCII digits and nothing else: isdigit() alone is also true of "٣" and
+    # "²", which are not numbers to an IMAP server.
+    if not (str(uid).isascii() and str(uid).isdigit()):
         return None
     mail = _connect(account)
     graceful = False
@@ -754,6 +889,123 @@ def quote_body(letter: dict) -> str:
     return f"{header}\n{quoted}"
 
 
+def _uidvalidity(mail) -> str:
+    """
+    The number a server gives a folder's numbering, as text — "0" when it
+    gives none. A different one from last time means every uid kept from then
+    points at something else now.
+    """
+    try:
+        _, data = mail.response("UIDVALIDITY")
+        value = data[0] if data else None
+        if isinstance(value, bytes):
+            value = value.decode("ascii", "ignore")
+        return str(int(value)) if value else "0"
+    except Exception:
+        return "0"
+
+
+def arrivals(account: Account, validity: str, after_uid: int, limit: int = 5) -> dict:
+    """
+    The letters that have arrived in an Inbox since a mark, for support_watch.
+
+    `validity` and `after_uid` are that mark: the folder's UIDVALIDITY and the
+    highest uid seen. Returns the mark as it now stands (`validity`, `top`),
+    how many letters are new (`count`) and the newest `limit` of them as list
+    rows, oldest first.
+
+    A folder met for the first time, or one whose numbering has changed, has
+    nothing new in it by definition: the answer is its present state and an
+    empty list. Letters the account sent itself are not arrivals and are left
+    out, though the mark moves past them.
+
+    Strictly looking, like everything here but mark_answered: the folder is
+    examined and only headers are fetched.
+    """
+    mail = _connect(account)
+    graceful = False
+    try:
+        _examine(mail, "inbox")
+        current = _uidvalidity(mail)
+        known = bool(validity) and str(validity) == current
+
+        # "n:*" always matches the highest letter there is, even one below n:
+        # the range reads the same either way round. Hence the filter after.
+        wanted = f"{int(after_uid) + 1}:*" if known else "*"
+        status, response = mail.uid("SEARCH", "UID", wanted)
+        if status != "OK":
+            raise RuntimeError(f"the folder could not be searched: {status}")
+        uids = sorted(int(u) for u in (response[0].split() if response and response[0] else []))
+        if not known:
+            graceful = True
+            return {"validity": current, "top": uids[-1] if uids else 0, "count": 0, "letters": []}
+
+        uids = [u for u in uids if u > int(after_uid)]
+        rows = []
+        if uids:
+            status, data = mail.uid("FETCH", ",".join(str(u) for u in uids[-limit:]), _LIST_FETCH)
+            if status != "OK":
+                raise RuntimeError(f"the letters could not be fetched: {status}")
+            own = account.own_addresses()
+            for meta, literal_bytes in _fetch_records(data):
+                try:
+                    rows.append(parse_list_row(meta, literal_bytes, own))
+                except Exception as e:
+                    logger.debug(f"Skipped an unreadable letter among the arrivals: {e}")
+        graceful = True
+        sent_by_us = sum(1 for row in rows if row["outgoing"])
+        rows = sorted((row for row in rows if not row["outgoing"]),
+                      key=lambda row: int(row["uid"] or 0))
+        return {"validity": current, "top": uids[-1] if uids else int(after_uid),
+                "count": len(uids) - sent_by_us, "letters": rows}
+    finally:
+        inbox._disconnect(mail, graceful=graceful)
+
+
+def mark_answered(account: Account, folder: str, uid: str) -> bool:
+    """
+    Marks a letter read and answered, once a reply to it has gone out.
+
+    The one place the panel changes anything in a mailbox, and only ever in
+    Support's. Everything else here is strictly looking, and in the bot's
+    mailbox that is not a courtesy but how the bot works: unread is the bot's
+    own record of a letter it still owes an answer, so nothing may touch it but
+    the bot. Support's mailbox has no such reader. There the same strictness
+    only meant that a letter answered from the panel went on looking exactly
+    like one nobody had got to — and a list that cannot tell the two apart is
+    how a letter gets answered twice, or not at all.
+
+    Refuses the bot's account outright rather than trusting its callers to.
+    Returns False when the server would not do it, which costs nothing but the
+    mark: the reply has already gone.
+    """
+    if account.key == BOT.key:
+        raise ValueError("the bot's mailbox is never written to from the panel")
+    if not (str(uid).isascii() and str(uid).isdigit()):
+        return False
+    mail = _connect(account)
+    try:
+        _open(mail, folder, readonly=False)
+        status, _ = mail.uid("STORE", str(uid), "+FLAGS", "(\\Answered \\Seen)")
+        return status == "OK"
+    finally:
+        # Logged out without closing the folder first. On a folder opened for
+        # writing, CLOSE also removes every letter somebody else has marked
+        # for deletion and not yet expunged — a decision that is theirs.
+        try:
+            mail.logout()
+        except Exception:
+            pass
+
+
+_MESSAGE_ID = re.compile(r"<[^<>\s]+>")
+
+
+def _one_line(value) -> str:
+    """A header value with every run of whitespace, line breaks included, made one space."""
+    return " ".join(inbox._CONTROL.sub(" ", str(value or "")).split())
+
+
 def send_reply(account: Account, letter: dict, to_address: str, body_text: str,
                service_name: str = None):
     """
@@ -767,19 +1019,33 @@ def send_reply(account: Account, letter: dict, to_address: str, body_text: str,
     """
     if not account.configured:
         raise MailboxNotSetUp()
-    subject = reply_subject(letter.get("subject", ""))
+    # Everything that goes into a header here came out of somebody else's
+    # letter, decoded — and an encoded word decodes to anything, a line break
+    # included. "hi\r\nBcc: …" for a subject is a header of the stranger's own
+    # in a letter sent from Support's address, on any Python older than the
+    # ones that refuse to write such a header; on those that refuse, it is a
+    # letter that cannot be answered from the panel at all. So a subject is
+    # one line, and the two threading headers are message ids and nothing
+    # else.
+    subject = reply_subject(_one_line(letter.get("subject", "")))
+    to_address = parseaddr(_one_line(to_address))[1]
     body = (body_text or "").rstrip("\n") + "\n\n" + quote_body(letter)
     headers = {}
-    if letter.get("message_id"):
-        headers["In-Reply-To"] = letter["message_id"]
-    references = " ".join(part for part in (letter.get("references", ""),
-                                            letter.get("message_id", "")) if part)
+    answered = _MESSAGE_ID.findall(_one_line(letter.get("message_id", "")))[:1]
+    if answered:
+        headers["In-Reply-To"] = answered[0]
+    # The last few are enough for a mail client to find the conversation by,
+    # and a chain is otherwise as long as its author cares to make it.
+    references = (_MESSAGE_ID.findall(_one_line(letter.get("references", ""))) + answered)[-20:]
     if references:
-        headers["References"] = references
+        headers["References"] = " ".join(references)
 
     msg = mailer.send_email_via(
         account.smtp_server, account.smtp_port, account.smtp_user, account.smtp_password,
-        to_address, subject, body, service_name=service_name, extra_headers=headers,
+        to_address, subject, mailer.PlainText(body), service_name=service_name,
+        extra_headers=headers,
+        # Typed by a person; see mailer.build_message.
+        automatic=False,
     )
     save_sent_copy(account.key, msg.get("Message-ID", ""), msg.as_string().encode("utf-8"))
 

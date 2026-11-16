@@ -20,8 +20,11 @@ read as something a person wants to know before updating.
   offer. A reply threads itself under the letter it answers (In-Reply-To,
   References), quotes the original underneath what was typed, and is filed
   into Support's own Sent folder the same way every other letter this project
-  sends is. Left empty, nothing changes: the Mail page shows only the bot's
-  mailbox, exactly as before.
+  sends is. Once it has gone, the letter it answers is marked read and
+  answered, so the list tells what has been dealt with from what nobody has
+  got to — the one thing these pages ever change in a mailbox, and never in
+  the bot's own. Left empty, nothing changes: the Mail page shows only the
+  bot's mailbox, exactly as before.
 
 - **The mailbox in the panel.** A new Mail page shows the bot's Inbox, Sent
   and Trash, with search and pages, and opens any letter in them. Beside the
@@ -58,6 +61,17 @@ read as something a person wants to know before updating.
   registration still waiting to happen. Nothing is deleted outright, so a
   schedule set too eagerly can be undone from the mail client until the Trash
   empties itself. Off until you switch it on.
+
+- **A push when a letter arrives for Support.** The bot's own mailbox is read
+  every few seconds; Support's is read by nobody until you look. With Gotify
+  set up, the bot now looks at it once a minute and tells you what has arrived:
+  who wrote and about what, one notification per letter, with a title and a
+  text you can rewrite on the Gotify tab like the registration push's. When
+  more than five come at once the newest five are announced and one more
+  notification counts the rest. It only looks — no letter is marked read. Letters already in the mailbox are not
+  announced, a restart does not repeat itself, and a letter that came while
+  the bot was down is announced when it is back. On as soon as both Gotify and
+  the Support mailbox are set up; the switch is on the Gotify tab.
 
 - **Reminding a client who has not connected in a while.** The Letters tab has
   a menu item of its own for it, set apart from the templates: switched on, the
@@ -190,6 +204,18 @@ read as something a person wants to know before updating.
   clients".
 
 ### Security
+
+- **Two-step sign-in for the panel.** Settings → General → *Signing in* adds a
+  six-digit code from an authenticator app (TOTP — Google Authenticator,
+  Aegis, 2FAS, a password manager) to the password. The panel can read every
+  mailbox password and delete every client, and until now one password was
+  all that stood in front of it. Setting it up is a QR code and one code typed
+  back; nothing is switched on until that code is right, so an entry that
+  never scanned cannot lock you out. A code works once, five wrong ones close
+  the door for five minutes, and switching the second step off takes a code
+  too. It is off until you switch it on, and nothing changes for an
+  installation that does not. If the phone is lost, `mailchilla totp-off` on
+  the server takes the second step off.
 
 - **`/broadcast` by mail now needs proof of who sent it.** The bot used to take
   the From header at its word, and a From header is whatever its author types:

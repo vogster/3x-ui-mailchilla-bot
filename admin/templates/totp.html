@@ -1,0 +1,96 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ t("Two-step sign-in") }}{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block content %}
+<h1 style="margin: 0 0 8px 0;">{{ t("Two-step sign-in") }}</h1>
+<p class="muted" style="margin: 0 0 20px 0; max-width: 640px;">
+    {{ t("Besides the password, signing in asks for a six-digit code from an authenticator app on your phone. The code changes every thirty seconds, so the password alone — guessed, leaked or read over a shoulder — no longer opens the panel.") }}
+</p>
+
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% if done == "on" and on %}
+<div class="flash success">{{ t("Two-step sign-in is on. From the next sign-in the panel asks for a code.") }}</div>
+{% elif done == "off" and not on %}
+<div class="flash">{{ t("Two-step sign-in is off. The panel opens with the password alone.") }}</div>
+{% endif %}
+
+{% if on %}
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("Status") }}</h2>
+        <span class="badge on">{{ t("On [two-step]") }}</span>
+    </div>
+    <div style="padding: 24px;">
+        <p class="muted" style="margin: 0 0 18px 0; max-width: 560px;">
+            {{ t("To move to another phone, switch it off and set it up again: the secret is shown only once, while the app is being set up, and cannot be read back here.") }}
+        </p>
+        <form method="post" action="/settings/totp/disable" class="form-grid" autocomplete="off">
+            <div>
+                <label for="code">{{ t("Code from the app") }}</label>
+                <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+                       maxlength="7" placeholder="000000" class="mono" style="max-width: 160px;" required>
+                <div class="hint">{{ t("Switching off takes a code as well: an open session is not enough to take the second step away.") }}</div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn danger">{{ t("Switch off") }}</button>
+                <a href="/settings" class="btn">{{ t("Back to the settings") }}</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="panel" style="margin-bottom: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("1. Add the panel to the app") }}</h2>
+        <span class="muted">{{ t("Google Authenticator, Aegis, 2FAS, a password manager — any of them") }}</span>
+    </div>
+    <div style="padding: 24px; display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start;">
+        {% if qr %}
+        {# Dark on white, with its own quiet zone: a scanner needs the contrast
+           far more than the page needs the picture to match. #}
+        <img src="{{ qr }}" alt="{{ t('QR code for the authenticator app') }}" width="220" height="220"
+             style="border-radius: 10px; background: #fff; flex: 0 0 220px; image-rendering: pixelated;">
+        {% endif %}
+        <div style="flex: 1 1 260px; min-width: 240px;">
+            <p style="margin: 0 0 14px 0;">
+                {% if qr %}{{ t("Scan the code with the app.") }}{% else %}{{ t("The QR code could not be drawn — add the entry by hand.") }}{% endif %}
+                {{ t("If the camera is not an option, choose «enter a setup key» in the app and type this in:") }}
+            </p>
+            <div class="mono" style="font-size: 15px; letter-spacing: 0.04em; line-height: 1.7; user-select: all; word-break: break-word;">{{ secret }}</div>
+            <div class="hint" style="margin-top: 12px;">
+                {{ t("Account: {account}. Type: time-based, 6 digits, 30 seconds.", account=account) }}
+            </div>
+            <div class="hint">
+                {{ t("This key is the second step itself: whoever has it can make the codes. It is shown here once and nowhere afterwards.") }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>{{ t("2. Enter the code the app shows") }}</h2>
+        <span class="muted">{{ t("nothing is switched on until the code is right") }}</span>
+    </div>
+    <div style="padding: 24px;">
+        <form method="post" action="/settings/totp/confirm" class="form-grid" autocomplete="off">
+            <div>
+                <label for="code">{{ t("Code from the app") }}</label>
+                <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+                       maxlength="7" placeholder="000000" class="mono" style="max-width: 160px;" required autofocus>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn primary">{{ t("Switch on") }}</button>
+                <button type="submit" class="btn" formaction="/settings/totp/cancel" formnovalidate>{{ t("Cancel") }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<p class="hint" style="margin-top: 18px; max-width: 640px;">
+    {{ t("If the phone is lost, the second step is taken off on the server:") }}
+    <span class="mono">mailchilla totp-off</span>.
+    {{ t("That needs a shell on the server, which is the point — it is the one thing a stolen password does not give.") }}
+</p>
+{% endblock %}

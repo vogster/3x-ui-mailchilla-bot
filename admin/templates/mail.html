@@ -29,9 +29,13 @@
     .letters .subj { width: 100%; min-width: 220px; }
     .letters .subj .none { color: var(--fg-3); font-style: italic; }
     .letters .when { white-space: nowrap; text-align: right; color: var(--fg-2); }
-    /* Unread in the Inbox means the bot has not answered it yet — worth seeing
-       at a glance, the way every mail client shows it. */
+    /* Unread in the bot's Inbox means the bot has not answered it yet — worth
+       seeing at a glance, the way every mail client shows it. In Support's it
+       means what it means in any mailbox, and the tooltip says which. */
     .letters tr.unread .subj-text, .letters tr.unread .who .name { font-weight: 600; color: var(--fg); }
+    /* A letter that has been answered, where the unread dot would be: the two
+       never show together, and between them they say what is left to do. */
+    .letters .amark { color: var(--fg-3); font-size: 12px; }
     .letters .udot {
         display: inline-block; width: 7px; height: 7px; border-radius: 50%;
         background: var(--link); vertical-align: middle;
@@ -125,7 +129,9 @@
                 <tr class="{% if not row.seen and not row.outgoing %}unread{% endif %}" data-href="{{ href }}">
                     <td style="padding-right: 0;">
                         {% if not row.seen and not row.outgoing %}
-                        <span class="udot" title="{{ t('Unread — the bot has not handled it yet') }}"></span>
+                        <span class="udot" title="{% if account == 'support' %}{{ t('Unread [letter]') }}{% else %}{{ t('Unread — the bot has not handled it yet') }}{% endif %}"></span>
+                        {% elif row.answered %}
+                        <span class="amark" title="{{ t('Answered [letter]') }}">↩</span>
                         {% endif %}
                     </td>
                     <td class="who">

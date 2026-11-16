@@ -472,6 +472,9 @@ SENT_NAMES = ("Sent", "INBOX.Sent", "Sent Items", "Sent Messages", "Sent Mail",
 CLEANUP_BATCH = 200
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+
+
 def quote_astring(value: str) -> str:
     """
     A string as an IMAP quoted string: backslash and double quote escaped.
@@ -481,6 +484,15 @@ def quote_astring(value: str) -> str:
     its own copy, which is what let it and `_move_to_trash` below disagree on
     the escaping until this was written once.
     """
+    # A quoted string cannot hold a control character at all, and CR LF is how
+    # a command ends: a line break let through here is the end of ours and the
+    # start of whatever follows it. The search box of the mail pages is typed
+    # into a URL, where a line break is two characters anybody can put in a
+    # link — "a%0D%0AZ1 SELECT INBOX%0D%0AZ2 UID FETCH 1:* BODY[]" opened the
+    # Inbox for writing and marked every letter the bot had not answered yet
+    # as read. Turned into spaces rather than refused: every caller shares
+    # this, and none of them has a use for a control character.
+    value = _CONTROL.sub(" ", str(value))
     return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
 
 

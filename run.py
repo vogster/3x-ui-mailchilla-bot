@@ -12,6 +12,7 @@ import logging
 
 import config
 import inactivity
+import support_watch
 import tariffs
 
 logging.basicConfig(
@@ -55,6 +56,13 @@ def run_bot_loop():
             inactivity.run_if_due()
         except Exception as e:
             logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
+        try:
+            # A look at Support's mailbox, once a minute, for letters to tell
+            # the administrator about. A mailbox of its own and a connection
+            # of its own, and never anything but looking.
+            support_watch.run_if_due()
+        except Exception as e:
+            logger.error(f"Error while looking at the Support mailbox: {e}", exc_info=True)
         # Wait in a way that can be cut short by a signal
         _stop_event.wait(config.POLL_INTERVAL_SECONDS)
 

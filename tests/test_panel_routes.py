@@ -206,7 +206,7 @@ class PanelCase(unittest.TestCase):
 class PagesOpen(PanelCase):
     def test_the_pages_of_the_panel(self):
         for url in ("/", "/clients", "/tariffs", "/tariffs/new", "/broadcast",
-                    "/settings", "/logs", "/setup"):
+                    "/settings", "/settings/totp", "/logs", "/setup"):
             with self.subTest(url=url):
                 self.page(url)
 
@@ -858,6 +858,41 @@ class MailPages(PanelCase):
         self.assertEqual(self.box.unpeeked_fetches, [])
         super().tearDown()
 
+    def test_unread_in_the_bots_mailbox_is_a_letter_it_still_owes_an_answer(self):
+        self.assertIn("the bot has not handled this letter yet",
+                      self.page(f"/mail/bot/inbox/{self.stranger}"))
+        self.assertIn("Unread — the bot has not handled it yet", self.page("/mail/bot"))
+
+    def test_a_letter_nested_past_reading_gets_a_page_not_a_traceback(self):
+        depth = 2000
+        raw = "".join(f"Content-Type: multipart/mixed; boundary=b{i}\r\n\r\n--b{i}\r\n"
+                      for i in range(depth))
+        raw += "Content-Type: text/plain\r\n\r\nhello\r\n"
+        raw += "".join(f"--b{i}--\r\n" for i in reversed(range(depth)))
+        uid = self.box.add("INBOX", ("From: who@example.com\r\nSubject: deep\r\n" + raw).encode())
+        self.assertIn("cannot be read here", self.page(f"/mail/bot/inbox/{uid}"))
+        self.assertEqual(self.client.get(f"/mail/bot/inbox/{uid}/attachments/0").status_code, 422)
+
+    def test_a_line_break_in_the_search_box_is_not_a_command(self):
+        body = self.page("/mail/bot?q=Help%0D%0AZ1+SELECT+INBOX%0D%0AZ2+UID+FETCH+1:*+BODY[]")
+        self.assertNotIn("Could not read the mailbox", body)
+        # tearDown asserts the rest: nothing was selected for writing and no
+        # body was fetched without PEEK.
+
+    def test_a_letter_too_large_to_frame_says_why_it_is_text(self):
+        import mailfolders
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["From"], msg["To"], msg["Subject"] = "who@example.com", "bot@example.com", "Big"
+        msg.set_content("the text of it")
+        msg.add_alternative("<p>" + "word " * (mailfolders.HTML_LIMIT // 5 + 10) + "</p>",
+                            subtype="html")
+        uid = self.box.add("INBOX", bytes(msg))
+        body = self.page(f"/mail/bot/inbox/{uid}")
+        self.assertIn("too large to show here", body)
+        self.assertIn("the text of it", body)
+        self.assertNotIn('id="letter-frame"', body)
+
     def test_the_list_marks_who_is_a_client(self):
         body = self.page("/mail/bot")
         self.assertIn("Help me", body)
@@ -945,9 +980,10 @@ class SupportMailbox(PanelCase):
         self.sent = []
 
         def fake_send(server_host, port, user, password, to_email, subject, message,
-                     service_name=None, extra_headers=None):
+                     service_name=None, extra_headers=None, automatic=True):
             built = mailer.build_message(to_email, subject, message, smtp_user=user,
-                                         service_name=service_name, extra_headers=extra_headers)
+                                         service_name=service_name, extra_headers=extra_headers,
+                                         automatic=automatic)
             self.sent.append({"to": to_email, "subject": subject, "extra_headers": extra_headers})
             return built
         mailer.send_email_via = fake_send
@@ -964,6 +1000,111 @@ class SupportMailbox(PanelCase):
         (imaplib.IMAP4_SSL, config.SUPPORT_IMAP_USER, config.SUPPORT_IMAP_PASSWORD,
          config.SUPPORT_SMTP_USER, config.SUPPORT_SMTP_PASSWORD) = self.saved_mail
         super().tearDown()
+
+    def test_unread_here_is_not_the_bots_doing(self):
+        # The bot never reads this mailbox, so "the bot has not handled it yet"
+        # was a sentence about something that was never going to happen.
+        letter = self.page(f"/mail/support/inbox/{self.vera}")
+        self.assertIn("answering it from here marks it read and answered", letter)
+        self.assertNotIn("the bot has not handled", letter)
+        listing = self.page("/mail/support")
+        self.assertIn('class="udot" title="Unread"', listing)
+        self.assertNotIn("the bot has not handled", listing)
+
+    def flags(self, uid):
+        return next(l.flags for l in self.box.folders["INBOX"][1] if l.uid == uid)
+
+    def test_looking_at_a_letter_leaves_it_as_it_was(self):
+        self.page(f"/mail/support/inbox/{self.vera}")
+        self.page("/mail/support")
+        self.assertEqual(self.flags(self.vera), set())
+        self.assertEqual(self.box.stored, [])
+        self.assertEqual(self.box.writable_selects, [])
+
+    def test_answering_a_letter_marks_it_read_and_answered(self):
+        # Otherwise the list cannot tell a letter that was dealt with from one
+        # nobody has got to, which is how one gets answered twice or not at all.
+        self.client.post(f"/mail/support/inbox/{self.vera}/reply", data={"body": "On it."})
+        self.assertEqual(self.flags(self.vera), {"\\Answered", "\\Seen"})
+        listing = self.page("/mail/support")
+        self.assertIn('title="Answered"', listing)
+        self.assertNotIn('class="udot"', listing)
+        letter = self.page(f"/mail/support/inbox/{self.vera}")
+        self.assertIn("This letter has been answered.", letter)
+        self.assertNotIn("Unread.", letter)
+
+    def test_a_reply_that_did_not_go_marks_nothing(self):
+        def refuse(*args, **kwargs):
+            raise RuntimeError("SMTP refused")
+        mailer.send_email_via = refuse
+        self.client.post(f"/mail/support/inbox/{self.vera}/reply", data={"body": "On it."})
+        self.assertEqual(self.flags(self.vera), set())
+        self.assertEqual(self.box.stored, [])
+
+    def test_a_mailbox_that_will_not_be_marked_does_not_cost_the_reply(self):
+        real_mark = mailfolders.mark_answered
+        mailfolders.mark_answered = lambda *a, **k: (_ for _ in ()).throw(OSError("gone"))
+        try:
+            response = self.client.post(f"/mail/support/inbox/{self.vera}/reply",
+                                        data={"body": "On it."}, follow_redirects=False)
+        finally:
+            mailfolders.mark_answered = real_mark
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.sent[-1]["to"], "vera@example.com")
+
+    def test_the_answer_names_the_address_it_goes_to(self):
+        # The name alone used to stand there, and a name is whatever its owner
+        # typed.
+        body = self.page(f"/mail/support/inbox/{self.vera}")
+        self.assertIn("Vera &lt;vera@example.com&gt;", body)
+        self.assertNotIn("The answer will go to", body)
+
+    def test_an_answer_about_to_go_elsewhere_says_so(self):
+        # From a real client, Reply-To the stranger's own — with the client's
+        # address for a name. The card beside the letter is the client's.
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["From"] = "Ben <ben@example.com>"
+        msg["Reply-To"] = '"Ben <ben@example.com>" <stranger@evil.example>'
+        msg["To"], msg["Subject"] = "support@example.com", "My subscription"
+        msg.set_content("What is my link?")
+        uid = self.box.add("INBOX", bytes(msg))
+        body = self.page(f"/mail/support/inbox/{uid}")
+        self.assertIn("The answer will go to stranger@evil.example, not to ben@example.com", body)
+        self.assertIn("&lt;stranger@evil.example&gt;", body)
+
+    def test_a_reply_to_with_a_name_and_no_address_is_passed_over(self):
+        # It used to be chosen over the From, for a form that sent nothing.
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["From"], msg["Reply-To"] = "Ben <ben@example.com>", "Ben <>"
+        msg["To"], msg["Subject"] = "support@example.com", "Hello"
+        msg.set_content("hi")
+        uid = self.box.add("INBOX", bytes(msg))
+        body = self.page(f"/mail/support/inbox/{uid}")
+        self.assertIn("&lt;ben@example.com&gt;", body)
+        self.assertNotIn("The answer will go to", body)
+        self.client.post(f"/mail/support/inbox/{uid}/reply", data={"body": "Hello Ben"})
+        self.assertEqual(self.sent[-1]["to"], "ben@example.com")
+
+    def test_every_page_tells_the_browser_to_give_no_way_back(self):
+        response = self.client.get("/mail/support")
+        self.assertEqual(response.headers.get("cross-origin-opener-policy"), "same-origin")
+
+    def test_a_link_in_a_letter_is_given_no_way_back_to_the_panel(self):
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["From"], msg["To"], msg["Subject"] = "who@example.com", "support@example.com", "Look"
+        msg.set_content("see the page")
+        msg.add_alternative('<a href="https://example.org/" rel="opener">page</a>', subtype="html")
+        uid = self.box.add("INBOX", bytes(msg))
+        # Done on the elements once the frame has loaded; here, that the page
+        # carries the code that does it.
+        page = self.page(f"/mail/support/inbox/{uid}")
+        self.assertIn('setAttribute("rel", "noopener noreferrer")', page)
+        # Every link element, not only those linking by a plain href: an SVG
+        # link's address is xlink:href.
+        self.assertIn('querySelectorAll("a, area")', page)
 
     def test_the_tab_appears_once_it_is_set_up(self):
         body = self.page("/mail/bot")
@@ -1018,3 +1159,47 @@ class SampleLetterIsNotCorrespondence(PanelCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0].get("keep_copy"), False)
+
+
+class SupportLetterPush(PanelCase):
+    """The switch for the push about a letter to Support: on the page, and through the form."""
+
+    def test_the_switch_is_on_the_gotify_tab(self):
+        body = self.page("/settings")
+        self.assertIn('name="support_notify_enabled"', body)
+        self.assertIn("Tell me when a letter arrives for Support", body)
+
+    def save(self, **fields):
+        """Posts the settings form with the save itself caught: the real one
+        writes the installation's own settings.json."""
+        import admin.routes_settings as routes_settings
+        caught = {}
+        real = routes_settings.settings.save
+        routes_settings.settings.save = lambda values: caught.update(values)
+        try:
+            response = self.client.post("/settings", data=fields, follow_redirects=False)
+        finally:
+            routes_settings.settings.save = real
+        self.assertEqual(response.status_code, 303)
+        return caught
+
+    def test_ticked_it_is_saved_on(self):
+        self.assertIs(self.save(support_notify_enabled="on")["SUPPORT_NOTIFY_ENABLED"], True)
+
+    def test_unticked_it_is_saved_off(self):
+        # A browser sends nothing at all for an unticked box.
+        self.assertIs(self.save()["SUPPORT_NOTIFY_ENABLED"], False)
+
+    def test_the_title_and_the_text_are_on_the_page_and_through_the_form(self):
+        body = self.page("/settings")
+        self.assertIn('name="support_notify_title"', body)
+        self.assertIn('name="support_notify_message"', body)
+        self.assertIn("A letter to {service} support", body)
+        saved = self.save(support_notify_enabled="on", support_notify_title="[{service}] mail",
+                          support_notify_message="{from}: {subject}")
+        self.assertEqual(saved["SUPPORT_NOTIFY_TITLE"], "[{service}] mail")
+        self.assertEqual(saved["SUPPORT_NOTIFY_MESSAGE"], "{from}: {subject}")
+
+    def test_the_form_never_touches_the_mark(self):
+        # Which letters have been announced is the bot's own record.
+        self.assertNotIn("SUPPORT_NOTIFY_MARK", self.save(support_notify_enabled="on"))

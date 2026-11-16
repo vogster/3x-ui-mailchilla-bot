@@ -122,8 +122,20 @@
         {% if folder == "inbox" and not seen %}
         <div class="letter-note">
             <span class="udot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--link);"></span>
+            {# Unread means two different things in the two mailboxes. In the
+               bot's it is the bot's own mark: a letter it has not dealt with.
+               Support's the bot never reads, so there it is only what a mail
+               program would mean by it. Looking changes nothing in either;
+               answering, which only Support's allows, marks the letter read
+               and answered — the one thing this page ever writes. #}
+            {% if account == "support" %}
+            {{ t("Unread. Opening it here leaves it unread; answering it from here marks it read and answered.") }}
+            {% else %}
             {{ t("Unread: the bot has not handled this letter yet. Opening it here leaves it unread.") }}
+            {% endif %}
         </div>
+        {% elif answered %}
+        <div class="letter-note">↩ {{ t("This letter has been answered.") }}</div>
         {% endif %}
 
         {% if letter.attachments %}
@@ -175,11 +187,14 @@
                     srcdoc="{{ letter.html }}"></iframe>
         </div>
         {% endif %}
+        {% if letter.html_skipped %}
+        <p class="muted" style="margin: 0 0 10px 0;">{{ t("The formatted version of this letter is too large to show here; this is its text.") }}</p>
+        {% endif %}
         {% if letter.text %}
         <pre class="letter-text" data-pane="text" {% if letter.html %}hidden{% endif %}>{{ letter.text|linkify }}</pre>
         {% endif %}
         {% if not letter.html and not letter.text %}
-        <div class="empty">{{ t("The letter has no text") }}</div>
+        <div class="empty">{{ t("The letter has no text [reading]") }}</div>
         {% endif %}
 
         {% if can_reply and reply_to %}
@@ -195,8 +210,15 @@
             </label>
             <textarea id="reply-body" name="body" required
                       placeholder="{{ t('Write the answer here…') }}"></textarea>
+            {% if reply_elsewhere %}
+            <div class="flash error" style="margin: 10px 0 0 0;">
+                {{ t("The answer will go to {reply}, not to {sender}, the address this letter came from. The sender asked for that — and whoever is shown beside the letter was found by the sender's address, not by this one.", reply=reply_to.address, sender=reply_elsewhere) }}
+            </div>
+            {% endif %}
             <div class="row">
-                <span class="to">{{ t("To:") }} {{ reply_to.name or reply_to.address }}</span>
+                {# The address always, never the name alone: a name is whatever
+                   its owner typed, and "Ivan <real-client@…>" is a name. #}
+                <span class="to">{{ t("To:") }} {% if reply_to.name %}{{ reply_to.name }} {% endif %}&lt;{{ reply_to.address }}&gt;</span>
                 <button type="submit" class="btn primary">{{ t("Send") }}</button>
             </div>
         </form>
@@ -301,8 +323,31 @@
                     frame.style.height = Math.max(height, 120) + "px";
                 } catch (e) { /* the frame is not ours to measure; keep the default */ }
             };
+            // A link opened in a new tab keeps no way back to this one unless it
+            // asks for it, and rel="opener" is how a letter asks: the page it
+            // opens could then put something else in this tab — a sign-in
+            // form, say. Set on the elements rather than cut out of the
+            // markup, since an attribute can be spelt with character
+            // references no pattern sees. Every <a> and <area>, whatever it
+            // links with: an SVG link's address is xlink:href, which a
+            // selector asking for href does not match.
+            var seal = function () {
+                try {
+                    frame.contentDocument.querySelectorAll("a, area").forEach(function (link) {
+                        link.setAttribute("rel", "noopener noreferrer");
+                        link.setAttribute("target", "_blank");
+                    });
+                } catch (e) { }
+            };
+            // Not on load alone: with remote pictures shown, load waits for
+            // the slowest of them, and a server that never finishes sending
+            // one would keep every link as the letter wrote it.
+            seal();
+            var sealing = setInterval(seal, 250);
+            setTimeout(function () { clearInterval(sealing); }, 15000);
             frame.addEventListener("load", function () {
                 fit();
+                seal();
                 try {
                     if (window.ResizeObserver) {
                         new ResizeObserver(fit).observe(frame.contentDocument.documentElement);

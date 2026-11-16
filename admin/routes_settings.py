@@ -118,6 +118,7 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "cleanup_last": _last_run("MAIL_CLEANUP_LAST_AT"),
         "inactivity_last": _last_run("INACTIVITY_REMINDER_LAST_AT"),
         "state": state,
+        "two_step": settings.two_step_on(),
         "error": error,
         "saved": saved,
     }
@@ -160,6 +161,9 @@ def settings_submit(
     mail_cleanup_enabled: str = Form(""),
     mail_cleanup_days: str = Form("30"),
     update_check_enabled: str = Form(""),
+    support_notify_enabled: str = Form(""),
+    support_notify_title: str = Form(""),
+    support_notify_message: str = Form(""),
     xui_flow: str = Form(""),
     remark_include_name: str = Form(""),
     gotify_url: str = Form(""),
@@ -209,6 +213,9 @@ def settings_submit(
         "INCY_URL": incy_url,
         "REMARK_INCLUDE_NAME": remark_include_name == "on",
         "UPDATE_CHECK_ENABLED": update_check_enabled == "on",
+        "SUPPORT_NOTIFY_ENABLED": support_notify_enabled == "on",
+        "SUPPORT_NOTIFY_TITLE": support_notify_title,
+        "SUPPORT_NOTIFY_MESSAGE": support_notify_message,
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:
@@ -531,7 +538,9 @@ def settings_secret(request: Request, key: str = ""):
     if auth_redirect:
         return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
 
-    if key not in settings.SECRET_KEYS:
+    # NEVER_REVEALED: the secret behind the sign-in codes is shown once, while
+    # the app is being set up, and not to whoever holds a session afterwards.
+    if key not in settings.SECRET_KEYS or key in settings.NEVER_REVEALED:
         return JSONResponse({"error": i18n.t("Unknown key")}, status_code=400)
     logger.info(f"Panel: revealed the value of {key}.")
     return JSONResponse({"value": settings.secret(key)})

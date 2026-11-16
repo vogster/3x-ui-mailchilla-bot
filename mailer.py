@@ -55,21 +55,43 @@ def _sender_domain(smtp_user: str = None) -> str:
     domain = address.rsplit("@", 1)[-1].strip()
     return domain or "localhost"
 
+class PlainText(str):
+    """
+    A letter that is text and nothing else — what a person typed into the
+    Support reply box, with the letter it answers quoted underneath.
+
+    A type of its own because build_message takes a bare string to be HTML,
+    which is what every string it had ever been handed was. The reply was a
+    bare string too, and so went out as text/html with no text part: its line
+    breaks collapsed into one paragraph in the recipient's mail client, and
+    whatever markup stood in the quoted original — a stranger's text — was
+    markup again in a letter from Support's address.
+    """
+
+
 def build_message(to_email: str, subject: str, message,
-                  smtp_user: str = None, service_name: str = None, extra_headers: dict = None):
+                  smtp_user: str = None, service_name: str = None, extra_headers: dict = None,
+                  automatic: bool = True):
     """
     Assembles the finished MIME letter.
 
-    :param message: a templates.Email (text plus HTML), or a string of HTML.
+    :param message: a templates.Email (text plus HTML), a string of HTML, or
+        a PlainText — which is sent as text alone.
     :param extra_headers: set after everything else, so a caller building a
         reply can add In-Reply-To/References — the two headers that thread it
         under the letter it answers in the recipient's own mail client.
+    :param automatic: False for a letter a person typed — a reply from the
+        Support mailbox. Everything else here is written by the program and
+        says so; a person's answer marked that way is what the other side's
+        autoresponder, ticket system or filter is being told to disregard.
 
     Inside multipart/alternative the parts run from plain to rich: the client
     takes the last one it can display. The text part is not only for such
     clients — a letter without one fares worse with spam filters.
     """
-    if isinstance(message, str):
+    if isinstance(message, PlainText):
+        html_content, text_content, images = "", str(message), None
+    elif isinstance(message, str):
         html_content, text_content, images = message, "", None
     else:
         html_content, text_content = message.html, message.text
@@ -99,8 +121,9 @@ def build_message(to_email: str, subject: str, message,
     # to answer anything carrying it — which includes a letter of our own that
     # found its way back. The second header is the same request in the only
     # dialect Exchange listens to.
-    msg['Auto-Submitted'] = "auto-generated"
-    msg['X-Auto-Response-Suppress'] = "All"
+    if automatic:
+        msg['Auto-Submitted'] = "auto-generated"
+        msg['X-Auto-Response-Suppress'] = "All"
     for name, value in (extra_headers or {}).items():
         if value:
             msg[name] = value
@@ -109,7 +132,12 @@ def build_message(to_email: str, subject: str, message,
     # on HTML too, and the letter stays readable in its source.
     if text_content:
         body.attach(MIMEText(text_content, 'plain', _QP_UTF8))
-    body.attach(MIMEText(html_content, 'html', _QP_UTF8))
+    if html_content:
+        body.attach(MIMEText(html_content, 'html', _QP_UTF8))
+    if not text_content and not html_content:
+        # Nothing to say is still a letter with a body: a multipart with no
+        # parts at all is something mail servers are entitled to refuse.
+        body.attach(MIMEText("", 'plain', _QP_UTF8))
 
     for cid, data in (images or {}).items():
         if not data:
@@ -148,7 +176,7 @@ def probe_smtp(server_host: str, port: int, user: str, password: str):
 
 def send_email_via(server_host: str, port: int, user: str, password: str,
                    to_email: str, subject: str, message, service_name: str = None,
-                   extra_headers: dict = None):
+                   extra_headers: dict = None, automatic: bool = True):
     """
     Sends a letter with the parameters given, bypassing config.
 
@@ -159,7 +187,8 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
     without ever touching config.SMTP_*, which stays the bot's alone.
     """
     msg = build_message(to_email, subject, message,
-                        smtp_user=user, service_name=service_name, extra_headers=extra_headers)
+                        smtp_user=user, service_name=service_name, extra_headers=extra_headers,
+                        automatic=automatic)
     # The envelope carries the plain address: with a display name the server
     # would refuse it.
     _, envelope = parseaddr(user or "")

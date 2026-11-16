@@ -215,5 +215,71 @@ class TheCopy(unittest.TestCase):
             stand.serve(types.SimpleNamespace(port=0, lang="en"))
 
 
+class MailOnTheStand(unittest.TestCase):
+    """
+    The Mail pages read over IMAP, and a stand must never open a real mailbox —
+    nor send to one: every address in the demo data is invented, and the first
+    real one typed into the stand would otherwise be mailed.
+    """
+
+    def setUp(self):
+        import stand_mail
+        self.stand_mail = stand_mail
+        self.mailboxes = stand_mail.Mailboxes()
+        self.replaced = stand_mail.install(self.mailboxes)
+
+    def tearDown(self):
+        self.stand_mail.uninstall(self.replaced)
+
+    def test_each_mailbox_is_its_own_server_in_memory(self):
+        import mailfolders
+        bot = mailfolders.list_letters(mailfolders.BOT, "inbox")
+        support = mailfolders.list_letters(mailfolders.SUPPORT, "inbox")
+        self.assertIn("/status", [row["subject"] for row in bot["rows"]])
+        self.assertIn("My new phone will not connect", [row["subject"] for row in support["rows"]])
+        self.assertNotIn("/status", [row["subject"] for row in support["rows"]])
+
+    def test_one_letter_is_still_owed_an_answer_and_looking_does_not_change_that(self):
+        import mailfolders
+        rows = mailfolders.list_letters(mailfolders.BOT, "inbox")["rows"]
+        self.assertEqual(sorted(row["seen"] for row in rows), [False, True])
+        self.assertEqual(self.mailboxes.bot.writable_selects, [])
+        self.assertEqual(self.mailboxes.bot.unpeeked_fetches, [])
+
+    def test_a_letter_handed_to_the_bot_turns_up_in_its_inbox(self):
+        import mailfolders
+        self.mailboxes.received_by_the_bot("newcomer@example.com", "Newcomer", "AURORA", "")
+        subjects = [row["subject"] for row in mailfolders.list_letters(mailfolders.BOT, "inbox")["rows"]]
+        self.assertIn("AURORA", subjects)
+
+    def test_nothing_reaches_an_smtp_server(self):
+        import mailer
+        with self.assertRaises(RuntimeError):
+            mailer.send_email_via("smtp.example.com", 465, "bot@example.com", "x",
+                                  "ben@example.com", "Hello", "<p>hi</p>")
+
+    def test_everything_is_put_back(self):
+        import imaplib
+        import config
+        self.stand_mail.uninstall(self.replaced)
+        self.assertIs(imaplib.IMAP4_SSL, self.replaced["imap"])
+        self.assertEqual(config.SUPPORT_IMAP_USER, self.replaced["config"]["SUPPORT_IMAP_USER"])
+        self.replaced = self.stand_mail.install(self.mailboxes)
+
+
+class TheOutboxAndAPersonsReply(unittest.TestCase):
+    def test_a_reply_that_is_text_is_kept_as_text(self):
+        import mailer
+        directory = tempfile.mkdtemp(prefix="mailchilla-outbox-")
+        try:
+            outbox = stand_panel.Outbox(directory)
+            name = outbox.keep("ben@example.com", "Re: Help",
+                               mailer.PlainText("Looking into it.\n\n> <b>Help</b>"))
+            self.assertEqual(outbox.read(name, "txt"), "Looking into it.\n\n> <b>Help</b>")
+            self.assertIn("&lt;b&gt;Help&lt;/b&gt;", outbox.read(name, "html"))
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

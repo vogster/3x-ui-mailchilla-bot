@@ -46,7 +46,7 @@ PAGE = """<!doctype html>
 </style></head><body><main>
 <h1>Test stand</h1>
 <p class="muted">3x-ui here is an in-memory stand-in and no letter leaves this machine.
-<a href="/">Back to the panel</a></p>
+<a href="/">Back to the panel</a> · <a href="/mail/bot">The mailboxes</a></p>
 
 <h2>A letter to the bot</h2>
 <form method="post" action="/stand/letter">
@@ -98,13 +98,15 @@ def _outbox_table(outbox) -> str:
             f"<tbody>{rows}</tbody></table>")
 
 
-def add_routes(app, outbox, words):
+def add_routes(app, outbox, words, received=None):
     """
     Adds /stand to the panel's application.
 
     `words` is a callable returning the code words that currently open a
     tariff, so the page can say what to type without anybody opening another
-    tab to look.
+    tab to look. `received`, when given, is told of every letter handed to the
+    bot — the stand files it in the bot's in-memory Inbox, so the Mail page
+    shows the same correspondence this one does.
     """
 
     def render(request: Request, note: str = "", form: dict = None):
@@ -148,6 +150,8 @@ def add_routes(app, outbox, words):
             # Shown rather than raised: on the stand a failing handler is the
             # thing being looked at, not a broken page.
             return render(request, f"The handler raised {type(e).__name__}: {e}", form)
+        if received is not None:
+            received(form["sender"].lower(), form["name"], subject, body)
         sent = len(outbox.letters(limit=1000)) - before
         return render(request, f"Handled. Letters sent in reply: {sent}.", form)
 

@@ -104,6 +104,26 @@
             </div>
         </div>
     </div>
+
+    {# A link, not fields: switching the second step on or off takes a code,
+       and a code has no business being posted with the rest of this form. #}
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Signing in") }}</h2>
+            {% if two_step %}<span class="badge on">{{ t("On [two-step]") }}</span>
+            {% else %}<span class="badge nodot">{{ t("Off [two-step]") }}</span>{% endif %}
+        </div>
+        <div style="padding: 24px;">
+            <p class="muted" style="margin: 0 0 16px 0; max-width: 540px;">
+                {% if two_step %}
+                {{ t("Two-step sign-in is on: besides the password, the panel asks for a six-digit code from an authenticator app.") }}
+                {% else %}
+                {{ t("The panel opens with the password alone. Two-step sign-in adds a six-digit code from an authenticator app (TOTP), so a leaked password is no longer enough.") }}
+                {% endif %}
+            </p>
+            <a href="/settings/totp" class="btn">{% if two_step %}{{ t("Manage two-step sign-in") }}{% else %}{{ t("Set up two-step sign-in") }}{% endif %}</a>
+        </div>
+    </div>
   </div>
 
   <div class="tab-panel" data-panel="mailbox" hidden>
@@ -373,6 +393,32 @@
             </div>
             {{ fields.secret_field("gotify_token", "GOTIFY_TOKEN", t("App token"), state.GOTIFY_TOKEN,
                             t("Created in Gotify on the Apps tab. An empty value switches the notifications off just as an empty address does.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Letters to Support") }}</h2>
+            <span class="muted">{{ t("substitutions:") }} <span class="mono">{sender}</span>,
+                <span class="mono">{subject}</span>, <span class="mono">{service}</span></span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="support_notify_enabled" name="support_notify_enabled"
+                       {% if state.SUPPORT_NOTIFY_ENABLED.value %}checked{% endif %}>
+                <label for="support_notify_enabled">{{ t("Tell me when a letter arrives for Support") }}
+                    {{ fields.help(t("Nobody watches the Support mailbox the way the bot watches its own, so once a minute the bot looks at it and sends a notification about whatever has arrived since: who wrote, and about what. It only looks — no letter is marked read. Letters that were already there when this was switched on are not announced. Needs the Support mailbox on the Mail tab and the connection above.")) }}</label>
+            </div>
+            <div>
+                <label for="support_notify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {sender}, {name}, {from}, {subject}, {service}.")) }}</label>
+                <input type="text" id="support_notify_title" name="support_notify_title"
+                       value="{{ state.SUPPORT_NOTIFY_TITLE.value }}">
+            </div>
+            <div>
+                <label for="support_notify_message">{{ t("Text") }} {{ fields.help(t("One notification goes out for each letter. Substitutions: {sender}, {name}, {from}, {subject}, {service}. {sender} is the name with the address, or the address alone when the letter carries no name; {name} may be empty; {subject} says so when a letter has none. When more than five letters arrive at once, the newest five get a notification each and one more counts the rest.")) }}</label>
+                <textarea id="support_notify_message" name="support_notify_message"
+                          style="min-height:70px;">{{ state.SUPPORT_NOTIFY_MESSAGE.value }}</textarea>
+            </div>
         </div>
     </div>
 

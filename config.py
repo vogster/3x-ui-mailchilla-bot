@@ -104,6 +104,29 @@ try:
     GOTIFY_PRIORITY = int(os.getenv("GOTIFY_PRIORITY", "5"))
 except ValueError:
     GOTIFY_PRIORITY = 5
+# A push when a letter arrives for Support, whose mailbox nobody else is
+# watching. On by default, unlike the jobs that mail people: this one only
+# ever tells the administrator something, and does nothing at all until both
+# Gotify and the Support mailbox are set up.
+SUPPORT_NOTIFY_ENABLED = True
+# Its title and text, edited in the panel like the registration push's. One
+# notification goes out per letter, so both describe a single letter:
+# {sender} is the name with the address (or the address alone), {name} and
+# {from} are the two halves of it, {subject} the subject, {service} the
+# service name.
+SUPPORT_NOTIFY_TITLE = "A letter to {service} support"
+SUPPORT_NOTIFY_MESSAGE = "{sender}: {subject}"
+# Which letters have been announced: "<uidvalidity>:<highest uid>". Written by
+# the bot for itself, in settings.json alone; see support_watch.py.
+SUPPORT_NOTIFY_MARK = ""
+
+# The second step of signing in to the panel: the secret an authenticator app
+# was given, in base32. Empty means the password alone lets somebody in — there
+# is deliberately no switch beside it, since a switch and a secret would be two
+# fields able to disagree about one fact. Never read from .env: it is made on
+# the panel's own page, shown once as a QR code and kept in settings.json, and
+# `mailchilla totp-off` empties it for whoever has lost the phone.
+TOTP_SECRET = ""
 
 # App Urls Config
 # The two schemes are the same for every installation — they belong to the apps,

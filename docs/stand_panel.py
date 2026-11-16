@@ -20,7 +20,10 @@ import json
 import os
 import time
 
+import html as html_escape
+
 import demo_data as demo
+import mailer
 from xui_client import XuiClient
 
 GB = 1024 ** 3
@@ -238,7 +241,12 @@ class Outbox:
         stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
         safe = "".join(ch if ch.isalnum() or ch in "@.-" else "_" for ch in str(to_email))
         name = f"{stamp}-{safe}"
-        if isinstance(message, str):
+        if isinstance(message, mailer.PlainText):
+            # A letter that is text alone — a reply typed by a person. Its
+            # "html" file is only that text made safe to open in a browser.
+            text, images = str(message), None
+            html = f"<pre>{html_escape.escape(text)}</pre>"
+        elif isinstance(message, str):
             html, text, images = message, "", None
         else:
             html, text = message.html, message.text or ""

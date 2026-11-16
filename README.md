@@ -90,7 +90,9 @@ It only looks. Opening a letter does not mark it read, because an unread letter 
 
 SMTP keeps no copy of what it sends, so the bot now puts one of every letter into the Sent folder itself - unless the provider has already filed it, as Gmail does. Letters sent before the update are not there.
 
-A second mailbox can join it: Support, set up on its own tab in Settings. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Left unset, nothing about the Mail page changes.
+A second mailbox can join it: Support, set up on its own tab in Settings. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Once the reply has gone, the letter it answers is marked read and answered, so the list tells what has been dealt with from what nobody has got to. That mark is the only thing these pages ever change in a mailbox, and never in the bot's own.
+
+Nobody watches Support's mailbox the way the bot watches its own, so with Gotify set up the bot looks at it once a minute and pushes a notification about whatever has arrived since: who wrote, and about what - one push for each letter, in a title and a text you write yourself, and when more than five come at once, the newest five and one push more that counts the rest. It only looks; no letter is marked read. Letters already there when it first looks are not announced, a restart does not repeat what was said, and a letter that arrived while the bot was down is announced when it comes back. The switch and the wording are on the Gotify tab, beside the registration push's. Left unset, nothing about the Mail page changes.
 
 **💌 The letters**
 
@@ -124,7 +126,7 @@ The interface strings live in `lang/`, the letter texts in the panel itself, one
 
 ![Logs](docs/screenshots/logs.png)
 
-The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration.
+The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration, and on every letter that arrives for Support.
 
 The panel also notices when a newer version has been released and says so in a banner, with a link to what changed and the command to run. It updates nothing by itself, and the check can be switched off.
 
@@ -243,11 +245,11 @@ Everything that changes during normal use is set in the panel and applies on the
 
 | Tab | What is inside |
 |---|---|
-| **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions |
+| **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions, two-step sign-in |
 | **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, clearing the mailbox out, connection check |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
-| **Gotify** | server address, token, priority, notification text |
+| **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support |
 | **Letters** | the language letters go out in, every text of every letter, a switch for each block that can be left out, and — as its own item beside the templates — reminding a client who has gone quiet |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
@@ -276,6 +278,8 @@ Then open `http://localhost:8080`.
 
 The alternative is a reverse proxy with HTTPS. Setting `ADMIN_PANEL_HOST=0.0.0.0` without one is a bad idea.
 
+**Two-step sign-in.** Settings → General → *Signing in* adds a second step: a six-digit code from an authenticator app (TOTP - Google Authenticator, Aegis, 2FAS, a password manager, any of them). The page shows a QR code, the app scans it, and nothing is switched on until the app has produced a right code - so a code that never scanned cannot lock you out. From then on the password alone does not open the panel. A code works once, wrong ones run out after five in five minutes, and switching the second step off takes a code too. Lost the phone? `mailchilla totp-off` on the server takes it off; that needs a shell there, which is exactly what a stolen password does not give.
+
 ---
 
 ## 🖥️ Managing it
@@ -293,6 +297,7 @@ mailchilla
 | `mailchilla log` | the journal, following |
 | `mailchilla update` | check for a new version and install it |
 | `mailchilla passwd` | change the panel's username or password |
+| `mailchilla totp-off` | take two-step sign-in off, for when the phone is lost |
 | `mailchilla port` | change the port |
 | `mailchilla tunnel` | the ready-made SSH tunnel command |
 | `mailchilla check` | sign in to 3x-ui and report back |
@@ -364,12 +369,14 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `mailer.py` | sending: the MIME message, SMTP, the Gotify push |
 | `inbox.py` | reading: the IMAP poll loop and the health of it |
 | `mailfolders.py` | the mailbox as the panel shows it: folders, letters, copies of sent ones |
+| `support_watch.py` | a look at Support's mailbox once a minute, and a push about what is new |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |
 | `email_texts.py` | the editable letter texts, one set per language |
 | `i18n.py` | the interface translator: catalogue lookup and the two language settings |
 | `lang/` | the interface catalogues, one module per language |
 | `settings.py` | settings layered over `.env` |
+| `totp.py` | the codes of two-step sign-in (TOTP, RFC 6238) |
 | `tariffs.py` | the tariffs and the code words that open them |
 | `config.py` | environment variables |
 | `applog.py` | log collection into a buffer and a file |

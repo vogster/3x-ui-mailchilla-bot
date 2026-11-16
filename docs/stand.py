@@ -7,7 +7,8 @@ A test stand: the panel and the bot's handlers, with nothing real behind them.
     python docs/stand.py --fresh        # forget what was done on the stand before
 
 3x-ui is an in-memory stand-in filled from docs/demo_data.py; letters are
-written into an outbox folder instead of being sent; and /stand takes a letter
+written into an outbox folder instead of being sent; the Mail pages read two
+mailboxes kept in memory, the bot's and Support's; and /stand takes a letter
 "to the bot" and shows what it answered — so registration, /status and
 /broadcast can be tried without a mailbox. Sign in with the login and password
 docs/shots.py uses; they are printed when the stand starts.
@@ -127,15 +128,22 @@ def serve(args):
     outbox = stand_panel.Outbox(os.path.join(ROOT, "outbox"))
 
     import mailer
+    import stand_mail
+    mailboxes = stand_mail.Mailboxes()
+    stand_mail.install(mailboxes)
 
     def keep_letter(server_host, port, user, password, to_email, subject, message,
-                    service_name=None):
+                    service_name=None, extra_headers=None, automatic=True):
         # Assembled as it would be for sending, so a letter that cannot be
-        # built fails here exactly as it would in front of an SMTP server.
-        mailer.build_message(to_email, subject, message, smtp_user=user,
-                             service_name=service_name)
+        # built fails here exactly as it would in front of an SMTP server —
+        # and handed back, because the caller files a copy of what it sent in
+        # the Sent folder, which on the stand is the in-memory one.
+        built = mailer.build_message(to_email, subject, message, smtp_user=user,
+                                     service_name=service_name, extra_headers=extra_headers,
+                                     automatic=automatic)
         name = outbox.keep(to_email, subject, message)
         mailer.logger.info(f"[stand] a letter for {to_email} was kept as {name}, not sent.")
+        return built
 
     mailer.send_email_via = keep_letter
 
@@ -153,10 +161,11 @@ def serve(args):
     email_bot.scan_sender_names = lambda limit=0: {}
 
     config.SERVICE_NAME = demo.SERVICE_NAME
-    config.IMAP_SERVER, config.IMAP_USER, config.IMAP_PASSWORD = \
-        "imap.example.com", "bot@example.com", "x"
-    config.SMTP_SERVER, config.SMTP_USER, config.SMTP_PASSWORD = \
-        "smtp.example.com", "bot@example.com", "x"
+    # The mailboxes' own settings were set by stand_mail.install above; saved
+    # settings would have been laid over them when the panel was imported, so
+    # they are set once more now that it has been.
+    for key, value in stand_mail.SETTINGS.items():
+        setattr(config, key, value)
     if not config.ADMIN_EMAIL:
         config.ADMIN_EMAIL = "admin@example.com"
     config.XUI_SUBSCRIPTION_BASE_URL = "https://aurora.example.com/sub"
@@ -168,11 +177,13 @@ def serve(args):
     inbox._last_ok_at = time.time()
 
     import stand_pages
-    stand_pages.add_routes(appmod.app, outbox, lambda: sorted(tariffs.live_words()))
+    stand_pages.add_routes(appmod.app, outbox, lambda: sorted(tariffs.live_words()),
+                           received=mailboxes.received_by_the_bot)
 
     base = f"http://127.0.0.1:{args.port}"
     print(f"\n  Test stand: {base}   (sign in: {USER} / {PASSWORD})"
           f"\n  A letter to the bot, and the outbox: {base}/stand"
+          f"\n  The mailboxes, as the panel shows them: {base}/mail/bot"
           f"\n  Kept in: {ROOT}\n", flush=True)
 
     import uvicorn

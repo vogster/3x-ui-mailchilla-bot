@@ -18,6 +18,7 @@ import mailfolders
 import settings as app_settings
 import tariffs
 import updater
+from admin import twostep
 from admin.deps import (
     templates,
     check_panel_configured,
@@ -53,16 +54,63 @@ app.add_middleware(
 )
 
 
+class _NoWayBack:
+    """
+    Cross-Origin-Opener-Policy on every response.
+
+    A page of somebody else's that was opened from the panel — from a link in
+    a letter on the Mail pages, above all — gets no handle on the tab it was
+    opened from, whatever the link asked for. The Mail page already takes
+    rel="opener" off the links it can see; this is the browser being told the
+    same thing about the ones it cannot. Plain ASGI rather than
+    @app.middleware, which wraps every response in a task of its own for the
+    sake of one header.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def with_header(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(name.lower() == b"cross-origin-opener-policy" for name, _ in headers):
+                    headers.append((b"cross-origin-opener-policy", b"same-origin"))
+                message = dict(message, headers=headers)
+            await send(message)
+
+        await self.app(scope, receive, with_header)
+
+
+app.add_middleware(_NoWayBack)
+
+
 # ---------------------------------------------------------------------------
 # Authentication (templates / require_auth live in admin/deps.py)
 # ---------------------------------------------------------------------------
+def _login_page(request: Request, error: str = "", status_code: int = 200):
+    """
+    The sign-in form, with a field for the code when there is a second step.
+
+    One place for all four ways the form is drawn: the field is a context key,
+    and a key one of them forgot would be a form with no way to give the code.
+    """
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": error, "service_name": config.SERVICE_NAME,
+         "two_step": twostep.on()},
+        status_code=status_code,
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, error: str = ""):
     check_panel_configured()
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": error, "service_name": config.SERVICE_NAME},
-    )
+    return _login_page(request, error)
 
 
 # --- Guessing at the password ---
@@ -127,6 +175,7 @@ def login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    code: str = Form(""),
     next: str = Form("/"),
 ):
     check_panel_configured()
@@ -134,39 +183,49 @@ def login_submit(
     if not _admit(address):
         # Not logged: one line a guess is a way to fill the log, and the line
         # that matters was written when the door closed.
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": i18n.t("Too many failed attempts. Wait a minute and try again."),
-                "service_name": config.SERVICE_NAME,
-            },
-            status_code=429,
-        )
-    if (
+        return _login_page(
+            request, i18n.t("Too many failed attempts. Wait a minute and try again."), 429)
+    # Whether a code is asked for is settled once, here: the wording of a
+    # refusal below must match the form the guess was typed into.
+    two_step = twostep.on()
+    password_right = (
         secrets.compare_digest(username.encode("utf-8"), config.ADMIN_PANEL_USER.encode("utf-8"))
         and secrets.compare_digest(password.encode("utf-8"), config.ADMIN_PANEL_PASSWORD.encode("utf-8"))
-    ):
-        _forgive(address)
-        request.session.clear()
-        request.session["user"] = username
-        logger.info(f"Signed in: user {username}, address {address}.")
-        # only local paths: see safe_path on why a leading slash is not enough
-        return RedirectResponse(url=safe_path(next), status_code=303)
-    logger.warning(f"Failed sign-in attempt: login {username!r}, address {address}.")
+    )
+    if password_right:
+        # The code is looked at only behind the right password: a code is used
+        # up by being right, and a stranger's guess at the password should not
+        # be able to spend the administrator's.
+        verdict = twostep.check(code)
+        if verdict == twostep.OK:
+            _forgive(address)
+            request.session.clear()
+            request.session["user"] = username
+            logger.info(f"Signed in: user {username}, address {address}.")
+            # only local paths: see safe_path on why a leading slash is not enough
+            return RedirectResponse(url=safe_path(next), status_code=303)
+        # Said in so many words, because it is the one line in this log that
+        # means the password is no longer a secret. The second step held —
+        # which is the moment to change the first.
+        logger.warning(f"Failed sign-in attempt: the password was right and the code was not "
+                       f"(login {username!r}, address {address}). If this was not you, "
+                       f"somebody knows the password: change it with `mailchilla passwd`.")
+        if verdict == twostep.LOCKED:
+            return _login_page(
+                request, i18n.t("Too many wrong codes. Wait a few minutes and try again."), 429)
+    else:
+        logger.warning(f"Failed sign-in attempt: login {username!r}, address {address}.")
     if _out_of_guesses(address):
         logger.warning(f"{LOGIN_ATTEMPTS} failed sign-in attempts from {address} within "
                        f"{LOGIN_WINDOW} seconds; further ones are refused unchecked until "
                        f"that has passed.")
-    return templates.TemplateResponse(
-        "login.html",
-        {
-            "request": request,
-            "error": i18n.t("The login or the password is wrong"),
-            "service_name": config.SERVICE_NAME,
-        },
-        status_code=401,
-    )
+    # One wording for a wrong password and a wrong code: which of the two it
+    # was is exactly what somebody guessing would like to be told.
+    return _login_page(
+        request,
+        i18n.t("The login, the password or the code is wrong") if two_step
+        else i18n.t("The login or the password is wrong"),
+        401)
 
 
 @app.post("/lang")
@@ -227,6 +286,7 @@ from admin.routes_settings import router as settings_router  # noqa: E402
 from admin.routes_logs import router as logs_router  # noqa: E402
 from admin.routes_mail import router as mail_router  # noqa: E402
 from admin.routes_setup import router as setup_router  # noqa: E402
+from admin.routes_totp import router as totp_router  # noqa: E402
 
 app.include_router(clients_router)
 app.include_router(tariffs_router)
@@ -235,6 +295,7 @@ app.include_router(settings_router)
 app.include_router(logs_router)
 app.include_router(mail_router)
 app.include_router(setup_router)
+app.include_router(totp_router)
 
 
 # ---------------------------------------------------------------------------

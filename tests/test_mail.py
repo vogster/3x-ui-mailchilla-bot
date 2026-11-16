@@ -149,9 +149,10 @@ class SendingAReply(WithMailbox):
         sent = {}
 
         def fake_send_via(server_host, port, user, password, to_email, subject, message,
-                          service_name=None, extra_headers=None):
+                          service_name=None, extra_headers=None, automatic=True):
             msg = mailer.build_message(to_email, subject, message, smtp_user=user,
-                                       service_name=service_name, extra_headers=extra_headers)
+                                       service_name=service_name, extra_headers=extra_headers,
+                                       automatic=automatic)
             sent["msg"] = msg
             sent["extra_headers"] = extra_headers
             return msg
@@ -344,13 +345,20 @@ class Parsing(unittest.TestCase):
             with self.subTest(markup=markup):
                 self.assertTrue(mailfolders.has_remote_content(markup))
 
-    def test_a_refresh_and_a_base_are_cut_out(self):
+    def test_a_refresh_and_a_base_are_disarmed(self):
+        # Renamed into tags that mean nothing, rather than cut out: cutting
+        # needs the end of the tag, and both ways of finding it went wrong
+        # (see mailfolders._DEFANG and tests/test_mail_hardening.py). The words
+        # are still in the markup; what matters is that no browser acts on them.
         raw = letter("ann@example.com", "hi", html=(
             '<meta http-equiv="refresh" content="0;url=https://evil.example">'
             '<base href="https://evil.example/" target="_self"><a href="x">x</a>'))
         html = mailfolders.parse_letter(raw)["html"]
-        self.assertNotIn("refresh", html)
-        self.assertNotIn("evil.example", html)
+        theirs = html.split("</style>", 1)[1]
+        self.assertNotIn("<meta", theirs)
+        self.assertNotIn("<base", theirs)
+        self.assertIn('<x-meta http-equiv="refresh"', theirs)
+        self.assertIn('<x-base href="https://evil.example/"', theirs)
         self.assertEqual(html.count("<base"), 1)
 
     def test_attachments_are_listed_and_can_be_taken_back_out(self):

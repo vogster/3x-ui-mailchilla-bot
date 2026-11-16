@@ -234,6 +234,13 @@ declare -A MSG=(
 [en.un_done]="Mailchilla has been removed."
 [ru.un_done]="Mailchilla удалена."
 
+[en.t2_none]="Two-step sign-in is not on; there is nothing to switch off."
+[ru.t2_none]="Двухэтапный вход не включён — отключать нечего."
+[en.t2_off]="Two-step sign-in is off: the panel opens with the password alone. Set it up again in Settings → General."
+[ru.t2_off]="Двухэтапный вход отключён: панель открывается одним паролем. Настроить заново — в Настройки → Основные."
+[en.t2_fail]="Could not switch two-step sign-in off. Nothing was changed."
+[ru.t2_fail]="Не удалось отключить двухэтапный вход. Ничего не изменено."
+
 [en.lang_saved]="The menu language has been changed. The language of the panel and of the letters is set in the panel itself."
 [ru.lang_saved]="Язык меню изменён. Язык панели и писем задаётся в самой панели."
 
@@ -554,6 +561,79 @@ cmd_passwd() {
     printf '\n'
 }
 
+# Asks the installation about the second step of signing in, or takes it off.
+# Prints ON, OFF or DONE; anything else, nothing included, is a failure — a
+# copy from before 0.2.0 has no such setting to ask about.
+#
+# Run as the service's own user where that can be arranged. The code being run
+# lives in a directory that user can write to, and root has no business
+# executing it; the file then also keeps its owner, and a write that fails
+# half-way leaves no root-owned temporary file for the service to trip over on
+# its every save afterwards.
+two_step_py() {
+    local as_user=()
+    if command -v runuser >/dev/null 2>&1 && id "$SERVICE_USER" >/dev/null 2>&1; then
+        as_user=(runuser -u "$SERVICE_USER" --)
+    fi
+    # ${as_user[@]+…}: an empty array is an unbound variable to set -u before
+    # bash 4.4.
+    (cd "$INSTALL_DIR" && ${as_user[@]+"${as_user[@]}"} "$INSTALL_DIR/venv/bin/python" -B -c '
+import sys
+sys.path.insert(0, ".")
+import logging
+logging.disable(logging.CRITICAL)
+import settings
+settings.load()
+if sys.argv[1] == "off":
+    settings.save_two_step("")
+    print("DONE")
+else:
+    print("ON" if settings.two_step_on() else "OFF")
+' "$1" 2>/dev/null) || true
+}
+
+# For whoever has lost the phone the codes were on. It asks for nothing but
+# root, and that is the design rather than a gap in it: the second step guards
+# against a password that got out, and a shell on the server is the one thing
+# such a password does not give.
+cmd_totp_off() {
+    need_root totp-off || return 1; need_install
+    local was_active=0
+    printf '\n'
+    case "$(two_step_py state)" in
+        ON)  ;;
+        OFF) good "$(t t2_none)"; printf '\n'; return 0 ;;
+        *)   bad "$(t t2_fail)"; printf '\n'; return 1 ;;
+    esac
+
+    # Stopped first: the running panel holds the secret in memory and writes
+    # the whole of settings.json on its next save, the secret with it.
+    if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+        was_active=1
+        systemctl stop "$SERVICE"
+    fi
+    local result
+    result="$(two_step_py off)"
+    # Where runuser was not to be had the file was written by root, and the
+    # service must still be able to read it — the temporary one beside it too,
+    # if the write stopped half-way.
+    chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/settings.json" 2>/dev/null || true
+    chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/settings.json.tmp" 2>/dev/null || true
+    lock_state_files
+    if [ "$was_active" = "1" ]; then
+        systemctl start "$SERVICE"
+        wait_for_panel || warn "$(t st_silent)"
+    fi
+    if [ "$result" = "DONE" ]; then
+        good "$(t t2_off)"
+    else
+        bad "$(t t2_fail)"
+        printf '\n'
+        return 1
+    fi
+    printf '\n'
+}
+
 cmd_port() {
     need_root port || return 1; need_install
     local port host current
@@ -799,7 +879,7 @@ cmd_help() {
     printf '\n  %s%s%s\n\n' "$B" "$(t help_usage)" "$N"
     printf '     mailchilla %s%s%s\n\n' "$D" "— $(t help_nomenu)" "$N"
     local c
-    for c in status start stop restart log update passwd port tunnel check \
+    for c in status start stop restart log update passwd totp-off port tunnel check \
              enable disable autostart backup lang uninstall version help; do
         printf '     mailchilla %s\n' "$c"
     done
@@ -901,6 +981,7 @@ main() {
         log|logs)  cmd_log ;;
         update)    cmd_update ;;
         passwd|password) cmd_passwd ;;
+        totp-off|2fa-off) cmd_totp_off ;;
         port)      cmd_port ;;
         tunnel|ssh) cmd_tunnel ;;
         check)     cmd_check ;;

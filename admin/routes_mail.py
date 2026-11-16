@@ -98,6 +98,9 @@ def _problem(error: Exception, folder: str) -> str:
     """What went wrong, in words a person can act on."""
     if isinstance(error, mailfolders.MailboxNotSetUp):
         return i18n.t("The mailbox is not set up")
+    if isinstance(error, mailfolders.LetterUnreadable):
+        return i18n.t("This letter is built in a way that cannot be read here — "
+                      "parts nested inside parts, far past what any mail program writes.")
     if isinstance(error, mailfolders.FolderMissing):
         names = {tab["key"]: tab["label"] for tab in folder_tabs()}
         return i18n.t("The mailbox has no folder that can be taken for “{name}”.",
@@ -162,6 +165,27 @@ def _back_url(account_key: str, folder: str, page: int, q: str) -> str:
     return f"/mail/{account_key}?folder={folder}" + ("&" + query[1:] if query else "")
 
 
+def _reply_address(letter: dict):
+    """
+    Who an answer goes to: the first address the sender asked answers to go
+    to, else the one they wrote from, else nobody.
+
+    One place for the page and for the route that sends, so the address shown
+    beside Send is the address written to. An entry with a name and no address
+    is passed over — "Reply-To: Ben <>" used to be chosen over a perfectly good
+    From, and the form it produced sent nothing and said nothing.
+    """
+    for person in list(letter.get("reply_to") or []) + list(letter.get("from") or [])[:1]:
+        if person.get("address"):
+            return person
+    return None
+
+
+def _is_uid(uid: str) -> bool:
+    """ASCII digits and nothing else — isdigit() alone is also true of "٣" and "²"."""
+    return uid.isascii() and uid.isdigit()
+
+
 @router.get("/mail/{account_key}", response_class=HTMLResponse)
 def mail_list(request: Request, account_key: str, folder: str = "inbox", page: int = 1, q: str = ""):
     auth_redirect = require_auth(request)
@@ -218,7 +242,7 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
     if auth_redirect:
         return auth_redirect
     account = _get_account(account_key)
-    if folder not in mailfolders.FOLDERS or not uid.isdigit():
+    if folder not in mailfolders.FOLDERS or not _is_uid(uid):
         raise HTTPException(status_code=404, detail=i18n.t("The letter was not found"))
 
     back = _back_url(account_key, folder, page, q)
@@ -248,7 +272,11 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
         raise HTTPException(status_code=404, detail=i18n.t("The letter was not found"))
 
     raw, flags = found
-    letter = mailfolders.parse_letter(raw, remote_images=images == "1")
+    try:
+        letter = mailfolders.parse_letter(raw, remote_images=images == "1")
+    except mailfolders.LetterUnreadable as e:
+        context["error"] = _problem(e, folder)
+        return templates.TemplateResponse("mail_letter.html", context)
     person, outgoing = mailfolders.correspondent(
         letter["from"], letter["to"] + letter["cc"], account.own_addresses())
 
@@ -258,17 +286,24 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
     # Who a reply goes to, when this letter can be replied to at all: the
     # address the sender asked answers to go to, if they gave one, else the
     # address they wrote from. Nobody to write back to on an outgoing letter.
-    reply_to = None
-    if not outgoing:
-        reply_to = (letter["reply_to"][0] if letter["reply_to"] else
-                   (letter["from"][0] if letter["from"] else None))
+    reply_to = None if outgoing else _reply_address(letter)
 
     context.update({
         "letter": letter,
         "seen": "\\Seen" in flags,
+        "answered": "\\Answered" in flags,
         "person": person,
         "outgoing": outgoing,
         "reply_to": reply_to,
+        # The address the letter came from, when the answer is about to go
+        # somewhere else. The client beside the letter is found by the From
+        # address, which nobody has checked, while the answer goes to
+        # Reply-To, which the same stranger wrote: From a real client and
+        # Reply-To the stranger's own, and the administrator reads one
+        # person's card while writing to another. The page says so.
+        "reply_elsewhere": (letter["from"][0]["address"]
+                            if reply_to and letter["from"]
+                            and reply_to["address"] != letter["from"][0]["address"] else ""),
         "is_admin": bool(person and config.ADMIN_EMAIL
                          and person["address"] == config.ADMIN_EMAIL.strip().lower()),
         "client": _client_panel(client_obj) if client_obj else None,
@@ -293,7 +328,7 @@ def mail_reply(request: Request, account_key: str, folder: str, uid: str,
     if account_key not in REPLYABLE_ACCOUNTS:
         raise HTTPException(status_code=404)
     account = _get_account(account_key)
-    if folder not in mailfolders.FOLDERS or not uid.isdigit():
+    if folder not in mailfolders.FOLDERS or not _is_uid(uid):
         raise HTTPException(status_code=404, detail=i18n.t("The letter was not found"))
 
     back = _back_url(account_key, folder, 1, "")
@@ -309,28 +344,45 @@ def mail_reply(request: Request, account_key: str, folder: str, uid: str,
     if not found:
         raise HTTPException(status_code=404, detail=i18n.t("The letter was not found"))
 
-    letter = mailfolders.parse_letter(found[0])
+    try:
+        letter = mailfolders.parse_letter(found[0])
+    except mailfolders.LetterUnreadable:
+        return RedirectResponse(url=f"/mail/{account_key}/{folder}/{uid}", status_code=303)
     _, outgoing = mailfolders.correspondent(letter["from"], letter["to"] + letter["cc"],
                                             account.own_addresses())
-    reply_to = (letter["reply_to"][0] if letter["reply_to"] else
-               (letter["from"][0] if letter["from"] else None))
-    if outgoing or not reply_to or not reply_to.get("address"):
+    reply_to = _reply_address(letter)
+    if outgoing or not reply_to:
         # Nothing to write back to — an outgoing letter, or one with no address
         # at all. The button is not offered for this either; a direct POST is
         # simply ignored rather than answered with a confusing error.
         return RedirectResponse(url=f"/mail/{account_key}/{folder}/{uid}", status_code=303)
 
     logger.info(f"Panel: Support reply to {reply_to['address']}.")
-    background_tasks.add_task(_send_reply, account, letter, reply_to["address"], body)
+    background_tasks.add_task(_send_reply, account, letter, reply_to["address"], body,
+                              folder, uid)
     return RedirectResponse(url=f"/mail/{account_key}/{folder}/{uid}?replied=1", status_code=303)
 
 
-def _send_reply(account: mailfolders.Account, letter: dict, to_address: str, body: str):
+def _send_reply(account: mailfolders.Account, letter: dict, to_address: str, body: str,
+                folder: str = "", uid: str = ""):
     try:
         mailfolders.send_reply(account, letter, to_address, body, service_name=config.SERVICE_NAME)
         logger.info(f"Reply sent to {to_address}.")
     except Exception as e:
         logger.error(f"Could not send the reply to {to_address}: {e}")
+        return
+    # Only now, and only because it went: the letter is marked read and
+    # answered, so the list tells the ones that were dealt with from the ones
+    # nobody has got to. A failure here is a mark that is missing, not a reply.
+    if not (folder and uid):
+        return
+    try:
+        if not mailfolders.mark_answered(account, folder, uid):
+            logger.warning(f"The reply to {to_address} went out, but the mailbox would not "
+                           f"mark the letter as answered.")
+    except Exception as e:
+        logger.warning(f"The reply to {to_address} went out, but the letter could not be "
+                       f"marked as answered: {e}")
 
 
 @router.get("/mail/{account_key}/{folder}/{uid}/attachments/{index}")
@@ -346,7 +398,7 @@ def mail_attachment(request: Request, account_key: str, folder: str, uid: str, i
     if auth_redirect:
         return auth_redirect
     account = _get_account(account_key)
-    if folder not in mailfolders.FOLDERS or not uid.isdigit():
+    if folder not in mailfolders.FOLDERS or not _is_uid(uid):
         raise HTTPException(status_code=404)
 
     try:
@@ -356,7 +408,10 @@ def mail_attachment(request: Request, account_key: str, folder: str, uid: str, i
         raise HTTPException(status_code=502, detail=_problem(e, folder))
     if not found:
         raise HTTPException(status_code=404)
-    part = mailfolders.attachment_from(found[0], index)
+    try:
+        part = mailfolders.attachment_from(found[0], index)
+    except mailfolders.LetterUnreadable as e:
+        raise HTTPException(status_code=422, detail=_problem(e, folder))
     if not part:
         raise HTTPException(status_code=404)
 

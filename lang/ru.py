@@ -22,6 +22,16 @@ TEXTS = {
     "Every name already matches": "Все имена уже совпадают",
     "Names written:": "Имена записаны:",
     "could not be written:": "не удалось записать:",
+    "This letter is built in a way that cannot be read here — "
+    "parts nested inside parts, far past what any mail program writes.":
+        "Это письмо устроено так, что прочитать его здесь нельзя: части вложены в части "
+        "гораздо глубже, чем это делает любая почтовая программа.",
+    "The answer will go to {reply}, not to {sender}, the address this letter came from. The sender asked for that — and whoever is shown beside the letter was found by the sender's address, not by this one.":
+        "Ответ уйдёт на {reply}, а не на {sender} — адрес, с которого пришло письмо. Об этом "
+        "попросил отправитель; а тот, кто показан рядом с письмом, найден по адресу "
+        "отправителя, а не по этому.",
+    "The formatted version of this letter is too large to show here; this is its text.":
+        "Оформленная версия этого письма слишком велика, чтобы показать её здесь; это его текст.",
     "The mailbox is not set up": "Почтовый ящик не настроен",
     "Could not read the mailbox": "Не удалось прочитать ящик",
     # The mail loop on the dashboard
@@ -701,6 +711,25 @@ TEXTS = {
     "the inbounds for new clients": "inbound'ы для новых клиентов",
     "the administrator address": "адрес администратора",
     "The login or the password is wrong": "Неверный логин или пароль",
+    # --- the push about a letter to Support ---
+    "A letter to {service} support": "Письмо в поддержку {service}",
+    "{count} new letters to {service} support": "Новых писем в поддержку {service}: {count}",
+    "and {count} more": "и ещё {count}",
+    "Letters to Support": "Письма в поддержку",
+    "Substitutions: {sender}, {name}, {from}, {subject}, {service}.":
+        "Подстановки: {sender}, {name}, {from}, {subject}, {service}.",
+    "One notification goes out for each letter. Substitutions: {sender}, {name}, {from}, {subject}, {service}. {sender} is the name with the address, or the address alone when the letter carries no name; {name} may be empty; {subject} says so when a letter has none. When more than five letters arrive at once, the newest five get a notification each and one more counts the rest.":
+        "На каждое письмо уходит одно уведомление. Подстановки: {sender}, {name}, {from}, "
+        "{subject}, {service}. {sender} — имя с адресом или один адрес, если имени в письме нет; "
+        "{name} может быть пустым; {subject} прямо говорит, если темы нет. Когда разом приходит "
+        "больше пяти писем, уведомление получают пять самых новых, а ещё одно считает остальные.",
+    "Tell me when a letter arrives for Support": "Сообщать, когда в поддержку приходит письмо",
+    "Nobody watches the Support mailbox the way the bot watches its own, so once a minute the bot looks at it and sends a notification about whatever has arrived since: who wrote, and about what. It only looks — no letter is marked read. Letters that were already there when this was switched on are not announced. Needs the Support mailbox on the Mail tab and the connection above.":
+        "За ящиком поддержки никто не следит так, как бот следит за своим, поэтому раз в минуту "
+        "бот заглядывает в него и присылает уведомление обо всём, что пришло с прошлого раза: кто "
+        "написал и о чём. Он только смотрит — ни одно письмо не помечается прочитанным. О письмах, "
+        "которые уже лежали в ящике к моменту включения, уведомлений нет. Нужны ящик поддержки на "
+        "вкладке «Почта» и подключение выше.",
     # --- the device limit ("Device limit" itself is further up) ---
     "Devices": "Устройства",
     "How many devices may use the subscription, told apart by the hardware id the app sends. 0 means no limit. Needs a recent 3x-ui: an older one ignores it.":
@@ -870,6 +899,12 @@ TEXTS = {
     "Date": "Дата",
     "Copy [cc]": "Копия",
     "Reply to": "Обратный адрес",
+    "Unread [letter]": "Не прочитано",
+    "Unread. Opening it here leaves it unread; answering it from here marks it read and answered.":
+        "Не прочитано. Открытие здесь его прочитанным не делает; ответ отсюда помечает его "
+        "прочитанным и отвеченным.",
+    "Answered [letter]": "Отвечено",
+    "This letter has been answered.": "На это письмо уже ответили.",
     "Unread — the bot has not handled it yet": "Не прочитано — бот его ещё не обработал",
     "to:": "кому:",
     "A client": "Клиент",
@@ -896,7 +931,7 @@ TEXTS = {
     "The letter names no address.": "В письме не указан адрес.",
     "The mailbox has no folder that can be taken for “{name}”.": "В ящике не нашлось папки, которую можно считать папкой «{name}».",
     "The letter was not found": "Письмо не найдено",
-    "The letter has no text": "В письме нет текста",
+    "The letter has no text [reading]": "В письме нет текста",
     # Reply quoting (Support account)
     "somebody": "кто-то",
     "On {when}, {who} wrote:": "{when}, {who} писал(а):",
@@ -909,4 +944,37 @@ TEXTS = {
     "Write the answer here…": "Напишите ответ здесь…",
     "To:": "Кому:",
     "Write something first": "Сначала напишите текст",
+    # Two-step sign-in (TOTP): the sign-in form, the General tab and the page of its own
+    "Code from the app": "Код из приложения",
+    "The login, the password or the code is wrong": "Неверный логин, пароль или код",
+    "Too many wrong codes. Wait a few minutes and try again.": "Слишком много неверных кодов. Подождите несколько минут и попробуйте снова.",
+    "Signing in": "Вход в панель",
+    "On [two-step]": "Включён",
+    "Off [two-step]": "Выключен",
+    "Two-step sign-in is on: besides the password, the panel asks for a six-digit code from an authenticator app.": "Двухэтапный вход включён: кроме пароля, панель спрашивает шестизначный код из приложения-аутентификатора.",
+    "The panel opens with the password alone. Two-step sign-in adds a six-digit code from an authenticator app (TOTP), so a leaked password is no longer enough.": "Панель открывается одним паролем. Двухэтапный вход добавляет шестизначный код из приложения-аутентификатора (TOTP), и утёкшего пароля становится недостаточно.",
+    "Manage two-step sign-in": "Управлять двухэтапным входом",
+    "Set up two-step sign-in": "Настроить двухэтапный вход",
+    "Two-step sign-in": "Двухэтапный вход",
+    "Besides the password, signing in asks for a six-digit code from an authenticator app on your phone. The code changes every thirty seconds, so the password alone — guessed, leaked or read over a shoulder — no longer opens the panel.": "Кроме пароля, при входе спрашивается шестизначный код из приложения-аутентификатора на телефоне. Код меняется каждые тридцать секунд, поэтому один пароль — подобранный, утёкший или подсмотренный через плечо — панель больше не открывает.",
+    "Two-step sign-in is on. From the next sign-in the panel asks for a code.": "Двухэтапный вход включён. Со следующего входа панель спрашивает код.",
+    "Two-step sign-in is off. The panel opens with the password alone.": "Двухэтапный вход выключен. Панель открывается одним паролем.",
+    "To move to another phone, switch it off and set it up again: the secret is shown only once, while the app is being set up, and cannot be read back here.": "Чтобы перейти на другой телефон, выключите и настройте заново: секрет показывается только один раз, при настройке приложения, и прочитать его здесь потом нельзя.",
+    "Switching off takes a code as well: an open session is not enough to take the second step away.": "Для выключения тоже нужен код: одной открытой сессии недостаточно, чтобы снять второй этап.",
+    "Back to the settings": "Назад к настройкам",
+    "1. Add the panel to the app": "1. Добавьте панель в приложение",
+    "Google Authenticator, Aegis, 2FAS, a password manager — any of them": "Google Authenticator, Aegis, 2FAS, менеджер паролей — подойдёт любое",
+    "QR code for the authenticator app": "QR-код для приложения-аутентификатора",
+    "Scan the code with the app.": "Отсканируйте код приложением.",
+    "The QR code could not be drawn — add the entry by hand.": "QR-код нарисовать не удалось — добавьте запись вручную.",
+    "If the camera is not an option, choose «enter a setup key» in the app and type this in:": "Если камерой не получается, выберите в приложении «ввести ключ настройки» и наберите его:",
+    "Account: {account}. Type: time-based, 6 digits, 30 seconds.": "Учётная запись: {account}. Тип: по времени, 6 цифр, 30 секунд.",
+    "This key is the second step itself: whoever has it can make the codes. It is shown here once and nowhere afterwards.": "Этот ключ и есть второй этап: у кого он есть, тот может получать коды. Он показывается здесь один раз и больше нигде.",
+    "2. Enter the code the app shows": "2. Введите код, который показывает приложение",
+    "nothing is switched on until the code is right": "пока код не подойдёт, ничего не включается",
+    "If the phone is lost, the second step is taken off on the server:": "Если телефон потерян, второй этап снимается на сервере:",
+    "That needs a shell on the server, which is the point — it is the one thing a stolen password does not give.": "Для этого нужен доступ к консоли сервера, и в этом весь смысл: это единственное, чего украденный пароль не даёт.",
+    "That is not the code. Check that the app took the QR code on this page — it changes if the page is left open for long — and that the phone's clock is right.": "Код не подошёл. Проверьте, что приложение считало QR-код именно с этой страницы — он меняется, если страница долго открыта, — и что на телефоне верное время.",
+    "That is not the code, or it has been used already — a code works once. Wait for the next one.": "Код не подошёл или уже был использован — код действует один раз. Дождитесь следующего.",
+    "the two-step secret is not valid base32": "секрет двухэтапного входа — не корректный base32",
 }
