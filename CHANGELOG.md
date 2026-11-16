@@ -241,6 +241,16 @@ read as something a person wants to know before updating.
   that somebody tried. **If your mail server adds no such header, `/broadcast`
   by mail stops working after this update** — send broadcasts from the panel,
   which never depended on it.
+- **A mail server of your own can be named, and should be.** The proof above
+  is read from the top-most `Authentication-Results` header, which is right
+  for Gmail, Yandex and Mail.ru. A server put together from separate filters
+  may add no header at all to a letter with no signature — leaving one the
+  sender wrote on top, to be believed — and may give its verdict in pieces,
+  DKIM in one header and DMARC in another, of which only the first was read,
+  so a genuine broadcast could be refused. Settings → Mail → *Proof of the
+  sender* now takes the name your server signs those headers with: its headers
+  are then read in full and nobody else's at all. *Look in the mailbox* reads
+  the name off your newest letters. Leave it empty on the large providers.
 - **The bot no longer answers machines, and marks its own letters as written by
   one.** It replied to everything: bounces, vacation autoresponders,
   newsletters. An autoresponder that answered back got "the command was not

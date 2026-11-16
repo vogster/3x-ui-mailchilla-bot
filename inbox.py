@@ -364,38 +364,56 @@ def _aligned(domain: str, sender_domain: str) -> bool:
             or sender_domain.endswith("." + domain))
 
 
-def sender_authenticated(msg, from_email: str) -> bool:
+# What the name of a server looks like in the header: a host name, as a rule.
+# Held to that, so the setting cannot be made to match something a header
+# merely spells along the way.
+_AUTHSERV = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
+
+# When a second header under the trusted name was last reported, so that a
+# mailbox being sent such letters by the hundred says so once an hour.
+_repeat_warned_at = 0.0
+REPEAT_WARNING_EVERY = 60 * 60
+
+
+_ASCII_SPACE = re.compile(r"[ \t\r\n]+")
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def _flat(header) -> str:
     """
-    Whether the mailbox's own server vouches for the From address.
+    A header as it is read here: unfolded, single-spaced, lower case — and all
+    three in ASCII alone.
 
-    Read from Authentication-Results (RFC 8601), and from the top-most one
-    alone: that is the header our provider wrote last, while anything below it
-    may have arrived with the letter and says whatever its author liked. A
-    server that spreads its verdict over several headers is therefore read only
-    as far as the first — the cost of not having to guess which of the others
-    are its own.
-
-    Proof is a DMARC verdict of pass for this very From domain. Where the
-    server reports no DMARC verdict, or only "none" for a domain that publishes
-    no policy, it is a passing DKIM signature or SPF check from the sender's
-    own domain — a valid signature from somewhere else proves only that
-    somebody signed it. Any DMARC verdict other than pass settles it the other
-    way, whatever else the header says.
-
-    No such header means no proof, not a pass, and neither does one that does
-    not parse. The limit of this is a server that adds no header of its own and
-    does not strip a forged one either: there the top-most header is the
-    forger's. The large providers all add one.
+    str.split() and str.lower() know Unicode, which is one kindness too many:
+    a no-break space after a name would count as a space and the Kelvin sign
+    as a k, so a header no mail server would take for its own — and so none
+    would remove — came out of here spelling the trusted name exactly. What is
+    not ASCII is left as it stands, and matches nothing.
     """
-    headers = msg.get_all("Authentication-Results") or []
-    if not headers:
-        return False
-    parts = _split_results(" ".join(str(headers[0]).split()).lower())
-    sender_domain = _domain((from_email or "").lower())
-    if not parts or not sender_domain:
-        return False
+    return _ASCII_SPACE.sub(" ", str(header)).strip(" ").translate(_ASCII_LOWER)
 
-    dmarc, vouched = [], False
+
+# A header begins with the server's name, then at most a version number, then
+# the semicolon. In that shape and no other: quoted, or with a comment on
+# either side, the grammar allows the name too — but the server's own header
+# has one shape, a filter that removes impostors compares against that shape,
+# and every other spelling is one the filter may have let through.
+_NAMED = re.compile(r"([a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)(?: [0-9]+)? ?;")
+
+
+def _authserv_of(header: str) -> str:
+    """
+    The name of the server a flattened header was written under — the
+    authserv-id, the first thing in it — or "" when it does not begin with one
+    in the shape a server writes its own.
+    """
+    found = _NAMED.match(header)
+    return found.group(1) if found else ""
+
+
+def _results(parts) -> list:
+    """(method, verdict, properties) for each dmarc, dkim and spf result in a header."""
+    found_all = []
     # parts[0] is the server's own name, and says nothing about the letter.
     for part in parts[1:]:
         found = _RESULT.match(part)
@@ -405,7 +423,148 @@ def sender_authenticated(msg, from_email: str) -> bool:
         properties = {}
         for name, value in _PROPERTY.findall(part[found.end():]):
             properties.setdefault(name, value)
+        found_all.append((method, verdict, properties))
+    return found_all
 
+
+def _believed(headers: list, trusted: str):
+    """
+    The results that count, out of every Authentication-Results header of a
+    letter, top-most first — or None when they cannot be read.
+
+    With no server named, the top-most header alone: see sender_authenticated.
+
+    With one named, every header written under that name and none written
+    under another. That reads a server which spreads its verdict over several
+    headers in full, and ignores a header that came with the letter under
+    somebody else's name.
+
+    Under the trusted name itself, each method — DKIM, SPF, DMARC — may be
+    reported by one header only. Two headers reporting the same one means one
+    of them is not the server's, and there is no telling which: it was first
+    taken to be the lower, on the reasoning that a server adds its headers
+    above whatever arrived, but a filter may as well append them underneath,
+    and then the forgery is the one on top — over the server's own dmarc=fail.
+    So neither is believed and the letter proves nothing.
+    """
+    if not trusted:
+        parts = _split_results(headers[0])
+        return _results(parts) if parts else None
+
+    results, reported = [], set()
+    for header in headers:
+        parts = _split_results(header)
+        if parts is None:
+            # A header that does not parse cannot be put under a name, the
+            # trusted one included, and what it would have said is unknown.
+            return None
+        if _authserv_of(header) != trusted:
+            continue
+        found = _results(parts)
+        methods = {method for method, _, _ in found}
+        if methods & reported:
+            _warn_of_a_second_header(trusted, methods & reported)
+            return None
+        results += found
+        reported |= methods
+    return results
+
+
+def _warn_of_a_second_header(trusted: str, methods: set):
+    """Says, once in a while, that the trusted name was found on a header it should not be on."""
+    global _repeat_warned_at
+    now = time.time()
+    if now - _repeat_warned_at < REPEAT_WARNING_EVERY:
+        return
+    _repeat_warned_at = now
+    logger.warning(
+        f"A letter carries more than one Authentication-Results header under {trusted!r} "
+        f"reporting {', '.join(sorted(methods))}, so its sender was treated as unproven. "
+        f"Either one of them arrived with the letter — which means the mail server does not "
+        f"remove incoming headers that claim its own name, and a /broadcast by mail could be "
+        f"forged — or the server itself reports the same check from two filters, in which "
+        f"case /broadcast by mail cannot work with a server named in the settings.")
+
+
+# Where a line ends, as the standard library's parser sees it: at CR LF, at
+# LF — and at a CR by itself. CR LF stands first so that it is taken whole;
+# tried the other way round, every CR LF is a bare CR followed by an LF.
+_LINE_END = re.compile(rb"\r\n|\r|\n")
+
+
+def _split_by_a_bare_cr(raw: bytes) -> bool:
+    """
+    Whether the headers hold a CR that is not the start of CR LF.
+
+    The parser this bot reads a letter with takes a CR alone for the end of a
+    line. A mail server does not: to it the CR is a character in the middle of
+    one. So `Subject: hi<CR>Authentication-Results: …` is one header, a
+    Subject, to the server — and to every filter on it, including the one that
+    removes Authentication-Results headers claiming its name — and two headers
+    to the bot, the second of them a verdict the sender wrote. The letter
+    looked to its server like nothing worth removing anything from.
+
+    A letter whose headers hold such a CR reads differently here from the way
+    it was checked, and so what was checked is not known to be what is read.
+    """
+    previous = 0
+    for found in _LINE_END.finditer(raw):
+        if found.start() == previous:
+            # A line with nothing on it: the headers are over, and what the
+            # body holds is nobody's business here.
+            return False
+        if found.group() == b"\r":
+            return True
+        previous = found.end()
+    return False
+
+
+def sender_authenticated(msg, from_email: str, raw: bytes = None) -> bool:
+    """
+    Whether the mailbox's own server vouches for the From address.
+
+    `raw` is the letter as it came off the server, when the caller has it: the
+    poll loop does, and passes it, for the sake of _split_by_a_bare_cr.
+
+    Read from Authentication-Results (RFC 8601). Which of those headers are
+    the server's own is the whole difficulty: anything the sender put into the
+    letter is there too, saying whatever its author liked.
+
+    With no server named in the settings (MAIL_AUTH_SERVER), the top-most one
+    alone is read: that is the header our provider wrote last. A server that
+    spreads its verdict over several headers is therefore read only as far as
+    the first — and a server that adds no header of its own leaves the
+    forger's on top. The large providers do neither.
+
+    With a server named, the headers under that name are read, all of them,
+    and no others — see _believed. That holds as long as the server removes an
+    incoming header that already claims its name, which the standard requires
+    of it (section 5) and which is what a mail server of one's own has to be
+    checked for.
+
+    Proof is a DMARC verdict of pass for this very From domain. Where the
+    server reports no DMARC verdict, or only "none" for a domain that publishes
+    no policy, it is a passing DKIM signature or SPF check from the sender's
+    own domain — a valid signature from somewhere else proves only that
+    somebody signed it. Any DMARC verdict other than pass settles it the other
+    way, whatever else the header says.
+
+    No such header means no proof, not a pass, and neither does one that does
+    not parse.
+    """
+    if raw is not None and _split_by_a_bare_cr(raw):
+        return False
+    headers = [_flat(header) for header in msg.get_all("Authentication-Results") or []]
+    sender_domain = _domain((from_email or "").lower())
+    if not headers or not sender_domain:
+        return False
+    trusted = str(getattr(config, "MAIL_AUTH_SERVER", "") or "").strip().lower()
+    results = _believed(headers, trusted)
+    if not results:
+        return False
+
+    dmarc, vouched = [], False
+    for method, verdict, properties in results:
         if method == "dmarc":
             if verdict != "none":
                 dmarc.append(verdict == "pass"
@@ -420,6 +579,75 @@ def sender_authenticated(msg, from_email: str) -> bool:
     if dmarc:
         return all(dmarc)
     return vouched
+
+
+# How many of the newest letters are looked at for the name of the server.
+# Enough to see whether one name heads them all; the answer is the same for a
+# thousand.
+AUTH_SCAN_LIMIT = 30
+_AUTH_HEADERS = "(BODY.PEEK[HEADER.FIELDS (AUTHENTICATION-RESULTS)])"
+
+
+def scan_auth_servers(limit: int = AUTH_SCAN_LIMIT) -> dict:
+    """
+    Under which name the newest letters in the mailbox were vouched for.
+
+    For the settings page, to say what belongs in MAIL_AUTH_SERVER: the name
+    in the top-most Authentication-Results header of each letter, which is the
+    one the mailbox's own server wrote — if it writes one. Returned as
+    {"letters": n, "names": [(name, how many letters), …], "without": n},
+    the commonest name first. One name heading every letter is the server's;
+    a different one on every letter is a server that adds none, the names
+    being whatever each letter arrived with.
+
+    Looks and no more: headers alone, with PEEK, in a folder opened read-only.
+    """
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        raise RuntimeError("the mailbox is not set up")
+
+    counts, letters, without = {}, 0, 0
+    mail = None
+    try:
+        mail = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=IMAP_TIMEOUT)
+        mail.login(config.IMAP_USER, config.IMAP_PASSWORD)
+        status, _ = mail.select("INBOX", readonly=True)
+        if status != "OK":
+            raise RuntimeError(f"the Inbox could not be opened: {status}")
+
+        # By UID, like everything the Mail pages ask: a sequence number means
+        # another letter the moment something is moved out from under it, and
+        # the clear-out moves letters.
+        status, response = mail.uid("SEARCH", None, "ALL")
+        if status != "OK":
+            raise RuntimeError(f"the mailbox could not be searched: {status}")
+        numbers = response[0].split() if response and response[0] else []
+        numbers = numbers[-limit:]
+        if not numbers:
+            return {"letters": 0, "names": [], "without": 0}
+
+        status, data = mail.uid("FETCH", b",".join(numbers).decode(), _AUTH_HEADERS)
+        if status != "OK" or not data:
+            raise RuntimeError(f"the letters could not be read: {status}")
+        for item in data:
+            # Every other element is the literal; the rest are the ")" bits.
+            if not isinstance(item, tuple) or len(item) < 2:
+                continue
+            letters += 1
+            try:
+                raw = item[1].decode("utf-8", errors="ignore")
+                found = email.message_from_string(raw).get_all("Authentication-Results") or []
+                name = _authserv_of(_flat(found[0])) if found else ""
+            except Exception:
+                # One unreadable letter is not a reason to abandon the rest.
+                name = ""
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+            else:
+                without += 1
+        names = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+        return {"letters": letters, "names": names, "without": without}
+    finally:
+        _disconnect(mail, graceful=True)
 
 
 # Where a reply stops being what the sender wrote and starts being what they
@@ -788,7 +1016,7 @@ def check_mail(handle):
                                 f"({reason}); marked read and not answered.")
                     _mark_seen(mail, num)
                     continue
-                proven = sender_authenticated(msg, from_email)
+                proven = sender_authenticated(msg, from_email, raw=raw_email)
                 if over_limit(from_email, proven):
                     logger.warning(f"{from_email} has had {REPLY_LIMIT} answers within "
                                    f"{REPLY_WINDOW // 60} minutes; letter #{num} is marked "

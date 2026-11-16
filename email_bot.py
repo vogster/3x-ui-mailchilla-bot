@@ -42,6 +42,7 @@ from inbox import (  # noqa: F401
     get_email_body,
     mail_health,
     probe_imap,
+    scan_auth_servers,
     scan_sender_names,
     sender_name_from,
     _mark_seen,

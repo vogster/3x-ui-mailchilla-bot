@@ -52,7 +52,7 @@ You write a letter with a command, in the subject or in the body - the bot handl
 | `/help` | instructions for setting up a client app |
 | `/broadcast` | a letter to every active client (from the administrator only) |
 
-`/broadcast` is carried out only when the mailbox's server vouches for the sender - SPF, DKIM or DMARC passing for the administrator's address. A From header alone is something anybody can type; without that proof nothing is sent and the administrator gets a letter saying so. Letters written by machines - bounces, autoresponders, newsletters - are read and left unanswered, and no address gets more than ten answers an hour.
+`/broadcast` is carried out only when the mailbox's server vouches for the sender - SPF, DKIM or DMARC passing for the administrator's address. A From header alone is something anybody can type; without that proof nothing is sent and the administrator gets a letter saying so. On Gmail, Yandex or Mail.ru that needs no setting up. On a mail server of your own, name it in Settings → Mail → *Proof of the sender* — the name it signs its `Authentication-Results` headers with, which the *Look in the mailbox* button reads off the newest letters for you. Its headers are then read in full, however many it spreads its verdict over, and a header under any other name is ignored; without the name, only the top-most header is read, and on a server that adds none for some letters that is a header the sender brought. Letters written by machines - bounces, autoresponders, newsletters - are read and left unanswered, and no address gets more than ten answers an hour.
 
 The sender's name lands in the client's comment - the list then shows people rather than addresses. For everyone registered before that, one button on the Mail tab reads the names out of the letters already in the mailbox and offers a table of who to fill in.
 
@@ -246,7 +246,7 @@ Everything that changes during normal use is set in the panel and applies on the
 | Tab | What is inside |
 |---|---|
 | **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions, two-step sign-in |
-| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, clearing the mailbox out, connection check |
+| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, the mail server's name for the proof of a sender, clearing the mailbox out, connection check |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support |

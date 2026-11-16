@@ -10,6 +10,7 @@ talking to itself all night, or a broadcast nobody on the team sent.
 import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
 
 import email
+import logging
 import os
 import sys
 import unittest
@@ -215,6 +216,328 @@ class Authenticated(unittest.TestCase):
             'mx.example.net; dmarc=pass header.from=example.com; spf=pass smtp.mailfrom="unclosed'))
 
 
+class ANamedServer(unittest.TestCase):
+    """
+    A mail server of one's own, named in the settings.
+
+    The top-most header is the right one to read on Gmail, Yandex or Mail.ru:
+    they add one to every letter and say everything in it. A server put
+    together from separate filters does neither. It may write nothing at all
+    for a letter with no signature, which leaves a header the sender brought
+    on top; and it may give its verdict in pieces — DKIM in one header, DMARC
+    in another — of which the top-most is only one. Naming the server is the
+    answer to both: its headers are read, all of them, and nobody else's.
+    """
+
+    NAME = "mail.example.net"
+
+    def setUp(self):
+        self.saved = getattr(config, "MAIL_AUTH_SERVER", "")
+        config.MAIL_AUTH_SERVER = self.NAME
+        inbox._repeat_warned_at = 0.0
+
+    def tearDown(self):
+        config.MAIL_AUTH_SERVER = self.saved
+        inbox._repeat_warned_at = 0.0
+
+    def verdict(self, *results, sender="admin@example.com"):
+        raw = letter(sender=sender).as_bytes()
+        extra = b"".join(b"Authentication-Results: " + value.replace("\n", "\r\n").encode() + b"\r\n"
+                         for value in results)
+        return inbox.sender_authenticated(email.message_from_bytes(extra + raw), sender)
+
+    def unnamed(self, *results):
+        config.MAIL_AUTH_SERVER = ""
+        try:
+            return self.verdict(*results)
+        finally:
+            config.MAIL_AUTH_SERVER = self.NAME
+
+    # --- the hole it closes ---
+
+    def test_a_header_the_letter_brought_is_not_the_servers(self):
+        # The server wrote nothing for this letter — it had no signature to
+        # report on — so the only header is the one the sender typed. Unnamed,
+        # that header is the top-most and is believed.
+        forged = "mx.google.com; dmarc=pass header.from=example.com"
+        self.assertTrue(self.unnamed(forged))
+        self.assertFalse(self.verdict(forged))
+
+    def test_nor_is_one_that_stands_above_the_servers_own(self):
+        self.assertFalse(self.verdict(
+            "forged.example; dmarc=pass header.from=example.com",
+            f"{self.NAME}; dmarc=fail header.from=example.com"))
+
+    def test_no_header_under_the_name_is_no_proof(self):
+        self.assertFalse(self.verdict(
+            "mx.google.com; dkim=pass header.d=example.com",
+            "another.example; dmarc=pass header.from=example.com"))
+
+    # --- the refusal it lifts ---
+
+    def test_a_verdict_given_in_pieces_is_read_whole(self):
+        # OpenDMARC's header over OpenDKIM's: no policy published, so DMARC
+        # says "none" and the proof is the signature — in the header below.
+        pieces = (f"{self.NAME}; dmarc=none header.from=example.com",
+                  f"{self.NAME}; dkim=pass header.d=example.com")
+        self.assertFalse(self.unnamed(*pieces))
+        self.assertTrue(self.verdict(*pieces))
+
+    def test_in_either_order_and_with_strangers_between(self):
+        self.assertTrue(self.verdict(
+            f"{self.NAME}; dkim=pass header.d=example.com",
+            "relay.example.org; spf=fail smtp.mailfrom=x@evil.test",
+            f"{self.NAME}; dmarc=pass header.from=example.com"))
+
+    def test_a_dmarc_failure_in_one_piece_outweighs_a_pass_in_another(self):
+        self.assertFalse(self.verdict(
+            f"{self.NAME}; dkim=pass header.d=example.com",
+            f"{self.NAME}; dmarc=fail header.from=example.com"))
+
+    def test_a_header_above_the_servers_under_another_name_is_passed_over(self):
+        # Something further along the delivery added a header of its own.
+        self.assertTrue(self.verdict(
+            "lmtp.example.net; none",
+            f"{self.NAME}; dmarc=pass header.from=example.com"))
+
+    # --- what counts as the name ---
+
+    def test_the_name_is_matched_whole(self):
+        for name in (f"{self.NAME}.evil.test", f"evil-{self.NAME}", f"x.{self.NAME}",
+                     self.NAME[:-1], self.NAME + "x"):
+            with self.subTest(name=name):
+                self.assertFalse(self.verdict(f"{name}; dmarc=pass header.from=example.com"))
+
+    def test_in_any_case_and_with_a_version_after_it(self):
+        self.assertTrue(self.verdict("Mail.Example.NET 1; dmarc=pass header.from=example.com"))
+
+    def test_only_where_a_name_belongs(self):
+        # In a comment, in a property, quoted into an address: all places a
+        # sender can write into.
+        for header in (f"evil.test ({self.NAME}); dmarc=pass header.from=example.com",
+                       f"evil.test; x={self.NAME}; dmarc=pass header.from=example.com",
+                       f'evil.test; spf=pass smtp.mailfrom="{self.NAME}; dmarc=pass '
+                       f'header.from=example.com"@evil.test'):
+            with self.subTest(header=header):
+                self.assertFalse(self.verdict(header))
+
+    def test_a_setting_typed_in_capitals_still_matches(self):
+        config.MAIL_AUTH_SERVER = "  MAIL.Example.net "
+        self.assertTrue(self.verdict(f"{self.NAME}; dmarc=pass header.from=example.com"))
+
+    # --- under the trusted name itself ---
+
+    def warnings_during(self, call):
+        seen = []
+        handler = logging.Handler()
+        handler.emit = seen.append
+        logging.getLogger("inbox").addHandler(handler)
+        try:
+            result = call()
+        finally:
+            logging.getLogger("inbox").removeHandler(handler)
+        return result, [r.getMessage() for r in seen if r.levelno >= logging.WARNING]
+
+    def test_the_same_check_reported_twice_under_the_name_proves_nothing(self):
+        # One of the two is not the server's, and there is no telling which.
+        result, warnings = self.warnings_during(lambda: self.verdict(
+            f"{self.NAME}; dkim=fail header.d=example.com",
+            f"{self.NAME}; dkim=pass header.d=example.com"))
+        self.assertFalse(result)
+        # And it is said: it means the server is not removing headers that
+        # claim its name, which is what all of this rests on.
+        self.assertEqual(len(warnings), 1)
+        self.assertIn(self.NAME, warnings[0])
+        self.assertIn("dkim", warnings[0])
+
+    def test_whichever_of_the_two_is_on_top(self):
+        # "The server's header is the upper one" was the first rule, and it is
+        # only true of a filter that inserts its header at the top. One that
+        # appends leaves the header the sender wrote above its own — where
+        # that rule believed it, over the server's dmarc=fail.
+        for headers in ((f"{self.NAME}; dmarc=pass header.from=example.com",
+                         f"{self.NAME}; spf=fail smtp.mailfrom=x@evil.test; "
+                         f"dmarc=fail header.from=example.com"),
+                        (f"{self.NAME}; spf=fail smtp.mailfrom=x@evil.test; "
+                         f"dmarc=fail header.from=example.com",
+                         f"{self.NAME}; dmarc=pass header.from=example.com"),
+                        (f"{self.NAME}; dkim=pass header.d=example.com",
+                         f"{self.NAME}; dkim=pass header.d=example.com")):
+            with self.subTest(top=headers[0]):
+                inbox._repeat_warned_at = 0.0
+                self.assertFalse(self.verdict(*headers))
+
+    def test_a_header_hidden_behind_a_bare_cr(self):
+        # To a mail server a CR alone is a character inside a line, so this is
+        # one header, a Subject, and there is nothing in it for a filter to
+        # remove. To the parser the bot reads with it is the end of a line —
+        # and the rest is a header of its own, under the server's name.
+        sender = "admin@example.com"
+        raw = (f"Authentication-Results: {self.NAME}; spf=fail smtp.mailfrom=x@evil.test\r\n"
+               f"Subject: hi\rAuthentication-Results: {self.NAME}; dkim=pass header.d=example.com\r\n"
+               f"From: {sender}\r\n\r\nbody").encode()
+        msg = email.message_from_bytes(raw)
+        # The parser does see two, which is the whole trouble.
+        self.assertEqual(len(msg.get_all("Authentication-Results")), 2)
+        self.assertFalse(inbox.sender_authenticated(msg, sender, raw=raw))
+
+    def test_a_bare_cr_in_the_body_is_nobodys_business(self):
+        sender = "admin@example.com"
+        raw = (f"Authentication-Results: {self.NAME}; dmarc=pass header.from=example.com\r\n"
+               f"From: {sender}\r\n\r\nline one\rline two").encode()
+        self.assertTrue(inbox.sender_authenticated(email.message_from_bytes(raw), sender, raw=raw))
+
+    def test_a_letter_that_ends_its_lines_with_lf_alone_is_still_read(self):
+        # Some servers hand letters over that way; it hides nothing.
+        sender = "admin@example.com"
+        raw = (f"Authentication-Results: {self.NAME}; dmarc=pass header.from=example.com\n"
+               f"From: {sender}\n\nbody").encode()
+        self.assertTrue(inbox.sender_authenticated(email.message_from_bytes(raw), sender, raw=raw))
+
+    def test_the_name_in_no_shape_but_the_servers_own(self):
+        # Quoted, or with a comment beside it, the grammar allows the name
+        # too. But a filter that removes impostors compares against the shape
+        # the server writes, and every other spelling may have got past it.
+        for spelling in (f'"{self.NAME}"', f"(x) {self.NAME}", f"{self.NAME} (y)",
+                         f"{self.NAME} \u0661", f"{self.NAME}\u00a0", f"{self.NAME} 1 2",
+                         self.NAME.replace("k", "\u212a").replace("m", "M")
+                         if "k" in self.NAME else "\u212a" + self.NAME):
+            with self.subTest(spelling=spelling):
+                self.assertFalse(self.verdict(f"{spelling}; dmarc=pass header.from=example.com"))
+
+    def test_and_is_said_once_not_once_a_letter(self):
+        def twice():
+            for _ in range(2):
+                self.verdict(f"{self.NAME}; dkim=fail header.d=example.com",
+                             f"{self.NAME}; dkim=pass header.d=example.com")
+
+        _, warnings = self.warnings_during(twice)
+        self.assertEqual(len(warnings), 1)
+
+    def test_an_honest_letter_draws_no_warning(self):
+        result, warnings = self.warnings_during(lambda: self.verdict(
+            f"{self.NAME}; dmarc=pass header.from=example.com",
+            f"{self.NAME}; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=admin@example.com"))
+        self.assertTrue(result)
+        self.assertEqual(warnings, [])
+
+    def test_a_header_that_does_not_parse_spoils_the_letter(self):
+        # It cannot be put under a name, the trusted one included, so what it
+        # would have said is unknown.
+        self.assertFalse(self.verdict(
+            f"{self.NAME}; dmarc=pass header.from=example.com",
+            'whoever.example; spf=pass smtp.mailfrom="unclosed'))
+
+    def test_what_the_name_cannot_do(self):
+        # Stated rather than left to be assumed. A server that reports nothing
+        # about DMARC, and does not remove an incoming header claiming its own
+        # name, is impersonated by exactly that header: there is nothing in a
+        # letter to tell the two apart. The standard requires the removal, and
+        # the settings page says so.
+        self.assertTrue(self.verdict(
+            f"{self.NAME}; spf=pass smtp.mailfrom=x@evil.test",
+            f"{self.NAME}; dmarc=pass header.from=example.com"))
+
+
+class LookingForTheServersName(unittest.TestCase):
+    """The settings page's hint: which name heads the newest letters."""
+
+    class Mailbox:
+        def __init__(self, letters):
+            self.letters = letters
+            self.selected = []
+            self.fetched = []
+
+        def __call__(self, host, port, timeout=None):
+            return self
+
+        def login(self, user, password):
+            return "OK", [b""]
+
+        def select(self, folder, readonly=False):
+            self.selected.append((folder, readonly))
+            return "OK", [str(len(self.letters)).encode()]
+
+        def uid(self, command, *args):
+            return {"SEARCH": self.search, "FETCH": self.fetch}[command](*args)
+
+        def search(self, charset, *criteria):
+            return "OK", [b" ".join(str(n + 1).encode() for n in range(len(self.letters)))]
+
+        def fetch(self, numbers, what):
+            self.fetched.append(what)
+            data = []
+            for number in numbers.split(","):
+                headers = self.letters[int(number) - 1]
+                raw = "".join(f"Authentication-Results: {value}\r\n" for value in headers) + "\r\n"
+                data.append((f"{number} (BODY[HEADER.FIELDS (AUTHENTICATION-RESULTS)] {{{len(raw)}}}"
+                             .encode(), raw.encode()))
+                data.append(b")")
+            return "OK", data
+
+        def close(self):
+            return "OK", [b""]
+
+        def logout(self):
+            return "BYE", [b""]
+
+    def scan(self, letters, **kwargs):
+        self.mailbox = self.Mailbox(letters)
+        saved = (inbox.imaplib.IMAP4_SSL, config.IMAP_USER, config.IMAP_PASSWORD)
+        inbox.imaplib.IMAP4_SSL = self.mailbox
+        config.IMAP_USER, config.IMAP_PASSWORD = "bot@example.net", "x"
+        try:
+            return inbox.scan_auth_servers(**kwargs)
+        finally:
+            inbox.imaplib.IMAP4_SSL, config.IMAP_USER, config.IMAP_PASSWORD = saved
+
+    def test_the_name_heading_the_letters_is_counted(self):
+        found = self.scan([
+            ["mail.example.net; dmarc=pass header.from=gmail.com", "mx.google.com; dkim=pass"],
+            ["Mail.Example.NET 1; dkim=pass header.d=yandex.ru"],
+            ["mail.example.net;\r\n\tdkim=none"],
+        ])
+        self.assertEqual(found, {"letters": 3, "names": [("mail.example.net", 3)], "without": 0})
+
+    def test_a_server_that_adds_none_shows_as_a_name_per_letter(self):
+        found = self.scan([
+            ["mx.google.com; dkim=pass"],
+            ["mxfront.yandex.ru; dkim=pass"],
+            [],
+            ["mx.google.com; spf=pass"],
+        ])
+        self.assertEqual(found["letters"], 4)
+        self.assertEqual(found["names"], [("mx.google.com", 2), ("mxfront.yandex.ru", 1)])
+        self.assertEqual(found["without"], 1)
+
+    def test_a_header_that_names_nobody_counts_as_none(self):
+        found = self.scan([['"unclosed; dmarc=pass'], ["; dmarc=pass"], ["bad name!; dmarc=pass"]])
+        self.assertEqual(found, {"letters": 3, "names": [], "without": 3})
+
+    def test_an_empty_mailbox(self):
+        self.assertEqual(self.scan([]), {"letters": 0, "names": [], "without": 0})
+
+    def test_only_the_newest_are_looked_at(self):
+        letters = [["old.example; dkim=pass"]] * 50 + [["mail.example.net; dkim=pass"]] * 5
+        found = self.scan(letters, limit=5)
+        self.assertEqual(found, {"letters": 5, "names": [("mail.example.net", 5)], "without": 0})
+
+    def test_it_looks_and_changes_nothing(self):
+        # An unread letter is how the bot knows it owes an answer.
+        self.scan([["mail.example.net; dkim=pass"]])
+        self.assertEqual(self.mailbox.selected, [("INBOX", True)])
+        self.assertTrue(all("BODY.PEEK[" in what for what in self.mailbox.fetched))
+
+    def test_without_a_mailbox_it_says_so(self):
+        saved = (config.IMAP_USER, config.IMAP_PASSWORD)
+        config.IMAP_USER, config.IMAP_PASSWORD = "", ""
+        try:
+            with self.assertRaises(RuntimeError):
+                inbox.scan_auth_servers()
+        finally:
+            config.IMAP_USER, config.IMAP_PASSWORD = saved
+
+
 class FakeIMAP:
     """One unread letter, and a record of whether it was marked read."""
 
@@ -286,6 +609,25 @@ class Poll(unittest.TestCase):
         mail = self.poll(letter(subject="=?utf-8?b?0J/RgNC40LLQtdGC?="))
         self.assertEqual(self.handled, [("ben@example.com", "Привет", "Ben", False)])
         self.assertEqual(len(mail.stored), 1)
+
+    def test_a_verdict_hidden_behind_a_bare_cr_is_not_proof_to_the_loop_either(self):
+        # The loop is what holds the letter as it came off the server, and has
+        # to hand it over: the parsed letter no longer shows where a CR stood.
+        class AsItCame:
+            def as_bytes(self):
+                return (b"Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=x@evil.test\r\n"
+                        b"Subject: /status\rAuthentication-Results: mx.example.net; "
+                        b"dmarc=pass header.from=example.com\r\n"
+                        b"From: admin@example.com\r\nMessage-ID: <cr@example.com>\r\n\r\nhi")
+
+        saved = getattr(config, "MAIL_AUTH_SERVER", "")
+        config.MAIL_AUTH_SERVER = "mx.example.net"
+        try:
+            self.poll(AsItCame())
+        finally:
+            config.MAIL_AUTH_SERVER = saved
+        self.assertEqual(len(self.handled), 1)
+        self.assertFalse(self.handled[0][3])
 
     def test_the_handler_is_told_when_the_sender_is_proven(self):
         self.poll(letter(Authentication_Results="mx.example.net; dmarc=pass header.from=example.com"))

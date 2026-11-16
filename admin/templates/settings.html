@@ -192,6 +192,31 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("Proof of the sender") }}</h2>
+            <span class="muted">{{ t("for /broadcast by mail") }}</span>
+            {% if state.IMAP_USER.isset %}
+            <button type="button" class="btn small" id="authserv-scan" style="margin-left:auto;">
+                {{ t("Look in the mailbox") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="mail_auth_server">{{ t("Mail server's name in Authentication-Results") }} {{ fields.help(t("The /broadcast command by mail is carried out only when the mailbox's server vouches for the sender, in the Authentication-Results header it adds to every letter. With a name here, only the headers written under that name are believed — all of them, so a server that reports DKIM in one header and DMARC in another is read in full — and a header under any other name is ignored. Empty, only the top-most header is read, whoever wrote it: right for Gmail, Yandex and Mail.ru, and not enough for a mail server of your own.")) }}</label>
+                <input type="text" id="mail_auth_server" name="mail_auth_server"
+                       value="{{ state.MAIL_AUTH_SERVER.value }}" placeholder="mail.example.com"
+                       autocomplete="off" spellcheck="false">
+                <div class="hint">
+                    {{ t("This holds as long as the server removes incoming headers that already carry its name, which the standard requires of it. It is also worth publishing a DMARC record for the administrator's domain: then every letter gets a verdict, and a forged one gets a failing one.") }}
+                </div>
+                {# Filled in by the button above: the names found, to be clicked. #}
+                <div id="authserv-found" style="margin-top: 12px;" hidden></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("Clearing out the mailbox") }}</h2>
         </div>
         <div style="padding: 24px;" class="form-grid">
@@ -829,6 +854,83 @@
         <button type="button" class="btn primary" id="names-apply">{{ t("Update the chosen") }}</button>
     </div>
 </dialog>
+
+<script>
+    // The mail server's name: look at the newest letters and offer what heads
+    // them. Built node by node, with textContent: a name comes out of a
+    // letter's header, and a letter is something anybody can send.
+    (function () {
+        var scan = document.getElementById("authserv-scan");
+        var field = document.getElementById("mail_auth_server");
+        var box = document.getElementById("authserv-found");
+        if (!scan || !field || !box) return;
+
+        function line(text, cls) {
+            var el = document.createElement("div");
+            el.className = cls || "hint";
+            el.textContent = text;
+            box.appendChild(el);
+            return el;
+        }
+
+        function show(found) {
+            box.textContent = "";
+            box.hidden = false;
+            if (!found.letters) {
+                line({{ t("There are no letters in the mailbox to look at yet.")|tojson }});
+                return;
+            }
+            if (!found.names.length) {
+                line({{ t("None of the newest letters carries the header: the server adds none, and a /broadcast by mail cannot be proven on this mailbox.")|tojson }});
+                return;
+            }
+            line({{ t("At the top of the newest letters — click a name to put it in the field:")|tojson }});
+            // Always, not only when the names disagree: thirty letters from
+            // one stranger agree with each other perfectly.
+            line({{ t("Take a name only if you know it for your own mail server's host name. On a server that adds no header of its own, what heads the letters is whatever their senders wrote there.")|tojson }});
+            var row = document.createElement("div");
+            row.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; margin: 8px 0;";
+            found.names.forEach(function (entry) {
+                var chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "btn small";
+                chip.textContent = entry.name + " · " + entry.letters + " " + {{ t("of")|tojson }} + " " + found.letters;
+                chip.addEventListener("click", function () {
+                    field.value = entry.name;
+                    // The form watches for input to know it has unsaved changes.
+                    field.dispatchEvent(new Event("input", { bubbles: true }));
+                    field.focus();
+                });
+                row.appendChild(chip);
+            });
+            box.appendChild(row);
+            if (found.names.length > 1) {
+                line({{ t("More than one name: the one heading nearly every letter is your server's. If no name stands out, the server is not adding a header of its own, and the names are whatever each letter arrived with.")|tojson }});
+            }
+            if (found.without) {
+                line({{ t("Letters with no such header at all:")|tojson }} + " " + found.without + ". "
+                     + {{ t("If the server writes one only for some letters, a letter it wrote none for proves nothing — which is the safe way round.")|tojson }});
+            }
+        }
+
+        scan.addEventListener("click", function () {
+            var was = scan.textContent.trim();
+            scan.disabled = true;
+            scan.textContent = {{ t("Looking…")|tojson }};
+            fetch("/settings/mail/authserver/scan", { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d || !d.ok) {
+                        window.showToast((d && d.error) || {{ t("It did not work")|tojson }}, "error");
+                        return;
+                    }
+                    show(d);
+                })
+                .catch(function () { window.showToast({{ t("The request failed")|tojson }}, "error"); })
+                .then(function () { scan.disabled = false; scan.textContent = was; });
+        });
+    })();
+</script>
 
 <script>
     // Name synchronisation: look through the mailbox, show what differs, write

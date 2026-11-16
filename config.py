@@ -120,6 +120,14 @@ SUPPORT_NOTIFY_MESSAGE = "{sender}: {subject}"
 # the bot for itself, in settings.json alone; see support_watch.py.
 SUPPORT_NOTIFY_MARK = ""
 
+# The name the mailbox's own server signs its Authentication-Results headers
+# with — its authserv-id, usually its host name. Empty leaves the proof of a
+# sender, which only /broadcast by mail asks for, to the top-most such header,
+# whoever wrote it; that is right for the large providers. A server of one's
+# own is named here: its headers are then read in full and nobody else's at
+# all. See inbox.sender_authenticated.
+MAIL_AUTH_SERVER = ""
+
 # The second step of signing in to the panel: the secret an authenticator app
 # was given, in base32. Empty means the password alone lets somebody in — there
 # is deliberately no switch beside it, since a switch and a secret would be two

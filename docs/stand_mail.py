@@ -39,6 +39,10 @@ SETTINGS = {
 }
 
 
+# The name the stand's "mail server" signs its Authentication-Results with.
+MAIL_SERVER = "mail.aurora.example"
+
+
 def _letter(sender, to, subject, text, html=None, **headers) -> bytes:
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = sender, to, subject
@@ -62,10 +66,24 @@ class Mailboxes:
         # The bot's: one letter it has dealt with and one it has not — unread
         # is how the bot knows it still owes an answer, and the page must show
         # the difference without changing it.
-        self.bot.add("INBOX", _letter("Ben <ben@example.com>", BOT_ADDRESS, "/status", ""),
-                     flags=["\\Seen"])
-        self.bot.add("INBOX", _letter("Stranger <who@example.org>", BOT_ADDRESS,
-                                      "Is anybody there?", "I was told to write here."))
+        #
+        # Each carries the header a mail server of one's own would have added,
+        # in the pieces such a server gives its verdict in, so that the
+        # settings page's "Look in the mailbox" has a name to find. The second
+        # also carries one the sender brought, underneath — which is what the
+        # button must not offer as the server's.
+        self.bot.add("INBOX", _letter(
+            "Ben <ben@example.com>", BOT_ADDRESS, "/status", "",
+            Authentication_Results=f"{MAIL_SERVER}; dkim=pass header.d=example.com"),
+            flags=["\\Seen"])
+        stranger = EmailMessage()
+        stranger["Authentication-Results"] = f"{MAIL_SERVER}; dmarc=none header.from=example.org"
+        stranger["Authentication-Results"] = f"{MAIL_SERVER}; dkim=none"
+        stranger["Authentication-Results"] = "mx.elsewhere.example; dmarc=pass header.from=example.org"
+        stranger["From"], stranger["To"] = "Stranger <who@example.org>", BOT_ADDRESS
+        stranger["Subject"] = "Is anybody there?"
+        stranger.set_content("I was told to write here.")
+        self.bot.add("INBOX", bytes(stranger))
         # Support's: a client with an ordinary question; a letter whose answer
         # is about to go to somebody other than the person on the card; and one
         # that reaches out for a picture, which stays blocked until asked for.

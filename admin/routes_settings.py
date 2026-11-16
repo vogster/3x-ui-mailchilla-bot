@@ -158,6 +158,7 @@ def settings_submit(
     support_smtp_user: str = Form(""),
     support_smtp_password: str = Form(""),
     poll_interval_seconds: str = Form("15"),
+    mail_auth_server: str = Form(""),
     mail_cleanup_enabled: str = Form(""),
     mail_cleanup_days: str = Form("30"),
     update_check_enabled: str = Form(""),
@@ -201,6 +202,7 @@ def settings_submit(
         "SUPPORT_SMTP_USER": support_smtp_user,
         "SUPPORT_SMTP_PASSWORD": support_smtp_password,
         "POLL_INTERVAL_SECONDS": poll_interval_seconds,
+        "MAIL_AUTH_SERVER": mail_auth_server,
         "MAIL_CLEANUP_ENABLED": mail_cleanup_enabled == "on",
         "MAIL_CLEANUP_DAYS": mail_cleanup_days,
         "XUI_FLOW": xui_flow,
@@ -452,6 +454,38 @@ def settings_names_scan(request: Request):
     rows = email_bot.name_mismatches(clients, found)
     logger.info(f"Panel: {len(found)} addresses in the mailbox, {len(rows)} names differ.")
     return JSONResponse({"ok": True, "rows": rows, "senders": len(found)})
+
+
+@router.post("/settings/mail/authserver/scan")
+def settings_authserver_scan(request: Request):
+    """
+    Says under which name the newest letters in the mailbox were vouched for,
+    so that the field beside the button need not be filled in from memory.
+
+    Changes nothing, in the mailbox or the settings: the letters are read
+    headers-only and with PEEK, and the name is only offered.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"ok": False, "error": i18n.t("You need to sign in")}, status_code=401)
+
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        return JSONResponse({"ok": False, "error": i18n.t("The mailbox is not set up")},
+                            status_code=400)
+
+    logger.info("Panel: looking through the mailbox for the mail server's name.")
+    try:
+        found = email_bot.scan_auth_servers()
+    except Exception as e:
+        logger.error(f"Could not read the mailbox for the server's name: {e}", exc_info=True)
+        return JSONResponse({"ok": False, "error": i18n.t("Could not read the mailbox")},
+                            status_code=502)
+    return JSONResponse({
+        "ok": True,
+        "letters": found["letters"],
+        "without": found["without"],
+        "names": [{"name": name, "letters": count} for name, count in found["names"]],
+    })
 
 
 @router.post("/settings/mail/names/apply")

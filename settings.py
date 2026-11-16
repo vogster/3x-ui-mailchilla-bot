@@ -34,7 +34,7 @@ MANAGED_KEYS = (
     # Mail
     "IMAP_SERVER", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD",
     "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
-    "POLL_INTERVAL_SECONDS",
+    "POLL_INTERVAL_SECONDS", "MAIL_AUTH_SERVER",
     "MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS", "MAIL_CLEANUP_LAST_AT",
     "INACTIVITY_REMINDER_ENABLED", "INACTIVITY_REMINDER_DAYS", "INACTIVITY_REMINDER_LAST_AT",
     # Support — a second mailbox, answered by a person rather than the bot.
@@ -175,6 +175,16 @@ def _coerce(key, value):
         return str(value or "").strip()
     if key in ("IMAP_USER", "SMTP_USER", "SUPPORT_IMAP_USER", "SUPPORT_SMTP_USER"):
         return str(value or "").strip()
+    if key == "MAIL_AUTH_SERVER":
+        # Compared with what a header says, which is read in lower case. A
+        # name that could never match is refused rather than saved: with it
+        # every /broadcast by mail would be turned away and nothing would say
+        # why.
+        text = str(value or "").strip().lower()
+        if text and not re.fullmatch(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?", text):
+            raise ValueError(i18n.t(
+                "the mail server's name may hold only letters, digits, dots, hyphens and underscores"))
+        return text
     if key == "TOTP_SECRET":
         # Empty is the second step switched off. Anything else has to be a
         # secret an app could have been given: one that is not would mean a

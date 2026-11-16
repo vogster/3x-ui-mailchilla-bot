@@ -1205,3 +1205,68 @@ class SupportLetterPush(PanelCase):
     def test_the_form_never_touches_the_mark(self):
         # Which letters have been announced is the bot's own record.
         self.assertNotIn("SUPPORT_NOTIFY_MARK", self.save(support_notify_enabled="on"))
+
+class MailServersName(PanelCase):
+    """The name of a mail server of one's own, on the Mail tab, and the button that suggests it."""
+
+    def test_the_field_is_on_the_page(self):
+        body = self.page("/settings")
+        self.assertIn('name="mail_auth_server"', body)
+        self.assertIn("Proof of the sender", body)
+
+    def test_it_goes_through_the_form(self):
+        import admin.routes_settings as routes_settings
+        caught = {}
+        real = routes_settings.settings.save
+        routes_settings.settings.save = lambda values: caught.update(values)
+        try:
+            response = self.client.post("/settings", data={"mail_auth_server": "mail.example.net"},
+                                        follow_redirects=False)
+        finally:
+            routes_settings.settings.save = real
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(caught["MAIL_AUTH_SERVER"], "mail.example.net")
+
+    def scan(self, answer):
+        saved = (email_bot.scan_auth_servers, config.IMAP_USER, config.IMAP_PASSWORD)
+        config.IMAP_USER, config.IMAP_PASSWORD = "bot@example.net", "x"
+
+        def stub():
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        email_bot.scan_auth_servers = stub
+        try:
+            return self.client.post("/settings/mail/authserver/scan")
+        finally:
+            email_bot.scan_auth_servers, config.IMAP_USER, config.IMAP_PASSWORD = saved
+
+    def test_the_button_is_told_which_names_head_the_letters(self):
+        response = self.scan({"letters": 30, "without": 2,
+                              "names": [("mail.example.net", 27), ("mx.google.com", 1)]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "ok": True, "letters": 30, "without": 2,
+            "names": [{"name": "mail.example.net", "letters": 27},
+                      {"name": "mx.google.com", "letters": 1}]})
+
+    def test_a_mailbox_out_of_reach_is_an_answer_too(self):
+        response = self.scan(RuntimeError("the mailbox went away"))
+        self.assertEqual(response.status_code, 502)
+        self.assertFalse(response.json()["ok"])
+        self.assertNotIn("went away", response.text)
+
+    def test_without_a_mailbox_there_is_nothing_to_look_in(self):
+        saved = (config.IMAP_USER, config.IMAP_PASSWORD)
+        config.IMAP_USER, config.IMAP_PASSWORD = "", ""
+        try:
+            response = self.client.post("/settings/mail/authserver/scan")
+        finally:
+            config.IMAP_USER, config.IMAP_PASSWORD = saved
+        self.assertEqual(response.status_code, 400)
+
+    def test_not_without_signing_in(self):
+        response = TestClient(self.app).post("/settings/mail/authserver/scan",
+                                             follow_redirects=False)
+        self.assertEqual(response.status_code, 401)
