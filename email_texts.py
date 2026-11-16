@@ -23,6 +23,7 @@ import os
 import threading
 
 import i18n
+import statefile
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,10 @@ GROUPS = [
             ("notice.broadcast_done_text", "Broadcast report — text", TEXT, "Substitution: {count}"),
             ("notice.broadcast_empty_subject", "Empty broadcast — subject", LINE, ""),
             ("notice.broadcast_empty_text", "Empty broadcast — text", TEXT, ""),
+            ("notice.broadcast_unverified_subject", "Unverified broadcast — subject", LINE, ""),
+            ("notice.broadcast_unverified_text", "Unverified broadcast — text", TEXT,
+             "Sent to the administrator when a /broadcast arrives that the mail "
+             "server does not vouch for. Every line is a paragraph."),
             ("notice.broadcast_default_subject", "Broadcast without a subject — subject", LINE,
              "Used when the broadcast was sent with no subject of its own."),
         ],
@@ -342,6 +347,12 @@ DEFAULTS_BY_LANG = {
         "notice.broadcast_empty_text":
             "The text of the broadcast is empty.\n"
             "Write your message after the /broadcast command — in the subject or in the body.",
+        "notice.broadcast_unverified_subject": "The broadcast was not sent",
+        "notice.broadcast_unverified_text":
+            "A /broadcast command arrived from this address, but the mail server could not "
+            "confirm that the letter really came from it, so **nothing was sent**.\n"
+            "If the letter was yours, send the broadcast from the panel instead.\n"
+            "If it was not, somebody tried to write to your clients in your name.",
         "notice.broadcast_default_subject": "An important notice from the VPN service",
     },
     "ru": {
@@ -460,6 +471,12 @@ DEFAULTS_BY_LANG = {
         "notice.broadcast_empty_text":
             "Текст рассылки пуст.\n"
             "Напишите сообщение после команды /broadcast — в теме письма или в тексте.",
+        "notice.broadcast_unverified_subject": "Рассылка не отправлена",
+        "notice.broadcast_unverified_text":
+            "С этого адреса пришла команда /broadcast, но почтовый сервер не подтвердил, "
+            "что письмо действительно отправлено с него, поэтому **ничего не разослано**.\n"
+            "Если письмо ваше — отправьте рассылку из панели.\n"
+            "Если нет — кто-то пытался написать вашим клиентам от вашего имени.",
         "notice.broadcast_default_subject": "Важное уведомление от VPN-сервиса",
     },
 }
@@ -589,11 +606,7 @@ def _write(merged: dict):
     global _overrides
     # A language with nothing rewritten leaves no empty object behind.
     merged = {code: values for code, values in merged.items() if values}
-    tmp = TEXTS_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, TEXTS_PATH)
+    statefile.write_json(TEXTS_PATH, merged, sort_keys=True)
     _overrides = merged
     total = sum(len(v) for v in merged.values())
     logger.info(f"Letter texts saved. Strings changed: {total}.")

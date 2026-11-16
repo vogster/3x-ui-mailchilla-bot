@@ -32,6 +32,7 @@ import uuid
 
 import config
 import i18n
+import statefile
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +145,9 @@ def _clean_code(raw: dict) -> dict:
 
 def _write(state: dict):
     """Writes the json atomically, so an interrupted write leaves no broken file."""
-    tmp_path = TARIFFS_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    os.replace(tmp_path, TARIFFS_PATH)
+    # Through statefile, which also keeps the file to its owner: the words in
+    # it are what lets somebody in.
+    statefile.write_json(TARIFFS_PATH, state)
 
 
 def _seed_from_settings() -> dict:

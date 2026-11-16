@@ -644,6 +644,12 @@ TEXTS = {
     "Substitution: {count}": "Подстановка: {count}",
     "Empty broadcast — subject": "Пустая рассылка — тема",
     "Empty broadcast — text": "Пустая рассылка — текст",
+    "Unverified broadcast — subject": "Неподтверждённая рассылка — тема",
+    "Unverified broadcast — text": "Неподтверждённая рассылка — текст",
+    "Sent to the administrator when a /broadcast arrives that the mail "
+    "server does not vouch for. Every line is a paragraph.":
+        "Уходит администратору, когда приходит /broadcast, за который почтовый "
+        "сервер не ручается. Каждая строка — абзац.",
     "Clients [inbound table]": "Клиентов",
     "General [letter group]": "Общее",
     "Gigabytes": "Гигабайты",
@@ -665,6 +671,9 @@ TEXTS = {
     "the inbounds for new clients": "inbound'ы для новых клиентов",
     "the administrator address": "адрес администратора",
     "The login or the password is wrong": "Неверный логин или пароль",
+    "letters are waiting: 3x-ui does not answer": "письма ждут: 3x-ui не отвечает",
+    "Too many failed attempts. Wait a minute and try again.":
+        "Слишком много неудачных попыток. Подождите минуту и попробуйте снова.",
     "You need to sign in": "Нужен вход",
     "The list of inbounds is not valid": "Неверный список inbound'ов",
     "Could not write the settings file: {error}": "Не удалось записать файл настроек: {error}",

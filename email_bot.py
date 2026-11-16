@@ -20,7 +20,7 @@ from email.utils import parseaddr
 import config
 import tariffs
 import templates
-from xui_client import XuiClient, get_shared_client
+from xui_client import XuiClient, XuiUnavailable, get_shared_client
 
 # The transport, imported by name so that everything the panel and the tests
 # already call on this module keeps working — including patching it, since the
@@ -143,7 +143,12 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         return
 
     xui = get_shared_client()
-    client_info = xui.find_client_by_email(email_addr)
+    # Strictly, here and below: a panel that did not answer is not a panel
+    # that knows no such client. Taking the one for the other meant trying to
+    # create a client that might already exist, and then writing to say it
+    # could not be done. The exception puts the letter off instead — see
+    # _handle_letter.
+    client_info = xui.find_client_by_email(email_addr, strict=True)
 
     if client_info:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_info.get('subId')}"
@@ -176,7 +181,16 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
     if not success_uuid:
         logger.error(f"The panel refused to create a client for {email_addr}.")
 
-    client_info = xui.find_client_by_email(email_addr)
+    try:
+        client_info = xui.find_client_by_email(email_addr, strict=True)
+    except XuiUnavailable:
+        # Created, and then the panel went quiet before it could be read back.
+        # The letter is put off and next time takes the "already registered"
+        # path above, which sends the link and spends nothing — so the code
+        # has to be spent here, or an invitation for one lets in two.
+        if success_uuid and code:
+            tariffs.spend(code["word"], email_addr)
+        raise
 
     if client_info:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_info.get('subId')}"
@@ -206,7 +220,9 @@ def handle_status(email_addr: str):
     """A request for traffic figures and subscription status."""
     xui = get_shared_client()
 
-    client_info = xui.find_client_by_email(email_addr)
+    # Strictly: during an outage a registered client used to be told they had
+    # never registered, which is a worse answer than a late one.
+    client_info = xui.find_client_by_email(email_addr, strict=True)
     if not client_info:
         send_email_reply(email_addr, templates.notice_subject("not_registered"),
                          templates.get_notice("not_registered"))
@@ -418,7 +434,8 @@ def find_words(text: str, words) -> list:
     return out
 
 
-def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn, sender_name: str = ""):
+def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn,
+                    sender_name: str = "", authenticated: bool = False):
     """
     Reads a letter and carries out whatever it asks for.
 
@@ -434,6 +451,13 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     /broadcast is the exception and is marked before it runs. It is the one
     command that is not safe to repeat — a mass letter going out twice is worse
     than one that did not go out at all and can simply be sent again by hand.
+
+    `authenticated` is the mailbox server's word that the From address is real
+    (inbox.sender_authenticated). Only /broadcast asks for it. Everything else
+    a letter can do, it does to its own sender — a forged From gets a stranger
+    a subscription link they did not ask for and nothing more — whereas a
+    forged administrator used to get any text at all sent to every client,
+    from the service's own address.
     """
     subject_clean = subject.strip()
     body_clean = body.strip()
@@ -447,6 +471,18 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     is_broadcast_cmd = subject_clean.lower().startswith("/broadcast") or body_clean.lower().startswith("/broadcast")
 
     if is_admin and is_broadcast_cmd:
+        if not authenticated:
+            _mark_seen(mail_conn, msg_num)
+            logger.warning(f"A /broadcast came from {from_email}, but the mail server does not "
+                           f"vouch for that address; nothing was sent. If the letter was yours, "
+                           f"send the broadcast from the panel.")
+            # To the administrator's real address, which is where a reply to
+            # this From goes whoever wrote the letter: either their own
+            # broadcast that did not go out, or news that somebody tried.
+            send_email_reply(from_email, templates.notice_subject("broadcast_unverified"),
+                             templates.get_notice("broadcast_unverified"))
+            return
+
         broadcast_content = ""
         if subject_clean.lower().startswith("/broadcast"):
             broadcast_content = subject_clean[10:].strip()
@@ -511,15 +547,49 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     _mark_seen(mail_conn, msg_num)
 
 
+def _handle_letter(*args, **kwargs):
+    """
+    process_message, as the poll loop is given it.
+
+    The one thing added is the translation of an outage. The loop knows
+    nothing of 3x-ui and should not; what it does know is TryLater — leave the
+    letter unread, do not count the attempt, come back next cycle. Without
+    this a panel away for a minute cost every letter that arrived in it: three
+    failed attempts and the letter was marked read and given up on.
+    """
+    try:
+        return process_message(*args, **kwargs)
+    except XuiUnavailable as e:
+        raise _inbox.TryLater("3x-ui does not answer") from e
+
+
+def describe_tariffs(known: list) -> list:
+    """
+    The tariffs as the start-up line names them: how many words each has, and
+    not the words themselves. A code word is what lets somebody in, and the log
+    is a file on disk and a page in the panel — both are read, copied into bug
+    reports and screenshotted by people who were never meant to hold one.
+    """
+    described = []
+    for tariff in known:
+        words = sum(1 for c in tariffs.codes_for(tariff["id"]) if c["enabled"])
+        described.append(f"{tariff['name']} (code words: {words})" if words
+                         else f"{tariff['name']} (no code word)")
+    return described
+
+
 def check_mail():
     """One pass over the mailbox, with this module's handler."""
-    return _inbox.check_mail(process_message)
+    return _inbox.check_mail(_handle_letter)
 
 
 def main():
+    import os
     import settings
     import applog
     import email_texts
+    # As in run.py, and for the same reason: the log names everybody who wrote.
+    os.umask(0o077)
     settings.load()
     email_texts.load()
     applog.install()
@@ -534,11 +604,7 @@ def main():
     logger.info(f"Bot started. Mail poll interval: {config.POLL_INTERVAL_SECONDS} seconds.")
     known = tariffs.all_tariffs()
     if known:
-        described = []
-        for tariff in known:
-            words = [c["word"] for c in tariffs.codes_for(tariff["id"]) if c["enabled"]]
-            described.append(f"{tariff['name']} ({', '.join(words) if words else 'no word'})")
-        logger.info(f"Tariffs: {len(known)} — " + "; ".join(described))
+        logger.info(f"Tariffs: {len(known)} — " + "; ".join(describe_tariffs(known)))
     else:
         logger.error("No tariffs are set up; registration will be refused until one exists.")
 

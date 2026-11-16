@@ -17,6 +17,7 @@ import threading
 
 import config
 import i18n
+import statefile
 
 logger = logging.getLogger(__name__)
 
@@ -230,11 +231,9 @@ def _apply():
 def _write(values: dict):
     """Writes the json atomically, so an interrupted write leaves no broken file."""
     ordered = {key: values[key] for key in MANAGED_KEYS if key in values}
-    tmp_path = SETTINGS_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(ordered, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    os.replace(tmp_path, SETTINGS_PATH)
+    # Through statefile, which also keeps the file to its owner: this one holds
+    # the mailbox passwords.
+    statefile.write_json(SETTINGS_PATH, ordered)
 
 
 def load():

@@ -90,6 +90,14 @@ def build_message(to_email: str, subject: str, message,
     # What sent it is ordinary courtesy, and a clue when a complaint is looked
     # into. The version is not decoration: without it XM_UA_NO_VERSION fires.
     msg['X-Mailer'] = f"{config.APP_NAME} {config.APP_VERSION}"
+    # Every letter here is written by a program, and saying so is what keeps
+    # two programs from answering each other for ever (RFC 3834): a vacation
+    # autoresponder that honours the header stays quiet, and inbox.py refuses
+    # to answer anything carrying it — which includes a letter of our own that
+    # found its way back. The second header is the same request in the only
+    # dialect Exchange listens to.
+    msg['Auto-Submitted'] = "auto-generated"
+    msg['X-Auto-Response-Suppress'] = "All"
 
     # quoted-printable instead of base64 for both parts: MIME_BASE64_TEXT fires
     # on HTML too, and the letter stays readable in its source.

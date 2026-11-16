@@ -5,6 +5,7 @@ panel (uvicorn).
 With the panel switched off (ADMIN_PANEL_ENABLED=false) only the bot runs, which
 is equivalent to `python email_bot.py`.
 """
+import os
 import signal
 import threading
 import logging
@@ -38,11 +39,7 @@ def run_bot_loop():
     logger.info(f"Bot started. Mail poll interval: {config.POLL_INTERVAL_SECONDS} seconds.")
     known = tariffs.all_tariffs()
     if known:
-        described = []
-        for tariff in known:
-            words = [c["word"] for c in tariffs.codes_for(tariff["id"]) if c["enabled"]]
-            described.append(f"{tariff['name']} ({', '.join(words) if words else 'no word'})")
-        logger.info(f"Tariffs: {len(known)} — " + "; ".join(described))
+        logger.info(f"Tariffs: {len(known)} — " + "; ".join(email_bot.describe_tariffs(known)))
     else:
         logger.error("No tariffs are set up; registration will be refused until one exists.")
 
@@ -65,6 +62,13 @@ def run_bot_loop():
 
 
 def main():
+    # Before anything is written. The unit install.sh generates sets the same
+    # mask, but a unit is written once, at installation, and an update never
+    # touches it — so an installation older than that line would go on making
+    # its log readable by every account on the server. statefile.py closes the
+    # json files by itself; this covers the log and whatever comes later.
+    os.umask(0o077)
+
     # settings.json is laid over config before the bot and the panel start
     import settings
     import email_texts

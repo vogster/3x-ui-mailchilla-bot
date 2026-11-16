@@ -33,6 +33,17 @@ def epoch_ms(value) -> int:
     return number * 1000 if number < _SECONDS_CEILING else number
 
 
+class XuiUnavailable(Exception):
+    """
+    3x-ui could not be asked — as opposed to asked, and answering "no".
+
+    The two used to come back as the same None, and the bot believed the second:
+    during an outage a registered client asking for their status was told they
+    had never registered. Raised only where the caller asks for it (see
+    find_client_by_email), since the panel's pages are content with a None.
+    """
+
+
 def get_shared_client():
     """Returns the process-wide XuiClient instance, created on first use."""
     global _shared_client
@@ -91,6 +102,29 @@ class XuiClient:
         with self._lock:
             return self._request_locked(method, endpoint, **kwargs)
 
+    @staticmethod
+    def _landed_on_login(response, endpoint: str) -> bool:
+        """
+        Whether a request was answered with the sign-in page instead of its own.
+
+        This used to be `"login" in response.url`, and the client's address is
+        part of that URL: clients/traffic/loginov%40mail.ru passed for an
+        expired session on every single request. With a token that was a flat
+        "Access denied" — no status letter, no editing, no deleting for anybody
+        with those five letters in their address — and with a cookie a sign-in
+        and a repeat each time.
+
+        An expired session shows as a redirect, so one has to have happened;
+        and a redirect that ends on the page that was asked for — http to
+        https, say — is not the sign-in page, whatever its address spells.
+        """
+        if response.status_code != 200 or not getattr(response, "history", None):
+            return False
+        path = urlsplit(response.url).path
+        if path.endswith(urlsplit(endpoint).path):
+            return False
+        return "login" in path.lower()
+
     def _request_locked(self, method, endpoint, **kwargs):
         if not self.is_logged_in:
             if not self.login():
@@ -99,7 +133,7 @@ class XuiClient:
         url = f"{self.base_url}{endpoint}"
         try:
             response = self.session.request(method, url, timeout=10, **kwargs)
-            if response.status_code in (401, 403) or (response.status_code == 200 and "login" in response.url):
+            if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
                 if self.api_token:
                     raise Exception(f"Access denied (status={response.status_code}) with the API token. Check XUI_API_TOKEN.")
                 
@@ -247,7 +281,13 @@ class XuiClient:
                 resp_json = response.json()
 
                 if resp_json.get("success"):
-                    return resp_json.get("obj", [])
+                    # `or []`, not a default: the panel is written in Go, where
+                    # an empty list may well arrive as "obj": null — and None
+                    # is what this method returns for "could not ask". A panel
+                    # with no clients yet would then look like one that is
+                    # down, and find_client_by_email(strict=True) would put
+                    # every first registration off for ever.
+                    return resp_json.get("obj") or []
                 else:
                     logger.error(f"The panel returned an error while fetching the client list: {resp_json.get('msg')}")
             else:
@@ -535,11 +575,15 @@ class XuiClient:
         candidate = (addr or str(remark)).strip().lower()
         return candidate if "@" in candidate else ""
 
-    def find_client_by_email(self, bare_email: str) -> dict or None:
+    def find_client_by_email(self, bare_email: str, strict: bool = False) -> dict or None:
         """
         Finds a client by bare email, scanning the list of all clients.
         It matches on the email extracted from the remark through parseaddr, or
         on remark == email exactly (older records that carry no name).
+        :param strict: raise XuiUnavailable when the list could not be fetched,
+                       rather than answering None. The bot asks this way: what
+                       it does next — register, or say "you are not registered"
+                       — is wrong if the panel simply did not answer.
         :return: the full client object (an item of get_all_clients), or None.
         """
         if not bare_email:
@@ -547,6 +591,8 @@ class XuiClient:
         target = bare_email.strip().lower()
 
         clients = self.get_all_clients()
+        if clients is None and strict:
+            raise XuiUnavailable("3x-ui did not hand over the client list")
         if not clients:
             return None
 

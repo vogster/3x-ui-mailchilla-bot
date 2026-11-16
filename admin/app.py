@@ -1,6 +1,7 @@
 """The web panel for running the 3x-ui email bot (FastAPI)."""
 import secrets
 import logging
+import threading
 import time
 from datetime import datetime
 
@@ -63,6 +64,63 @@ def login_form(request: Request, error: str = ""):
     )
 
 
+# --- Guessing at the password ---
+# The form used to answer as many guesses a second as anybody cared to send.
+# Now an address gets this many wrong ones a minute, and while it is over that
+# nothing it sends is checked at all — the right password included, or the lock
+# would stop nothing.
+#
+# Deliberately a ceiling on the rate rather than a lock that needs lifting: ten
+# a minute is fourteen thousand a day, which no password worth the name falls
+# to, and whoever is locked out is back in within the minute. That matters
+# because behind a reverse proxy or the SSH tunnel every visitor arrives from
+# 127.0.0.1 — the limit is then one for everybody, and a lock that lasted
+# would let a stranger keep the administrator out for as long as they liked.
+LOGIN_ATTEMPTS = 10
+LOGIN_WINDOW = 60
+# address -> when its wrong guesses were made. In memory: a restart forgives.
+_failed_logins = {}
+_failed_lock = threading.Lock()
+
+
+def _recent_failures(address: str, now: float) -> list:
+    return [t for t in _failed_logins.get(address, ()) if now - t < LOGIN_WINDOW]
+
+
+def _admit(address: str) -> bool:
+    """
+    Whether this attempt may be checked at all — and if so, charges for it.
+
+    The charge is made here, before the password is looked at, and handed back
+    by _forgive when it turns out right. Checking first and counting the
+    failure afterwards were two steps, and the routes run on a pool of threads:
+    a burst of parallel guesses all passed the check before any of them had
+    been counted, which made the ten a minute nearer forty.
+    """
+    now = time.time()
+    with _failed_lock:
+        recent = _recent_failures(address, now)
+        if len(recent) >= LOGIN_ATTEMPTS:
+            return False
+        _failed_logins[address] = recent + [now]
+        # Addresses are strangers' and there is no end of them.
+        if len(_failed_logins) > 1000:
+            for stale in [a for a in _failed_logins if not _recent_failures(a, now)]:
+                del _failed_logins[stale]
+        return True
+
+
+def _forgive(address: str):
+    """The password was right: the slips before it are not held against anybody."""
+    with _failed_lock:
+        _failed_logins.pop(address, None)
+
+
+def _out_of_guesses(address: str) -> bool:
+    with _failed_lock:
+        return len(_recent_failures(address, time.time())) >= LOGIN_ATTEMPTS
+
+
 @app.post("/login")
 def login_submit(
     request: Request,
@@ -71,19 +129,34 @@ def login_submit(
     next: str = Form("/"),
 ):
     check_panel_configured()
+    address = request.client.host if request.client else "?"
+    if not _admit(address):
+        # Not logged: one line a guess is a way to fill the log, and the line
+        # that matters was written when the door closed.
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": i18n.t("Too many failed attempts. Wait a minute and try again."),
+                "service_name": config.SERVICE_NAME,
+            },
+            status_code=429,
+        )
     if (
         secrets.compare_digest(username.encode("utf-8"), config.ADMIN_PANEL_USER.encode("utf-8"))
         and secrets.compare_digest(password.encode("utf-8"), config.ADMIN_PANEL_PASSWORD.encode("utf-8"))
     ):
+        _forgive(address)
         request.session.clear()
         request.session["user"] = username
-        logger.info(f"Signed in: user {username}, address {request.client.host if request.client else '?'}.")
+        logger.info(f"Signed in: user {username}, address {address}.")
         # only local paths: see safe_path on why a leading slash is not enough
         return RedirectResponse(url=safe_path(next), status_code=303)
-    logger.warning(
-        f"Failed sign-in attempt: login {username!r}, "
-        f"address {request.client.host if request.client else '?'}."
-    )
+    logger.warning(f"Failed sign-in attempt: login {username!r}, address {address}.")
+    if _out_of_guesses(address):
+        logger.warning(f"{LOGIN_ATTEMPTS} failed sign-in attempts from {address} within "
+                       f"{LOGIN_WINDOW} seconds; further ones are refused unchecked until "
+                       f"that has passed.")
     return templates.TemplateResponse(
         "login.html",
         {
@@ -228,6 +301,11 @@ def _mail_block():
         return {"state": "bad",
                 "text": i18n.t("{n} checks in a row failed", n=health["failures"]),
                 "detail": health["error"]}
+    if health.get("waiting"):
+        # The mailbox itself is fine, so none of the checks above or below
+        # would say a word — and meanwhile nobody is getting an answer.
+        return {"state": "bad", "text": i18n.t("letters are waiting: 3x-ui does not answer"),
+                "detail": ""}
     if health["last_ok_at"] is None:
         return {"state": "wait", "text": i18n.t("no check has got through yet")}
     ago = max(int(time.time() - health["last_ok_at"]), 0)

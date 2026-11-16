@@ -315,7 +315,7 @@ class RegistrationUsesTheTariff(StorageCase):
         outer = self
 
         class FakeXui:
-            def find_client_by_email(self, addr):
+            def find_client_by_email(self, addr, strict=False):
                 return {"subId": "sub01"} if outer.added else None
 
             def add_client(self, **kwargs):
@@ -433,7 +433,7 @@ class LimitedCodes(StorageCase):
                 ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
 
         class FakeXui:
-            def find_client_by_email(self, addr):
+            def find_client_by_email(self, addr, strict=False):
                 return {"subId": "sub01"} if added else None
 
             def add_client(self, **kwargs):
@@ -454,6 +454,40 @@ class LimitedCodes(StorageCase):
             for name, value in real.items():
                 setattr(email_bot, name, value)
 
+    def test_an_invitation_is_spent_even_if_the_panel_goes_quiet_right_after(self):
+        # The client is created, and reading it back fails. The letter is put
+        # off, and the retry finds a client and takes the "already registered"
+        # path, which spends nothing — so one invitation would have let in two.
+        from xui_client import XuiUnavailable
+
+        real = {name: getattr(email_bot, name) for name in
+                ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
+        asked = []
+
+        class FakeXui:
+            def find_client_by_email(self, addr, strict=False):
+                asked.append(addr)
+                if len(asked) > 1:
+                    raise XuiUnavailable("gone quiet")
+                return None
+
+            def add_client(self, **kwargs):
+                return ("uuid", [1])
+
+        email_bot.get_shared_client = lambda: FakeXui()
+        email_bot.send_welcome_email = lambda *a, **kw: None
+        email_bot.send_gotify_notification = lambda **kw: None
+        try:
+            tariff = self.make(name="Family", word="FAMILY")
+            invite = self.invite(tariff["id"])
+            matched = tariffs.match(invite["word"])
+            with self.assertRaises(XuiUnavailable):
+                email_bot.handle_registration("ben@example.com", "Ben", matched[0], matched[1])
+            self.assertIsNone(tariffs.match(invite["word"]))
+        finally:
+            for name, value in real.items():
+                setattr(email_bot, name, value)
+
     def test_the_letter_names_the_tariff_the_client_is_actually_on(self):
         # A registration names the tariff just given; a repeat names whatever
         # group the client already carries, because they keep what they have.
@@ -465,7 +499,7 @@ class LimitedCodes(StorageCase):
                 ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
 
         class FakeXui:
-            def find_client_by_email(self, addr):
+            def find_client_by_email(self, addr, strict=False):
                 if not added:
                     return None
                 return {"subId": "sub01", "group": "Family"}
@@ -499,7 +533,7 @@ class LimitedCodes(StorageCase):
                 ("get_shared_client", "send_welcome_email")}
 
         class FakeXui:
-            def find_client_by_email(self, addr):
+            def find_client_by_email(self, addr, strict=False):
                 return {"subId": "sub01"}
 
         email_bot.get_shared_client = lambda: FakeXui()
@@ -539,7 +573,7 @@ class TheGroupIsTheTariff(StorageCase):
                 ("get_shared_client", "send_welcome_email", "send_gotify_notification")}
 
         class FakeXui:
-            def find_client_by_email(self, addr):
+            def find_client_by_email(self, addr, strict=False):
                 return {"subId": "sub01"} if added else None
 
             def add_client(self, **kwargs):

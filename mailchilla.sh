@@ -668,6 +668,23 @@ changelog_for() {
 
 python_minor() { python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0; }
 
+# The state files hold the mailbox passwords and the code words, and the log
+# names everybody who wrote. chown -R leaves a mode as it finds it, and a copy
+# written by a version before 0.2.0 is readable by every account on the server
+# until the panel next saves it — which may be never. So they are closed here,
+# on every update, rather than left for the application to get round to.
+lock_state_files() {
+    local file
+    for file in "${STATE_FILES[@]}"; do
+        if [ -f "$INSTALL_DIR/$file" ]; then
+            chmod 600 "$INSTALL_DIR/$file"
+        fi
+    done
+    if [ -d "$INSTALL_DIR/logs" ]; then
+        chmod -R go-rwx "$INSTALL_DIR/logs"
+    fi
+}
+
 cmd_update() {
     need_root update || return 1; need_install
     local current latest dirty stash_made=0 backup
@@ -724,7 +741,7 @@ cmd_update() {
 
     install -m 755 "$INSTALL_DIR/mailchilla.sh" /usr/local/bin/mailchilla 2>/dev/null || true
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-    chmod 600 "$ENV_FILE"
+    lock_state_files
 
     dim "$(t u_restart)"
     systemctl restart "$SERVICE"
@@ -743,6 +760,7 @@ cmd_update() {
             [ -f "$backup/$file" ] && cp -a "$backup/$file" "$INSTALL_DIR/$file"
         done
         chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        lock_state_files
         systemctl restart "$SERVICE"
         bad "$(t u_rolled)"
         printf '\n'

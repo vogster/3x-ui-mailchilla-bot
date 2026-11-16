@@ -535,6 +535,10 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/venv/bin/python run.py
 Restart=always
 RestartSec=10
+# What the service writes is its own: settings.json carries the mailbox
+# passwords and the log names everybody who wrote. The default of 022 left
+# all of it readable by every account on the server.
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

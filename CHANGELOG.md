@@ -145,6 +145,53 @@ read as something a person wants to know before updating.
 - The first-run wizard asks for the first tariff instead of "the rules for new
   clients".
 
+### Security
+
+- **`/broadcast` by mail now needs proof of who sent it.** The bot used to take
+  the From header at its word, and a From header is whatever its author types:
+  a letter claiming to be from the administrator's address got any text at all
+  sent to every client, from the service's own address. Now the mailbox's server
+  has to vouch for the address — the `Authentication-Results` header it adds
+  after checking SPF, DKIM and DMARC. Without that the broadcast is not sent,
+  and the administrator gets a letter saying so, which is also how you find out
+  that somebody tried. **If your mail server adds no such header, `/broadcast`
+  by mail stops working after this update** — send broadcasts from the panel,
+  which never depended on it.
+- **The bot no longer answers machines, and marks its own letters as written by
+  one.** It replied to everything: bounces, vacation autoresponders,
+  newsletters. An autoresponder that answered back got "the command was not
+  understood" again, for as long as both were plugged in. Letters marked as
+  automatic are now read and left alone, every letter the bot sends carries the
+  mark other programs look for, and no address gets more than ten answers an
+  hour whatever it sends.
+- **`settings.json`, `tariffs.json` and the log are readable by the service
+  alone.** They hold the mailbox passwords, the code words and the address of
+  everybody who wrote, and were readable by every account on the server — the
+  installer closed `.env` and the panel wrote the same secrets next door.
+  `mailchilla update` closes the files that already exist.
+- **The sign-in form stops answering after ten wrong passwords in a minute**,
+  for the rest of that minute. It matters once the panel is behind a reverse
+  proxy rather than a tunnel.
+- The code words are no longer written into the log when the bot starts.
+
+### Fixed
+
+- **A client with `login` in their address could not be managed.** The panel
+  took any 3x-ui address containing those letters for its sign-in page, and the
+  client's address is part of the address — so for `loginov@…` every request
+  read as an expired session. With an API token that meant no status letter, no
+  editing and no deleting; with a password, a fresh sign-in on every request.
+- **A letter the bot could not deal with really does stay unread now.** 0.1.4 moved
+  the read mark to after the handling, but the letter was fetched in the way that
+  makes the mail server mark it read by itself — so a registration that failed on
+  the first try was still never tried again. It is fetched without that now.
+- **3x-ui being away no longer costs the letters that arrive meanwhile.** A
+  panel that did not answer read as a panel that knew no such client: somebody
+  registered who asked for their status was told they had never registered, and
+  a registration got "could not create the subscription" and was dropped. Such
+  letters now wait unread and are handled when 3x-ui is back, and the dashboard
+  says that they are waiting.
+
 ## [0.1.5] - 2026-09-15
 
 ### Added

@@ -52,6 +52,8 @@ You write a letter with a command, in the subject or in the body - the bot handl
 | `/help` | instructions for setting up a client app |
 | `/broadcast` | a letter to every active client (from the administrator only) |
 
+`/broadcast` is carried out only when the mailbox's server vouches for the sender - SPF, DKIM or DMARC passing for the administrator's address. A From header alone is something anybody can type; without that proof nothing is sent and the administrator gets a letter saying so. Letters written by machines - bounces, autoresponders, newsletters - are read and left unanswered, and no address gets more than ten answers an hour.
+
 The sender's name lands in the client's comment - the list then shows people rather than addresses. For everyone registered before that, one button on the Mail tab reads the names out of the letters already in the mailbox and offers a table of who to fill in.
 
 **🖥️ The web panel**

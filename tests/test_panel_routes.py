@@ -69,7 +69,7 @@ class FakeXui:
         return next((dict(c) for c in CLIENTS
                      if c["uuid"] == uuid or str(c["id"]) == str(uuid)), None)
 
-    def find_client_by_email(self, email):
+    def find_client_by_email(self, email, strict=False):
         return next((dict(c) for c in CLIENTS if c["email"] == email), None)
 
     def get_client_links(self, email):
@@ -548,3 +548,53 @@ class DatesTypedByHand(PanelCase):
         body = self.page("/tariffs/codes/WEEKEND/edit")
         self.assertIn('value="2030-03-17"', body)   # the hidden half
         self.assertIn('value="17.03.2030"', body)   # the half that is read
+
+
+class SignInIsNotGuessable(PanelCase):
+    """
+    The sign-in form used to answer as many guesses a second as anybody cared
+    to send. Harmless while the panel listens on 127.0.0.1 alone, and the first
+    thing found once it is put behind a reverse proxy.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import admin.app as appmod
+        self.appmod = appmod
+        appmod._failed_logins.clear()
+        self.visitor = TestClient(self.app)
+
+    def tearDown(self):
+        self.appmod._failed_logins.clear()
+        super().tearDown()
+
+    def attempt(self, password):
+        return self.visitor.post("/login", data={"username": USER, "password": password},
+                                 follow_redirects=False)
+
+    def test_wrong_guesses_run_out(self):
+        for _ in range(self.appmod.LOGIN_ATTEMPTS):
+            self.assertEqual(self.attempt("wrong").status_code, 401)
+        refused = self.attempt("wrong")
+        self.assertEqual(refused.status_code, 429)
+        self.assertIn("Too many failed attempts", refused.text)
+
+    def test_the_right_password_does_not_get_through_a_lock(self):
+        # Otherwise the lock would stop nothing: the guess that matters is the
+        # one that happens to be right.
+        for _ in range(self.appmod.LOGIN_ATTEMPTS):
+            self.attempt("wrong")
+        self.assertEqual(self.attempt(PASSWORD).status_code, 429)
+
+    def test_the_lock_lifts_by_itself(self):
+        for _ in range(self.appmod.LOGIN_ATTEMPTS):
+            self.attempt("wrong")
+        # A window later, without waiting for one.
+        for address, times in self.appmod._failed_logins.items():
+            self.appmod._failed_logins[address] = [t - self.appmod.LOGIN_WINDOW - 1 for t in times]
+        self.assertEqual(self.attempt(PASSWORD).status_code, 303)
+
+    def test_a_few_slips_cost_nothing(self):
+        self.attempt("wrong")
+        self.attempt("wrong")
+        self.assertEqual(self.attempt(PASSWORD).status_code, 303)

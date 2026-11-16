@@ -174,6 +174,253 @@ def _mark_seen(mail_conn, msg_num):
         logger.warning(f"Could not mark letter #{msg_num} as read: {e}")
 
 
+class TryLater(Exception):
+    """
+    A handler's way of saying "not now, and it is not this letter's fault".
+
+    3x-ui being away is the case it exists for. Any other exception counts
+    against the letter and after MAX_ATTEMPTS it is marked read and given up on
+    — right for a letter that trips the code, and exactly wrong for an outage,
+    which would otherwise eat every registration that arrived during it. A
+    letter put off this way stays unread and uncounted, and the rest of the
+    cycle is skipped: whatever stopped this one will stop the next.
+    """
+
+
+# --- Letters that must not be answered ---
+# The bot replies to everything, and so do other machines. A vacation
+# autoresponder, a bounce, a newsletter: each gets "the command was not
+# understood", and the ones that answer back get it again, for as long as both
+# sides are plugged in. RFC 3834 is the agreement that stops this — a machine
+# marks what it sends and does not reply to what another machine marked.
+
+# Sender local parts no person writes from.
+_ROBOT_SENDERS = frozenset({
+    "mailer-daemon", "postmaster", "noreply", "no-reply", "no_reply",
+    "donotreply", "do-not-reply", "do_not_reply", "bounce", "bounces",
+})
+# Headers whose mere presence says a machine sent this.
+_ROBOT_HEADERS = ("List-Id", "List-Unsubscribe", "X-Autoreply", "X-Autorespond",
+                  "X-Autoresponse")
+
+
+def automatic_reason(msg, from_email: str) -> str:
+    """
+    Why a letter looks machine-sent, or "" for one a person wrote.
+
+    The reason is for the log: "ignored" with nothing beside it is no help to
+    an administrator wondering where somebody's letter went.
+    """
+    auto = str(msg.get("Auto-Submitted") or "").strip().lower()
+    # "no" is the one value that means a person — RFC 3834 defines it so.
+    if auto and auto != "no":
+        return f"Auto-Submitted: {auto}"
+    precedence = str(msg.get("Precedence") or "").strip().lower()
+    if precedence in ("bulk", "junk", "list", "auto_reply"):
+        return f"Precedence: {precedence}"
+    for header in _ROBOT_HEADERS:
+        if msg.get(header):
+            return header
+    # X-Auto-Response-Suppress is deliberately not on the list, though we send
+    # it ourselves. It asks for no out-of-office reply, which is not what a
+    # subscription link is, and it is set by software on the sender's side that
+    # nobody here can vouch for: a person whose mail carried it would write the
+    # code word and hear nothing, with no trace but a line in the log.
+    # A bounce travels with an empty envelope sender, precisely so that nothing
+    # can be sent back to it.
+    if str(msg.get("Return-Path") or "").strip() == "<>":
+        return "an empty Return-Path"
+    local = (from_email or "").split("@", 1)[0]
+    if local in _ROBOT_SENDERS:
+        return f"the sender is {local}"
+    return ""
+
+
+# The marks above are a courtesy the other side may not extend, and a person
+# can flood a mailbox as well as a machine can. So there is a ceiling too:
+# this many answered letters from one address within the window, and the rest
+# are marked read in silence until it has passed. Generous for a person —
+# nobody asks for their status ten times an hour — and the end of any loop.
+REPLY_LIMIT = 10
+REPLY_WINDOW = 60 * 60
+# (address, proven) -> the times its letters were answered, oldest first. In
+# memory: a restart forgives everybody, which costs one more round at worst.
+#
+# Proven and unproven letters are counted apart (see sender_authenticated).
+# The address is only what the From header says, and counted together ten
+# forged letters would have silenced the real owner of it for an hour — their
+# registration marked read and never answered, or the administrator's own
+# broadcast dropped. A forger cannot send a proven letter, so cannot touch the
+# count the real sender is held to.
+_answered = {}
+
+
+def _recent(key, now: float) -> list:
+    return [t for t in _answered.get(key, ()) if now - t < REPLY_WINDOW]
+
+
+def over_limit(address: str, proven: bool = False, now: float = None) -> bool:
+    """Whether this sender has already had all the answers one window allows."""
+    now = time.time() if now is None else now
+    return len(_recent((address, bool(proven)), now)) >= REPLY_LIMIT
+
+
+def note_answered(address: str, proven: bool = False, now: float = None):
+    """
+    Counts one handled letter against its sender.
+
+    Called after the handler has finished, never before: a letter put off or
+    failed is seen again on the next cycle, and counting each sight of it would
+    throttle somebody for the bot's own trouble.
+    """
+    now = time.time() if now is None else now
+    key = (address, bool(proven))
+    _answered[key] = _recent(key, now) + [now]
+    # Senders are strangers and there is no end of them; drop whoever has
+    # nothing left inside the window so the map cannot grow for ever.
+    if len(_answered) > 1000:
+        for stale in [k for k in _answered if not _recent(k, now)]:
+            del _answered[stale]
+
+
+# --- Whether the sender is who the From header says ---
+# Anybody can type any address into From. What cannot be typed is the verdict
+# the receiving server adds after checking SPF, DKIM and DMARC for itself.
+
+# The verdict is read by its grammar and not searched for by pattern, because
+# half of what is in it was written by the sender. The server copies the
+# envelope address into `smtp.mailfrom=` as it stands, and an address may
+# legally be dmarc=pass@evil.test — or, quoted, hold spaces and semicolons. A
+# search for "dmarc=pass" anywhere in the header found it there and believed
+# it, beside the server's own dmarc=fail.
+
+_RESULT = re.compile(r"\s*(dmarc|dkim|spf)\s*=\s*([a-z]+)(?![\w.=-])")
+# name=value, where a value is one run of quoted strings and unspaced text: a
+# quoted address is taken whole, with whatever it has been made to spell.
+_PROPERTY = re.compile(r'([a-z0-9._-]+)\s*=\s*((?:"(?:[^"\\]|\\.)*"|[^\s"])+)')
+_DOMAIN = re.compile(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\Z")
+
+
+def _split_results(header: str):
+    """
+    The header cut at its top-level semicolons, comments removed — or None when
+    a quotation or a comment never closes.
+
+    A semicolon inside a quoted string or a comment does not separate anything,
+    which is the whole reason this is not `header.split(";")`. Quotes are
+    honoured inside comments too, which the grammar does not ask for: servers
+    put the sender's address into a comment unescaped, and a quoted address
+    with a ")" in it would otherwise end the comment where its author chose.
+    An unbalanced header is one somebody has been at, and is not read at all.
+    """
+    parts, current, depth, quoted = [], [], 0, False
+    i = 0
+    while i < len(header):
+        ch = header[i]
+        if ch == "\\" and i + 1 < len(header):
+            if not depth:
+                current.append(header[i:i + 2])
+            i += 2
+            continue
+        if ch == '"':
+            quoted = not quoted
+            if not depth:
+                current.append(ch)
+        elif quoted:
+            if not depth:
+                current.append(ch)
+        elif ch == "(":
+            depth += 1
+        elif ch == ")" and depth:
+            depth -= 1
+            current.append(" ")
+        elif depth:
+            pass
+        elif ch == ";":
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+    if quoted or depth:
+        return None
+    parts.append("".join(current))
+    return parts
+
+
+def _domain(value) -> str:
+    """The domain out of `example.com`, `@example.com` or `user@example.com`; "" for anything else."""
+    domain = str(value or "").rsplit("@", 1)[-1].strip(".")
+    return domain if _DOMAIN.match(domain) else ""
+
+
+def _aligned(domain: str, sender_domain: str) -> bool:
+    """The same domain, or one under the other — DMARC's relaxed alignment."""
+    if not domain or not sender_domain:
+        return False
+    return (domain == sender_domain
+            or domain.endswith("." + sender_domain)
+            or sender_domain.endswith("." + domain))
+
+
+def sender_authenticated(msg, from_email: str) -> bool:
+    """
+    Whether the mailbox's own server vouches for the From address.
+
+    Read from Authentication-Results (RFC 8601), and from the top-most one
+    alone: that is the header our provider wrote last, while anything below it
+    may have arrived with the letter and says whatever its author liked. A
+    server that spreads its verdict over several headers is therefore read only
+    as far as the first — the cost of not having to guess which of the others
+    are its own.
+
+    Proof is a DMARC verdict of pass for this very From domain. Where the
+    server reports no DMARC verdict, or only "none" for a domain that publishes
+    no policy, it is a passing DKIM signature or SPF check from the sender's
+    own domain — a valid signature from somewhere else proves only that
+    somebody signed it. Any DMARC verdict other than pass settles it the other
+    way, whatever else the header says.
+
+    No such header means no proof, not a pass, and neither does one that does
+    not parse. The limit of this is a server that adds no header of its own and
+    does not strip a forged one either: there the top-most header is the
+    forger's. The large providers all add one.
+    """
+    headers = msg.get_all("Authentication-Results") or []
+    if not headers:
+        return False
+    parts = _split_results(" ".join(str(headers[0]).split()).lower())
+    sender_domain = _domain((from_email or "").lower())
+    if not parts or not sender_domain:
+        return False
+
+    dmarc, vouched = [], False
+    # parts[0] is the server's own name, and says nothing about the letter.
+    for part in parts[1:]:
+        found = _RESULT.match(part)
+        if not found:
+            continue
+        method, verdict = found.groups()
+        properties = {}
+        for name, value in _PROPERTY.findall(part[found.end():]):
+            properties.setdefault(name, value)
+
+        if method == "dmarc":
+            if verdict != "none":
+                dmarc.append(verdict == "pass"
+                             and _domain(properties.get("header.from")) == sender_domain)
+        elif verdict == "pass":
+            if method == "dkim":
+                signer = _domain(properties.get("header.d") or properties.get("header.i"))
+            else:
+                signer = _domain(properties.get("smtp.mailfrom") or properties.get("smtp.mail"))
+            vouched = vouched or _aligned(signer, sender_domain)
+
+    if dmarc:
+        return all(dmarc)
+    return vouched
+
+
 # Where a reply stops being what the sender wrote and starts being what they
 # are replying to. Everything from the first of these lines onward is quoted
 # text, and a code word found in it was written by us, not by them — the
@@ -200,6 +447,8 @@ _last_error = ""
 # fixing whatever it tripped over.
 MAX_ATTEMPTS = 3
 _attempts = {}
+# Whether the last cycle ended on a letter put off (see TryLater).
+_putting_off = False
 
 
 # --- Clearing out the mailbox ---
@@ -348,6 +597,10 @@ def mail_health() -> dict:
         "last_ok_at": _last_ok_at,
         "failures": _consecutive_failures,
         "error": _last_error,
+        # The mailbox answers and the checks succeed, yet nothing is being
+        # dealt with: letters are being put off (see TryLater). Without this
+        # the dashboard would call such a loop healthy.
+        "waiting": _putting_off,
     }
 
 
@@ -386,7 +639,7 @@ def check_mail(handle):
     the loop would otherwise depend on the commands, and the commands already
     depend on the loop's own helpers.
     """
-    global _consecutive_failures, _last_ok_at, _last_error
+    global _consecutive_failures, _last_ok_at, _last_error, _putting_off
 
     if not config.IMAP_USER or not config.IMAP_PASSWORD:
         logger.error("IMAP credentials are not configured; skipping the mail check.")
@@ -417,10 +670,17 @@ def check_mail(handle):
         phase = "handling the letters"
         if messages:
             logger.info(f"New letters found to handle: {len(messages)}")
+        put_off = False
         for num in messages:
             msg_id = None
             try:
-                status, data = mail.fetch(num, "(RFC822)")
+                # PEEK, or the letter is read the moment it is fetched: RFC822
+                # is BODY[] under another name, and fetching BODY[] sets \Seen
+                # by itself (RFC 3501, 6.4.5). Everything this loop promises —
+                # a letter retried after a failure, one put off until 3x-ui is
+                # back — rests on it still being unread on the next cycle, and
+                # the clear-out below moves read letters to the Trash.
+                status, data = mail.fetch(num, "(BODY.PEEK[])")
                 if status != "OK" or not data:
                     logger.error(f"Could not fetch letter #{num}")
                     continue
@@ -429,36 +689,50 @@ def check_mail(handle):
                 msg = email.message_from_bytes(raw_email)
                 msg_id = msg.get("Message-ID") or None
 
-                from_header = msg.get("From", "")
-                # Decode the From header so the sender's name comes out right.
-                from_parts = []
-                for decoded_str, charset in decode_header(from_header):
-                    if isinstance(decoded_str, bytes):
-                        from_parts.append(decoded_str.decode(charset or "utf-8", errors="ignore"))
-                    else:
-                        from_parts.append(str(decoded_str))
-                from_decoded = " ".join(from_parts).strip()
-
-                sender_name, from_email = parseaddr(from_decoded)
-                from_email = from_email.strip().lower()
+                from_email, sender_name = sender_name_from(msg.get("From", ""))
                 if not from_email:
-                    logger.warning(f"Could not extract the sender address for letter #{num}")
+                    # Nobody to answer, now or on any later cycle; and since
+                    # the fetch no longer marks it read, leaving it would mean
+                    # fetching it again for ever.
+                    logger.warning(f"Could not extract the sender address for letter #{num}; "
+                                   f"marked read.")
+                    _mark_seen(mail, num)
                     continue
 
-                subject_parts = []
-                subject_header = msg.get("Subject", "")
-                for decoded_str, charset in decode_header(subject_header):
-                    if isinstance(decoded_str, bytes):
-                        subject_parts.append(decoded_str.decode(charset or "utf-8", errors="ignore"))
-                    else:
-                        subject_parts.append(str(decoded_str))
-                subject = " ".join(subject_parts).strip()
+                # Before anything is read or answered: see automatic_reason and
+                # over_limit above. Both mark the letter read — left unread it
+                # would be looked at, and refused, on every cycle from now on.
+                reason = automatic_reason(msg, from_email)
+                if reason:
+                    logger.info(f"Letter #{num} from {from_email} was sent by a machine "
+                                f"({reason}); marked read and not answered.")
+                    _mark_seen(mail, num)
+                    continue
+                proven = sender_authenticated(msg, from_email)
+                if over_limit(from_email, proven):
+                    logger.warning(f"{from_email} has had {REPLY_LIMIT} answers within "
+                                   f"{REPLY_WINDOW // 60} minutes; letter #{num} is marked "
+                                   f"read and not answered.")
+                    _mark_seen(mail, num)
+                    continue
 
+                subject = decode_mime_header(msg.get("Subject", ""))
                 body = get_email_body(msg)
 
-                handle(num, from_email, subject, body, mail, sender_name)
+                handle(num, from_email, subject, body, mail, sender_name,
+                       authenticated=proven)
+                note_answered(from_email, proven)
                 if msg_id:
                     _attempts.pop(msg_id, None)
+
+            except TryLater as e:
+                # Not counted against the letter and not marked read. The rest
+                # of the cycle is skipped: what stopped this one stops them all.
+                put_off = True
+                level = logging.DEBUG if _putting_off else logging.WARNING
+                logger.log(level, f"Letter #{num} is put off until the next check: {e}. "
+                                  f"It stays unread, and so do the ones after it.")
+                break
 
             except Exception as e:
                 if msg_id:
@@ -474,6 +748,13 @@ def check_mail(handle):
                                  f"so the loop can move on. Nothing was answered to it.")
                     _mark_seen(mail, num)
                     _attempts.pop(msg_id, None)
+
+        # Said once when it starts and once when it ends: while 3x-ui is away
+        # the same letter is put off every POLL_INTERVAL_SECONDS, and a warning
+        # each time would bury the dashboard's list of problems under one fact.
+        if _putting_off and not put_off and messages:
+            logger.info("Letters that were put off are being handled again.")
+        _putting_off = put_off
 
         if cleanup_due():
             # On the connection that is already open, and only once the letters
