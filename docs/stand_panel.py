@@ -85,7 +85,10 @@ class Panel:
             "enable": True, "totalGB": int(limit_gb or 0) * GB,
             "expiryTime": now + int(expire_days) * DAY_MS if expire_days else 0,
             "createdAt": now, "subId": f"sub{number:02d}aurora",
-            "traffic": {"up": 0, "down": 0}, "inboundIds": [int(i) for i in inbound_ids],
+            # A panel that records fetches says so for a new client as well:
+            # nought, which is "never", and not the same as saying nothing.
+            "traffic": {"up": 0, "down": 0, "lastSubFetch": 0},
+            "inboundIds": [int(i) for i in inbound_ids],
             "group": group or "", "flow": flow or "",
             "limitHwid": max(int(limit_hwid or 0), 0)})
         return client_uuid, list(inbound_ids)

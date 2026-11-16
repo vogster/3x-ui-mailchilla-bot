@@ -95,6 +95,17 @@
             {% endif %}
         </div>
     </div>
+    {% if client.sub_fetch_known %}
+    {# Beside "Last online", and not the same question: that one is whether
+       the app is connected, this one whether it was ever set up. #}
+    <div class="card">
+        <div class="label">{{ t("Subscription fetched") }}</div>
+        <div class="value" style="font-size: 18px;">
+            <span title="{{ client.sub_fetch_full }}"
+                  {% if not client.sub_fetch_ms %}class="muted"{% endif %}>{{ client.sub_fetch }}</span>
+        </div>
+    </div>
+    {% endif %}
     {% if last_seen_known or (online_known and client.online is not none) %}
     <div class="card">
         <div class="label">{{ t("Last online") }}</div>

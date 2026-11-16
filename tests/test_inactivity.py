@@ -198,9 +198,9 @@ class TheRun(unittest.TestCase):
 
     def test_the_run_is_written_down_before_the_first_letter(self):
         # A restart in the middle of sending must not mail everybody again.
-        inactivity.overdue = lambda: [("gone@example.com", 40)]
+        inactivity.overdue = lambda: [("gone@example.com", 40, False)]
         inactivity.run_if_due()
-        self.assertEqual(self.events, ["remember", ("send", [("gone@example.com", 40)])])
+        self.assertEqual(self.events, ["remember", ("send", [("gone@example.com", 40, False)])])
 
     def test_nothing_is_written_down_when_3xui_could_not_be_asked(self):
         # Otherwise an outage would push the next sweep a whole period away.

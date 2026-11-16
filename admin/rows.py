@@ -121,6 +121,19 @@ def client_row(client_obj: dict, online: set = None, last_online: dict = None) -
         last_seen_ms = now_ms
     else:
         last_seen_ms = int((last_online or {}).get(remark) or 0)
+    sub_fetch_ms = XuiClient.last_sub_fetch(client_obj)
+    # Three answers, not two. "Never" is kept for somebody the panel has not
+    # seen connect either: 3x-ui began recording fetches at some version, and
+    # a client set up before it — online this minute, even — would otherwise
+    # be listed among the people who never got as far as setting the app up.
+    # For them there is simply no record. The same rule inactivity applies
+    # before it writes to anybody as "never set up".
+    if sub_fetch_ms:
+        sub_state = "1"
+    elif sub_fetch_ms == 0 and not (is_online or last_seen_ms):
+        sub_state = "0"
+    else:
+        sub_state = ""
     return {
         "uuid": XuiClient.client_key(client_obj),
         "remark": remark,
@@ -145,6 +158,25 @@ def client_row(client_obj: dict, online: set = None, last_online: dict = None) -
         "last_seen_ms": last_seen_ms,
         "last_seen": i18n.t("now [last seen]") if is_online else _fmt_last_seen(last_seen_ms, now_ms),
         "last_seen_full": _fmt_ts(last_seen_ms) if last_seen_ms else "",
+        # When the client's app last fetched the subscription. Being seen
+        # online says the app is connected; this says the app was set up at
+        # all — and somebody who has never fetched it has not got as far as
+        # that. `sub_fetch_known` is False for a panel that does not say:
+        # nothing is then drawn, rather than everybody shown as "never".
+        "sub_fetch_known": sub_fetch_ms is not None,
+        "sub_fetch_ms": sub_fetch_ms or 0,
+        # "1" fetched, "0" never and never seen either, "" for no record or a
+        # panel that does not say: what the list's filter matches against.
+        "sub_fetch_state": sub_state,
+        "sub_fetch": (_fmt_last_seen(sub_fetch_ms, now_ms) if sub_fetch_ms
+                      else i18n.t("never [subscription fetched]") if sub_state == "0"
+                      else i18n.t("no record [subscription fetched]")),
+        # The tooltip: the exact moment, or — for "no record" — why a client
+        # who has been connected has none, since the word alone reads as a fault.
+        "sub_fetch_full": (_fmt_ts(sub_fetch_ms) if sub_fetch_ms
+                           else i18n.t("Has been connected, but 3x-ui has no record of a fetch: "
+                                       "set up before the panel began recording them")
+                           if sub_fetch_ms == 0 and sub_state == "" else ""),
         "used_gb": _fmt_gb(used),
         # The number alone, plus a flag: templates decide how to word "no limit",
         # and the wording is translated rather than compared against.

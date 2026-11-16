@@ -19,6 +19,19 @@ have one.
 
 ### Added
 
+- **Who registered and never set the app up.** 3x-ui records when a client's
+  app last fetched its subscription, and the panel now shows it: on the
+  client's card, beside "Last online", and as a filter on the client list —
+  fetched, or never set up. The reminder for clients who have gone quiet tells
+  the two apart as well: somebody who never fetched the subscription and never
+  connected gets a letter of their own, offering the setup instructions again
+  rather than advice to check a subscription they have never used. Its text
+  is on the Letters tab beside the usual one, and the test letter there sends
+  either. A client who has been connected but has no fetch on record — set up
+  before 3x-ui began recording them — reads "no record" and is on neither side
+  of the filter. With a 3x-ui that does not record this, nothing changes and
+  nothing new is shown.
+
 - **A notification when Xray stops, and another when it is back.** Xray not
   running is every client disconnected at once, and until now it was said
   only on the dashboard, to whoever had it open. Once a minute the bot asks

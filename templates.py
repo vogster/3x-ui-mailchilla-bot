@@ -335,16 +335,21 @@ def _status_devices(device_limit, devices) -> dict:
     }
 
 
-def get_inactivity_email(email, days) -> Email:
+def get_inactivity_email(email, days, never_set_up: bool = False) -> Email:
     """
     A nudge to a client who has not connected in a while.
+
+    `never_set_up` is for somebody who registered and never fetched the
+    subscription or connected: they get a different text, since "check your
+    subscription with /status" is advice for an app that was working once.
 
     Built through the same "notice" markup as the service replies: the letter
     is a title and a couple of paragraphs, which is exactly that template's
     shape, and a client card carrying its own layout would draw the same box
     twice for no reason.
     """
-    paragraphs = _split(text("inactivity.text", email=email, days=days))
+    key = "inactivity.text_unused" if never_set_up else "inactivity.text"
+    paragraphs = _split(text(key, email=email, days=days))
     # The footer already carries the address when it has one; this is the
     # letter's own mention, the way the registration letter has one besides
     # its footer. An empty address means nothing to write to, so the line is

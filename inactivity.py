@@ -46,9 +46,28 @@ def _last_seen_ms(client: dict, last_online: dict) -> int:
     return seen or int(client.get("createdAt") or 0)
 
 
+def _never_set_up(client: dict, last_online: dict) -> bool:
+    """
+    Whether this client has never got as far as setting the app up: the
+    subscription was never fetched, and the panel has never seen them connect.
+
+    Both, because either alone misleads. The panel started recording fetches
+    at some version, and a client set up before that who has not opened the
+    app since still reads as never having fetched — but was online once. And
+    a panel that does not record fetches at all says nothing either way,
+    which is no ground for telling somebody they never set anything up.
+    """
+    fetched = XuiClient.last_sub_fetch(client)
+    if fetched is None or fetched > 0:
+        return False
+    return not int(last_online.get(client.get("email", "") or "") or 0)
+
+
 def overdue():
     """
-    Who has gone quiet for too long, as (address, days away) pairs.
+    Who has gone quiet for too long, as (address, days away, never set up)
+    triples. The third says which letter they are owed: somebody who never
+    set the app up is not helped by being told to check their subscription.
 
     None when 3x-ui could not say — and that has to stay distinct from an
     empty answer. A missing last-online map read as "nobody has ever
@@ -82,18 +101,19 @@ def overdue():
         seen_ms = _last_seen_ms(client, last_online)
         if not seen_ms or now_ms - seen_ms < threshold_ms:
             continue
-        found.append((bare_email, (now_ms - seen_ms) // 86400000))
+        found.append((bare_email, (now_ms - seen_ms) // 86400000,
+                      _never_set_up(client, last_online)))
     return found
 
 
 def send(found) -> int:
-    """Mails the reminder to each (address, days) pair. Returns how many were sent."""
+    """Mails the reminder to each one overdue() found. Returns how many were sent."""
     sent = 0
-    for bare_email, days in found:
+    for bare_email, days, never_set_up in found:
         try:
             mailer.send_email_reply(
                 bare_email, templates.text("inactivity.subject"),
-                templates.get_inactivity_email(bare_email, days))
+                templates.get_inactivity_email(bare_email, days, never_set_up=never_set_up))
             sent += 1
         except Exception as e:
             logger.error(f"Could not send the inactivity reminder to {bare_email}: {e}")

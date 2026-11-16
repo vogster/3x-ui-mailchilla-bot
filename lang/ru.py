@@ -1030,4 +1030,19 @@ TEXTS = {
     "Xray has stopped": "Xray остановлен",
     "Xray has failed": "Сбой Xray",
     "Xray is not running ({state})": "Xray не работает ({state})",
+    # When a client last fetched the subscription: the card, the list's filter, the reminder
+    "Subscription fetched": "Подписку забирал",
+    "never [subscription fetched]": "ни разу",
+    "Subscription [filter]": "Подписка",
+    "Fetched [filter]": "Забирал",
+    "Never set up [filter]": "Не настроил",
+    "no record [subscription fetched]": "нет записи",
+    "Has been connected, but 3x-ui has no record of a fetch: "
+    "set up before the panel began recording them":
+        "Подключался, но записи о запросе подписки в 3x-ui нет: "
+        "настроен до того, как панель начала их записывать",
+    "Has gone quiet [sample letter]": "Давно не появлялся",
+    "Never set the app up [sample letter]": "Так и не настроил",
+    "Text — for somebody who never set it up": "Текст — для того, кто так и не настроил",
+    "Goes instead of the text above to a client who registered and has never fetched the subscription or connected: the app was never set up, so there is nothing to check. Needs a 3x-ui that records when a subscription was fetched; with one that does not, everybody gets the text above. Substitutions: {service}, {email}, {days}. Every line is a paragraph.": "Уходит вместо текста выше клиенту, который зарегистрировался и ни разу не забирал подписку и не подключался: приложение так и не настроено, проверять нечего. Нужен 3x-ui, который записывает, когда подписку забирали; если он этого не делает, все получают текст выше. Подстановки: {service}, {email}, {days}. Каждая строка — абзац.",
 }

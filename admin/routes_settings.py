@@ -86,9 +86,29 @@ def _text_groups():
             "changed": email_texts.changed_count(g["id"]),
             "can_test": g["id"] in TESTABLE,
             # the broadcast has a test letter in four kinds
-            "kinds": mail_templates.broadcast_kind_options() if g["id"] == "broadcast" else [],
+            "kinds": _sample_kinds(g["id"]),
+            # Which of them the picker opens on; absent, the picker chooses.
+            **({"kind_default": "quiet"} if g["id"] == "inactivity" else {}),
         })
     return groups
+
+
+def _sample_kinds(group_id: str) -> list:
+    """
+    The variants of a letter the "Test letter" button can send, for the picker
+    beside it; empty for a letter that has only the one.
+
+    The reminder has two texts, and the second goes only to somebody who never
+    set the app up — nobody the administrator can become for the sake of
+    looking at it. Without a way to ask for it, a text edited on this page
+    would first be read by the client it was sent to.
+    """
+    if group_id == "broadcast":
+        return mail_templates.broadcast_kind_options()
+    if group_id == "inactivity":
+        return [{"id": "quiet", "label": i18n.t("Has gone quiet [sample letter]"), "color": ""},
+                {"id": "unused", "label": i18n.t("Never set the app up [sample letter]"), "color": ""}]
+    return []
 
 
 def _demo_tariff_name() -> str:
@@ -681,7 +701,10 @@ def settings_texts_test(request: Request, group: str = Form(...), email: str = F
             {"ok": False, "error": i18n.t("That is a placeholder address from .env.example; give a real one")},
             status_code=400)
 
-    if kind not in mail_templates.BROADCAST_KINDS:
+    # A kind the group does not have is the group's usual one: the value comes
+    # from the page, and the page is not to be trusted with what gets sent.
+    known = {option["id"] for option in _sample_kinds(group)}
+    if kind not in known:
         kind = "info"
     sample = _sample_email(group, kind)
     if sample is None:
@@ -738,5 +761,6 @@ def _sample_email(group: str, kind: str = "info"):
     if group == "inactivity":
         days = periodic.period_days("INACTIVITY_REMINDER_DAYS")
         return (mail_templates.text("inactivity.subject"),
-                mail_templates.get_inactivity_email(demo_mail, days))
+                mail_templates.get_inactivity_email(demo_mail, days,
+                                                    never_set_up=(kind == "unused")))
     return None

@@ -177,6 +177,12 @@ GROUPS = [
             ("inactivity.subject", "Subject", LINE, "Substitution: {service}"),
             ("inactivity.text", "Text", TEXT,
              "Substitutions: {service}, {email}, {days}. Every line is a paragraph."),
+            ("inactivity.text_unused", "Text — for somebody who never set it up", TEXT,
+             "Goes instead of the text above to a client who registered and has never "
+             "fetched the subscription or connected: the app was never set up, so there "
+             "is nothing to check. Needs a 3x-ui that records when a subscription was "
+             "fetched; with one that does not, everybody gets the text above. "
+             "Substitutions: {service}, {email}, {days}. Every line is a paragraph."),
             ("inactivity.support", "The support line", LINE,
              "Substitution: {support}. Shown only when a support address is set on "
              "the General tab."),
@@ -319,6 +325,12 @@ DEFAULTS_BY_LANG = {
             "You haven't connected to {service} in {days} days. If something is not "
             "working, send **/status** to this address to check your subscription, "
             "or **/help** for the setup instructions.",
+        "inactivity.text_unused":
+            "Hello!\n"
+            "You registered with {service} {days} days ago, but it looks as though the "
+            "app was never set up: the subscription has not been used once.\n"
+            "Send **/help** to this address and we will send the link and the setup "
+            "instructions again.",
         "inactivity.support": "You can also just write to us: **{support}**.",
 
         "help.subject": "{service} help",
@@ -458,6 +470,12 @@ DEFAULTS_BY_LANG = {
             "Вы не подключались к {service} уже {days} дней. Если что-то не работает, "
             "отправьте на этот адрес письмо с **/status** — проверить подписку, "
             "или **/help** — получить инструкцию по настройке.",
+        "inactivity.text_unused":
+            "Здравствуйте!\n"
+            "Вы зарегистрировались в {service} {days} дней назад, но, похоже, так и не "
+            "настроили приложение: подпиской ни разу не воспользовались.\n"
+            "Отправьте на этот адрес письмо с **/help** — мы пришлём ссылку и инструкцию "
+            "по настройке ещё раз.",
         "inactivity.support": "Также можно просто написать нам: **{support}**.",
 
         "help.subject": "Справка {service}",

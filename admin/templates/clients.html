@@ -92,6 +92,18 @@
             </select>
         </div>
         {% endif %}
+        {% if sub_fetch_known %}
+        {# Who has set the app up and who never got that far. Drawn only when
+           the panel says: without the field every row would be "never". #}
+        <div class="filter-group">
+            <span class="lbl">{{ t("Subscription [filter]") }}</span>
+            <div class="segmented" data-filter="sub">
+                <button type="button" class="on" data-value="">{{ t("All") }}</button>
+                <button type="button" data-value="1">{{ t("Fetched [filter]") }}</button>
+                <button type="button" data-value="0">{{ t("Never set up [filter]") }}</button>
+            </div>
+        </div>
+        {% endif %}
         <div class="filter-group">
             <span class="lbl">{{ t("Traffic, GB") }}</span>
             <input type="number" id="f-gb-min" min="0" step="1" placeholder="{{ t('from') }}">
@@ -127,6 +139,7 @@
                     data-enabled="{{ 1 if c.enable else 0 }}"
                     data-hasmail="{{ 1 if c.bare_email else 0 }}"
                     data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
+                    data-sub="{{ c.sub_fetch_state }}"
                     data-remark="{{ c.remark }}">
                     <td>
                         <a href="/clients/{{ c.uuid }}" class="row-link">
@@ -216,11 +229,12 @@
     // visits: sorting only changes the order, while a filter hides clients, and
     // coming back to wonder where half the list went is unpleasant.
     var clientFilters = (function () {
-        var state = { status: "", mail: "", online: "", tariff: null, from: null, to: null, gbMin: null, gbMax: null };
+        var state = { status: "", mail: "", online: "", sub: "", tariff: null, from: null, to: null, gbMin: null, gbMax: null };
         var listeners = [];
 
         function active() {
             return state.status !== "" || state.mail !== "" || state.online !== "" ||
+                   state.sub !== "" ||
                    state.tariff !== null ||
                    state.from !== null || state.to !== null ||
                    state.gbMin !== null || state.gbMax !== null;
@@ -230,6 +244,8 @@
             if (state.status !== "" && row.dataset.enabled !== state.status) return false;
             if (state.mail !== "" && row.dataset.hasmail !== state.mail) return false;
             if (state.online !== "" && row.dataset.online !== state.online) return false;
+            // A row the panel says nothing about matches neither answer.
+            if (state.sub !== "" && row.dataset.sub !== state.sub) return false;
             // null means "any"; a string — including the empty one, which is
             // "no tariff at all" — is what the row has to carry.
             if (state.tariff !== null && (row.dataset.tariff || "") !== state.tariff) return false;

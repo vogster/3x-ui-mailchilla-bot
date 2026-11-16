@@ -577,7 +577,8 @@
                     <div style="display:flex; gap:8px; margin-left:auto; align-items:center;">
                         {% if g.kinds %}
                         <div class="mail-kind" style="width: 190px;">
-                            {% with kinds = g.kinds, picker_name = "test_kind" %}
+                            {% with kinds = g.kinds, picker_name = "test_kind",
+                                    picker_value = g.kind_default %}
                                 {% include "_kind_picker.html" %}
                             {% endwith %}
                         </div>
@@ -824,7 +825,7 @@
                 b.disabled = true;
                 var was = b.textContent;
                 b.textContent = {{ t("Sending…")|tojson }};
-                // the broadcast has a kind picker beside its button
+                // a letter that comes in more than one kind has a picker beside its button
                 var picker = b.parentNode.querySelector(".mail-kind input[type=hidden]");
                 var body = "group=" + encodeURIComponent(b.dataset.group) +
                            "&email=" + encodeURIComponent(to);

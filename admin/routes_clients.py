@@ -147,6 +147,9 @@ def clients_list(request: Request, q: str = ""):
         "online_known": online is not None,
         # Whether the last-online column has anything to stand on.
         "last_seen_known": last_online is not None,
+        # Whether the panel says when each subscription was last fetched: the
+        # filter for it is offered only then.
+        "sub_fetch_known": any(row["sub_fetch_known"] for row in rows),
         # The tariffs a client could be on, for the filter. Taken from the
         # tariffs themselves rather than from the rows, so a tariff nobody is
         # on yet is still offered — and a group left behind by a deleted tariff

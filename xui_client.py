@@ -572,6 +572,26 @@ class XuiClient:
     # ----------------------------------------------------------------------
 
     @staticmethod
+    def last_sub_fetch(client_obj: dict):
+        """
+        When the client's app last fetched the subscription, in milliseconds —
+        0 for never — or None when the panel does not say.
+
+        3x-ui keeps it with the client's traffic counters, and clients/list
+        hands those back inside each row, so this costs no request. None and 0
+        are different answers, as with device_limit: 0 is a client who has
+        never once asked for the subscription, and a panel from before the
+        field existed has no such key — every client of it would otherwise
+        read as somebody who never set the app up.
+        """
+        traffic = (client_obj or {}).get("traffic")
+        if not isinstance(traffic, dict) or "lastSubFetch" not in traffic:
+            return None
+        # Through epoch_ms, like every other moment the panel reports: one
+        # build writes seconds and another milliseconds.
+        return epoch_ms(traffic.get("lastSubFetch"))
+
+    @staticmethod
     def device_limit(client_obj: dict):
         """
         A client's device limit as the panel holds it, or None when the panel
