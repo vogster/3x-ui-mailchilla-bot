@@ -343,5 +343,203 @@ class ThePage(_Sending, PanelCase):
         self.assertNotIn('class="odot on nav-dot"', self.page("/logs"))
 
 
+class AskedForByLetter(_Sending, unittest.TestCase):
+    """
+    /broadcast by mail ran inside the poll loop. A broadcast takes minutes, and
+    for all of them the bot read no mailbox: whoever wrote a code word in the
+    meantime waited for the last of somebody else's letters to leave. And who
+    it went to was asked after the letter had been marked read — so with the
+    panel away it went to nobody, and was reported to the administrator as
+    done.
+    """
+
+    class Panel:
+        def __init__(self, clients):
+            self.clients = clients
+
+        def get_all_clients(self):
+            return self.clients
+
+        @staticmethod
+        def extract_bare_email(remark):
+            return str(remark or "").strip().lower()
+
+    class Mailbox:
+        def __init__(self):
+            self.stored = []
+
+        def store(self, num, command, flags):
+            self.stored.append(num)
+            return "OK", [b""]
+
+    def setUp(self):
+        import config
+        broadcasts._reset()
+        self.stub_sending()
+        self.config = config
+        self.saved_admin = config.ADMIN_EMAIL
+        config.ADMIN_EMAIL = "admin@example.com"
+        self.real = (email_bot.get_shared_client, email_bot._in_background)
+        self.started = []
+        email_bot._in_background = lambda work, *args: self.started.append((work, args))
+        self.mailbox = self.Mailbox()
+        self.panel([{"email": "a@example.com", "enable": True},
+                    {"email": "b@example.com", "enable": True},
+                    {"email": "off@example.com", "enable": False}])
+
+    def tearDown(self):
+        email_bot.get_shared_client, email_bot._in_background = self.real
+        self.config.ADMIN_EMAIL = self.saved_admin
+        self.restore_sending()
+        broadcasts._reset()
+
+    def panel(self, clients):
+        email_bot.get_shared_client = lambda: self.Panel(clients)
+
+    def letter(self, subject="/broadcast Maintenance tonight", body=""):
+        return email_bot.process_message(7, "admin@example.com", subject, body, self.mailbox,
+                                         authenticated=True)
+
+    def run_what_was_started(self):
+        for work, args in self.started:
+            work(*args)
+
+    def test_the_loop_gets_its_letter_back_before_anything_is_sent(self):
+        self.letter()
+        self.assertEqual(self.written_to, [])
+        self.assertEqual(len(self.started), 1)
+        # Read already: a broadcast must not be picked up a second time.
+        self.assertEqual(self.mailbox.stored, [7])
+
+    def test_what_was_started_sends_to_the_active_clients_and_reports_back(self):
+        self.letter()
+        self.run_what_was_started()
+        self.assertEqual(self.written_to, ["a@example.com", "b@example.com", "admin@example.com"])
+        (job,) = broadcasts.recent()
+        self.assertEqual((job["source"], job["total"], job["sent"], job["done"]),
+                         (broadcasts.MAIL, 2, 2, True))
+
+    def test_with_the_panel_away_the_letter_waits_and_nothing_goes_out(self):
+        from xui_client import XuiUnavailable
+        self.panel(None)
+        with self.assertRaises(XuiUnavailable):
+            self.letter()
+        # Unread, so it is taken again when the panel is back — and not a
+        # broadcast to nobody, reported as done.
+        self.assertEqual(self.mailbox.stored, [])
+        self.assertEqual(self.started, [])
+        self.assertEqual(self.written_to, [])
+        self.assertEqual(broadcasts.recent(), [])
+
+    def test_through_the_loops_own_wrapper_that_is_a_letter_put_off(self):
+        import inbox
+        self.panel(None)
+        with self.assertRaises(inbox.TryLater):
+            email_bot._handle_letter(7, "admin@example.com", "/broadcast Tonight", "",
+                                     self.mailbox, authenticated=True)
+        self.assertEqual(self.mailbox.stored, [])
+
+    def test_a_panel_with_nobody_active_is_said_so(self):
+        self.panel([{"email": "off@example.com", "enable": False}])
+        self.letter()
+        self.run_what_was_started()
+        # Only the report, saying nobody was written to.
+        self.assertEqual(self.written_to, ["admin@example.com"])
+        self.assertEqual(broadcasts.recent(), [])
+
+    def test_a_broadcast_with_nothing_in_it_starts_nothing(self):
+        self.letter(subject="/broadcast", body="/broadcast")
+        self.assertEqual(self.started, [])
+        self.assertEqual(self.written_to, ["admin@example.com"])
+        self.assertEqual(self.mailbox.stored, [7])
+
+    def test_one_that_breaks_off_still_reports_and_raises_nothing(self):
+        # There is no caller left to hear it: only a thread that would die
+        # with a traceback, and an administrator never told how it went.
+        real = email_bot.handle_broadcast
+
+        def breaks_after_one(content, subject=None, emails=None, job_id=None):
+            self.written_to.append(emails[0])
+            broadcasts.progress(job_id, 1, 0)
+            raise RuntimeError("the disk is full")
+
+        email_bot.handle_broadcast = breaks_after_one
+        reports = []
+        email_bot.send_email_reply = lambda to, subject, message, **kw: reports.append((to, message))
+        try:
+            self.letter()
+            self.run_what_was_started()
+        finally:
+            email_bot.handle_broadcast = real
+        self.assertEqual(self.written_to, ["a@example.com"])
+        # Told — and not that it finished: that it broke off, and how far it got.
+        ((to, message),) = reports
+        self.assertEqual(to, "admin@example.com")
+        self.assertIn("1 of 2", message.text)
+        self.assertIn("stopped before it was finished", message.text)
+        (job,) = broadcasts.recent()
+        self.assertTrue(job["done"])
+        self.assertIn("the disk is full", job["error"])
+
+    def test_the_figure_reported_is_this_broadcasts_own(self):
+        # The same words were sent an hour ago, to everybody. This time the
+        # sending breaks before a single letter: what is reported must not be
+        # the earlier broadcast's count, found by its text.
+        earlier = broadcasts.start("Maintenance", "Maintenance tonight", 40)
+        broadcasts.progress(earlier, 40, 0)
+        broadcasts.finish(earlier)
+        real = email_bot.handle_broadcast
+
+        def breaks_at_once(content, subject=None, emails=None, job_id=None):
+            raise RuntimeError("the template would not render")
+
+        email_bot.handle_broadcast = breaks_at_once
+        reports = []
+        email_bot.send_email_reply = lambda to, subject, message, **kw: reports.append(message.text)
+        try:
+            self.letter()
+            self.run_what_was_started()
+        finally:
+            email_bot.handle_broadcast = real
+        (report,) = reports
+        self.assertIn("0 of 2", report)
+        self.assertNotIn("40", report)
+        self.assertEqual(broadcasts.running(), 0)
+
+    def test_a_report_that_cannot_be_sent_raises_nothing_either(self):
+        def refuse(to_email, subject, message, **kwargs):
+            if to_email == "admin@example.com":
+                raise RuntimeError("refused")
+            self.written_to.append(to_email)
+
+        email_bot.send_email_reply = refuse
+        self.letter()
+        self.run_what_was_started()
+        self.assertEqual(self.written_to, ["a@example.com", "b@example.com"])
+
+    def test_on_a_thread_of_its_own_the_loop_is_free_while_letters_still_go_out(self):
+        import threading
+        email_bot._in_background = self.real[1]
+        gate, reached = threading.Event(), threading.Event()
+
+        def slow(to_email, subject, message, **kwargs):
+            reached.set()
+            self.assertTrue(gate.wait(5), "the broadcast was never let go")
+            self.written_to.append(to_email)
+
+        email_bot.send_email_reply = slow
+        self.letter()
+        # process_message is back, and the first letter has not left yet.
+        self.assertTrue(reached.wait(5))
+        self.assertEqual(self.written_to, [])
+        self.assertEqual(broadcasts.running(), 1)
+        gate.set()
+        for thread in threading.enumerate():
+            if thread.name == "broadcast-by-mail":
+                thread.join(5)
+        self.assertEqual(self.written_to, ["a@example.com", "b@example.com", "admin@example.com"])
+        self.assertEqual(broadcasts.running(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

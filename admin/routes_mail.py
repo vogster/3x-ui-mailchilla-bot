@@ -218,7 +218,7 @@ def mail_list(request: Request, account_key: str, folder: str = "inbox", page: i
             row["client"] = client_row(client) if client else None
 
     return templates.TemplateResponse(
-        "mail.html",
+        request, "mail.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -267,7 +267,7 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
         if not isinstance(e, (mailfolders.MailboxNotSetUp, mailfolders.FolderMissing)):
             logger.warning(f"Could not open letter {uid} in {account_key}/{folder} for the panel: {e}")
         context["error"] = _problem(e, folder)
-        return templates.TemplateResponse("mail_letter.html", context)
+        return templates.TemplateResponse(request, "mail_letter.html", context)
     if not found:
         raise HTTPException(status_code=404, detail=i18n.t("The letter was not found"))
 
@@ -276,7 +276,7 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
         letter = mailfolders.parse_letter(raw, remote_images=images == "1")
     except mailfolders.LetterUnreadable as e:
         context["error"] = _problem(e, folder)
-        return templates.TemplateResponse("mail_letter.html", context)
+        return templates.TemplateResponse(request, "mail_letter.html", context)
     person, outgoing = mailfolders.correspondent(
         letter["from"], letter["to"] + letter["cc"], account.own_addresses())
 
@@ -309,7 +309,7 @@ def mail_letter(request: Request, account_key: str, folder: str, uid: str, image
         "client": _client_panel(client_obj) if client_obj else None,
         "clients_known": by_address is not None,
     })
-    return templates.TemplateResponse("mail_letter.html", context)
+    return templates.TemplateResponse(request, "mail_letter.html", context)
 
 
 @router.post("/mail/{account_key}/{folder}/{uid}/reply")

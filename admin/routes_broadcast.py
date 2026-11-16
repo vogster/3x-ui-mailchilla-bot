@@ -130,7 +130,7 @@ def broadcast_form(request: Request, error: str = ""):
     recipients.sort(key=lambda x: x["bare_email"].lower())
 
     return templates.TemplateResponse(
-        "broadcast.html",
+        request, "broadcast.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -166,7 +166,7 @@ def broadcast_jobs(request: Request):
     if require_auth(request):
         return Response(status_code=401)
     response = templates.TemplateResponse(
-        "_broadcast_jobs.html", {"request": request, **_jobs_context()})
+        request, "_broadcast_jobs.html", {"request": request, **_jobs_context()})
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -225,7 +225,7 @@ def broadcast_status(request: Request, job_id: str):
     job = _view(job)
 
     return templates.TemplateResponse(
-        "broadcast_result.html",
+        request, "broadcast_result.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,

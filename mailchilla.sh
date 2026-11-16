@@ -155,6 +155,10 @@ declare -A MSG=(
 [ru.u_restart]="Перезапускаем..."
 [en.u_ok]="Updated to {0}."
 [ru.u_ok]="Обновлено до {0}."
+[en.u_deps_failed]="The new version's dependencies could not be installed. This installation runs Python {0}; the new version may need a newer one."
+[ru.u_deps_failed]="Зависимости новой версии не удалось установить. Эта установка работает на Python {0}; новой версии может требоваться более новый."
+[en.u_deps_rolled]="Put {0} back. The service was not restarted and nothing else was changed."
+[ru.u_deps_rolled]="Возвращена версия {0}. Служба не перезапускалась, больше ничего не изменено."
 [en.u_rollback]="The panel did not come up. Rolling back to {0}..."
 [ru.u_rollback]="Панель не поднялась. Откатываемся на {0}..."
 [en.u_rolled]="Rolled back. Look at the log: mailchilla log"
@@ -817,7 +821,32 @@ cmd_update() {
     git_repo checkout --quiet --force "$latest"
 
     dim "$(t u_deps)"
-    "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null
+    # Checked, not left to set -e. A release whose dependencies do not install
+    # here - one that needs a newer Python, above all - used to end the script
+    # on this line: the new code checked out, the old packages under it, the
+    # service not restarted and still running what it had in memory, and
+    # nothing said about any of it. The service has not been touched yet, so
+    # putting the code back is the whole of the way out.
+    local pip_log
+    pip_log="$(mktemp)"
+    if ! "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" \
+            >/dev/null 2>"$pip_log"; then
+        printf '\n'
+        warn "$(t u_deps_failed "$("$INSTALL_DIR/venv/bin/python" -c \
+            'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo '?')")"
+        tail -n 4 "$pip_log" | sed 's/^/      /'
+        rm -f "$pip_log"
+        git_repo checkout --quiet --force "$current"
+        # In case some of the new packages did go in before the one that failed.
+        "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" \
+            >/dev/null 2>&1 || true
+        chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        lock_state_files
+        bad "$(t u_deps_rolled "$current")"
+        printf '\n'
+        return 1
+    fi
+    rm -f "$pip_log"
 
     install -m 755 "$INSTALL_DIR/mailchilla.sh" /usr/local/bin/mailchilla 2>/dev/null || true
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"

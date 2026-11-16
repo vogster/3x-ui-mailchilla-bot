@@ -11,6 +11,7 @@ what arrives here is already an Email(html, text).
 """
 import logging
 import smtplib
+import time
 from email.charset import QP, Charset
 from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from email.mime.image import MIMEImage
@@ -163,6 +164,157 @@ def open_smtp(server_host: str, port: int, timeout: int = 10):
     server.starttls()
     return server
 
+def _connection_lost(error: Exception) -> bool:
+    """
+    Whether a failure to send means the connection is gone, as against the
+    server having said no to this one letter.
+
+    The distinction is the whole of SmtpSession's judgement: a lost connection
+    is worth one fresh attempt at the same letter, and a refused recipient is
+    not — the answer would be the same and the session is still good. Every
+    smtplib exception is an OSError, so the order of the questions matters.
+    421 is the server saying it is closing the channel, whichever command it
+    was answering at the time.
+    """
+    if isinstance(error, smtplib.SMTPServerDisconnected):
+        return True
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        return any(code == 421 for code, _ in (error.recipients or {}).values())
+    if isinstance(error, smtplib.SMTPResponseException):
+        return error.smtp_code == 421
+    if isinstance(error, smtplib.SMTPException):
+        return False
+    # What is left of OSError: a reset, a timeout, a TLS failure.
+    return isinstance(error, OSError)
+
+
+class SmtpSession:
+    """
+    One sign-in to the SMTP server for a run of letters — a broadcast.
+
+    Each letter used to open a connection, sign in, send and hang up. For a
+    registration that is one letter and costs nothing. For a broadcast it was
+    a sign-in for every recipient, which is slow, and which a mail server may
+    count against the account: several limit how often one may sign in, and a
+    broadcast to a hundred clients is a hundred sign-ins in a minute.
+
+    It is handed to send_email_reply, which hands it to send_email_via; the
+    connection is opened there, on the first letter, with whatever credentials
+    that call was given. So nothing here knows about config, and a stand-in
+    for send_email_via — the stand keeps letters in a folder — never causes a
+    connection at all.
+
+    Used as a context manager, so the connection is closed however the run
+    ends. Not safe to share between threads: one broadcast, one session.
+    """
+
+    # After this many letters the connection is replaced before the server
+    # does it for us. Servers cap how much one connection may send, each at a
+    # figure of its own; this is under the ones that are published.
+    LETTERS_PER_CONNECTION = 50
+    # After a connection could not be opened, how long before another is
+    # tried. Until then every letter fails at once with the same error. A
+    # server that is down costs ten seconds a try, and a broadcast to two
+    # hundred used to mean two hundred tries — over half an hour of a thread
+    # doing nothing, to learn what the first try said.
+    RECONNECT_PAUSE = 30
+
+    def __init__(self):
+        self._server = None
+        self._sent = 0
+        # How many connections the run has taken; one, unless something broke
+        # or the run was a long one. For the log and the tests.
+        self.connections = 0
+        # The server would not take the login. Not asked again for the rest of
+        # the run: the point of one sign-in a broadcast is not to hammer the
+        # server with them, and a wrong password hammered is how an account
+        # gets locked.
+        self._refused = None
+        # The last failure to connect, and when another try is allowed.
+        self._unreachable = None
+        self._retry_at = 0.0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+    def close(self):
+        """Says goodbye, if there is anybody to say it to."""
+        server, self._server = self._server, None
+        if server is None:
+            return
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+    def _abandon(self):
+        """Drops a connection that is no longer there, without the goodbye it cannot hear."""
+        server, self._server = self._server, None
+        if server is None:
+            return
+        try:
+            server.close()
+        except Exception:
+            pass
+
+    def deliver(self, connect, envelope: str, to_email: str, text: str):
+        """
+        Sends one letter over the connection this session holds, opening it
+        with `connect()` when there is none.
+
+        A connection that turns out to be gone is replaced once and the letter
+        sent again: a broadcast takes minutes, and a server that hangs up half
+        way through is ordinary. Once, because a second failure is not the
+        connection's fault any more. The cost is that a letter the server had
+        taken before the line dropped may arrive twice — one letter, against
+        the rest of the broadcast not arriving at all.
+        """
+        if self._server is not None and self._sent >= self.LETTERS_PER_CONNECTION:
+            self.close()
+        for attempt in (1, 2):
+            if self._server is None:
+                # A connection that cannot be opened is not tried a second
+                # time for the same letter: the second try at sending exists
+                # for a line that dropped, and this one never held.
+                self._open(connect)
+            try:
+                self._server.sendmail(envelope, [to_email], text)
+                self._sent += 1
+                return
+            except Exception as e:
+                lost = _connection_lost(e)
+                if lost:
+                    self._abandon()
+                if not lost or attempt == 2:
+                    raise
+                logger.warning(f"The SMTP connection was lost in the middle of a run of letters "
+                               f"({type(e).__name__}: {e}); connecting again and sending the "
+                               f"letter for {to_email} once more.")
+
+    def _open(self, connect):
+        """Opens the connection, or raises what the last attempt to did, without trying."""
+        if self._refused is not None:
+            raise self._refused
+        if self._unreachable is not None and time.monotonic() < self._retry_at:
+            raise self._unreachable
+        try:
+            self._server = connect()
+        except smtplib.SMTPAuthenticationError as e:
+            self._refused = e
+            raise
+        except Exception as e:
+            self._unreachable = e
+            self._retry_at = time.monotonic() + self.RECONNECT_PAUSE
+            raise
+        self._unreachable = None
+        self._sent = 0
+        self.connections += 1
+
+
 def probe_smtp(server_host: str, port: int, user: str, password: str):
     """Checks that SMTP accepts the connection and the login. Sends nothing."""
     server = open_smtp(server_host, port)
@@ -176,7 +328,8 @@ def probe_smtp(server_host: str, port: int, user: str, password: str):
 
 def send_email_via(server_host: str, port: int, user: str, password: str,
                    to_email: str, subject: str, message, service_name: str = None,
-                   extra_headers: dict = None, automatic: bool = True):
+                   extra_headers: dict = None, automatic: bool = True,
+                   session: SmtpSession = None):
     """
     Sends a letter with the parameters given, bypassing config.
 
@@ -185,6 +338,9 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
     duration — the bot is alive in its own thread alongside. The Support
     mailbox's replies use it for the same reason: a second identity, sent
     without ever touching config.SMTP_*, which stays the bot's alone.
+
+    :param session: an SmtpSession to send over, for a run of letters. Without
+        one the letter gets a connection of its own, opened and closed here.
     """
     msg = build_message(to_email, subject, message,
                         smtp_user=user, service_name=service_name, extra_headers=extra_headers,
@@ -192,9 +348,26 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
     # The envelope carries the plain address: with a display name the server
     # would refuse it.
     _, envelope = parseaddr(user or "")
-    server = open_smtp(server_host, port)
+
+    def signed_in():
+        server = open_smtp(server_host, port)
+        try:
+            server.login(user, password)
+        except Exception:
+            # Not left half open for the server to time out on.
+            try:
+                server.close()
+            except Exception:
+                pass
+            raise
+        return server
+
+    if session is not None:
+        session.deliver(signed_in, envelope or user, to_email, msg.as_string())
+        return msg
+
+    server = signed_in()
     try:
-        server.login(user, password)
         server.sendmail(envelope or user, [to_email], msg.as_string())
     finally:
         try:
@@ -203,7 +376,8 @@ def send_email_via(server_host: str, port: int, user: str, password: str,
             pass
     return msg
 
-def send_email_reply(to_email: str, subject: str, message, keep_copy: bool = True):
+def send_email_reply(to_email: str, subject: str, message, keep_copy: bool = True,
+                     session: SmtpSession = None):
     """
     Sends a letter over SMTP using the settings from config.
 
@@ -212,11 +386,15 @@ def send_email_reply(to_email: str, subject: str, message, keep_copy: bool = Tru
         share this function because they want the same logging and error
         handling as a real letter, but they are not correspondence, and the
         Sent folder in the Mail panel should not fill up with them.
+    :param session: an SmtpSession, when this letter is one of a run: see
+        SmtpSession. Passed on only when there is one, so that whatever stands
+        in for send_email_via need not know the word.
     """
     try:
         msg = send_email_via(config.SMTP_SERVER, config.SMTP_PORT,
                              config.SMTP_USER, config.SMTP_PASSWORD,
-                             to_email, subject, message)
+                             to_email, subject, message,
+                             **({"session": session} if session is not None else {}))
         logger.info(f"Letter sent to {to_email}. Subject: {subject}")
     except Exception as e:
         logger.error(f"Could not send the letter to {to_email}. Error: {e}")

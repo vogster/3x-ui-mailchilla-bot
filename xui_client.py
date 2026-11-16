@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 import requests
 import uuid
 from datetime import datetime, timedelta
@@ -41,7 +42,28 @@ class XuiUnavailable(Exception):
     during an outage a registered client asking for their status was told they
     had never registered. Raised only where the caller asks for it (see
     find_client_by_email), since the panel's pages are content with a None.
+
+    `denied` tells the two kinds of "could not ask" apart, because they end
+    differently. A panel that does not answer comes back by itself. One that
+    refuses the bot's token or password never will: somebody has to change a
+    setting, and has to be told so in those words.
     """
+
+    def __init__(self, message: str = "", denied: bool = False):
+        super().__init__(message)
+        self.denied = denied
+
+
+class XuiDenied(Exception):
+    """3x-ui answered, and what it answered is that it will not let the bot in."""
+
+
+# How long after a request for the client list has failed the next lookup is
+# answered without asking again. A dead panel costs ten seconds a request, and
+# a mailbox with twenty unread letters used to mean twenty of them in a row;
+# the first failure now speaks for the rest of that cycle. Short enough that
+# the following cycle asks for itself.
+OUTAGE_HOLD = 10
 
 
 def get_shared_client():
@@ -68,6 +90,15 @@ class XuiClient:
             self.is_logged_in = True
         else:
             self.is_logged_in = False
+        # Why the client list could not be had the last time it was asked for,
+        # as ("denied" | "unreachable" | "error", detail), and until when that
+        # answer stands in for asking again. See OUTAGE_HOLD.
+        self.last_failure = None
+        self._hold_until = 0.0
+        # How the last sign-in that failed did so: "refused" when the panel
+        # itself said no, "unreachable" when it could not be asked, "" when it
+        # answered something else.
+        self._login_failure = ""
 
     def login(self):
         """Signs in to the 3x-ui panel and keeps the session cookies."""
@@ -79,6 +110,7 @@ class XuiClient:
             "username": self.username,
             "password": self.password
         }
+        self._login_failure = ""
         try:
             response = self.session.post(url, data=payload, timeout=10)
             if response.status_code == 200:
@@ -88,9 +120,18 @@ class XuiClient:
                     logger.info("Signed in to 3x-ui.")
                     return True
                 else:
+                    # The panel was there and said no, in its own words: a
+                    # wrong login or password, which no waiting puts right.
+                    # Only this counts as refused. A bare 403 may as well be a
+                    # proxy or a rate limiter in front of the panel, and that
+                    # does pass.
+                    self._login_failure = "refused"
                     logger.error(f"Sign-in error from 3x-ui: {resp_json.get('msg')}")
             else:
                 logger.error(f"Could not sign in to 3x-ui. Status: {response.status_code}, body: {response.text}")
+        except requests.RequestException as e:
+            self._login_failure = "unreachable"
+            logger.error(f"Exception while signing in to 3x-ui: {e}")
         except Exception as e:
             logger.error(f"Exception while signing in to 3x-ui: {e}")
         
@@ -128,27 +169,50 @@ class XuiClient:
     def _request_locked(self, method, endpoint, **kwargs):
         if not self.is_logged_in:
             if not self.login():
-                raise Exception("No connection to the 3x-ui API (authorisation failed)")
+                raise self._sign_in_failed("No connection to the 3x-ui API (authorisation failed)")
 
         url = f"{self.base_url}{endpoint}"
         try:
             response = self.session.request(method, url, timeout=10, **kwargs)
             if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
                 if self.api_token:
-                    raise Exception(f"Access denied (status={response.status_code}) with the API token. Check XUI_API_TOKEN.")
+                    raise XuiDenied(f"Access denied (status={response.status_code}) with the API token. Check XUI_API_TOKEN.")
                 
                 logger.info("The 3x-ui session has expired. Signing in again...")
                 self.is_logged_in = False
                 if self.login():
                     url = f"{self.base_url}{endpoint}"
                     response = self.session.request(method, url, timeout=10, **kwargs)
+                    if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
+                        # Signed in a moment ago and turned away all the same:
+                        # not a session that lapsed, and not something that
+                        # passes. A panel that has started asking cookie
+                        # sessions for a CSRF token looks like this.
+                        raise XuiDenied(f"3x-ui turned the request away (status={response.status_code}) "
+                                        f"straight after a successful sign-in. An API token "
+                                        f"(XUI_API_TOKEN) is the way round.")
                 else:
-                    raise Exception("Signing in to 3x-ui again failed.")
+                    raise self._sign_in_failed("Signing in to 3x-ui again failed.")
             
+            if response.status_code == 200:
+                # The panel answered, so whatever was remembered about it not
+                # answering is out of date. This is what lets the read-back
+                # after creating a client go through: the creation itself was
+                # the news that the panel is there.
+                self._hold_until = 0.0
             return response
         except requests.RequestException as e:
             logger.error(f"Network error on a request to 3x-ui ({endpoint}): {e}")
             raise
+
+    def _sign_in_failed(self, otherwise: str) -> Exception:
+        """The exception for a sign-in that did not work, by how it did not."""
+        if self._login_failure == "refused":
+            return XuiDenied("3x-ui did not accept XUI_USERNAME and XUI_PASSWORD")
+        if self._login_failure == "unreachable":
+            # In the family the callers file under "does not answer".
+            return requests.ConnectionError("3x-ui could not be reached to sign in")
+        return Exception(otherwise)
 
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
                    inbound_ids: list = None, comment: str = "", flow: str = None,
@@ -297,16 +361,39 @@ class XuiClient:
                     # with no clients yet would then look like one that is
                     # down, and find_client_by_email(strict=True) would put
                     # every first registration off for ever.
+                    self.last_failure = None
+                    self._hold_until = 0.0
                     return resp_json.get("obj") or []
                 else:
                     logger.error(f"The panel returned an error while fetching the client list: {resp_json.get('msg')}")
+                    self._note_failure("error", str(resp_json.get("msg") or "the panel reported an error"))
             else:
                 logger.error(f"Unexpected 3x-ui status while fetching the client list: {response.status_code}")
+                self._note_failure("error", f"status {response.status_code}")
 
+        except XuiDenied as e:
+            logger.error(f"3x-ui refused the request for the client list: {e}")
+            self._note_failure("denied", str(e))
+        except requests.RequestException as e:
+            logger.error(f"Exception while fetching the client list: {e}")
+            self._note_failure("unreachable", type(e).__name__)
         except Exception as e:
             logger.error(f"Exception while fetching the client list: {e}")
+            self._note_failure("error", str(e))
 
         return None
+
+    def _note_failure(self, kind: str, detail: str):
+        """Remembers why the client list could not be had, and for how long that stands."""
+        self.last_failure = (kind, detail)
+        self._hold_until = time.time() + OUTAGE_HOLD
+
+    def unavailable(self) -> XuiUnavailable:
+        """XuiUnavailable for the failure last noted, in words fit for a log."""
+        kind, detail = self.last_failure or ("unreachable", "")
+        if kind == "denied":
+            return XuiUnavailable(f"3x-ui refuses the bot's credentials: {detail}", denied=True)
+        return XuiUnavailable("3x-ui does not answer" + (f" ({detail})" if detail else ""))
 
     def get_inbounds(self) -> list:
         """
@@ -684,6 +771,14 @@ class XuiClient:
         candidate = (addr or str(remark)).strip().lower()
         return candidate if "@" in candidate else ""
 
+    def recently_failed(self) -> bool:
+        """
+        Whether the client list was asked for a moment ago and could not be
+        had. For a caller that would rather go without the answer than wait
+        ten seconds to be told the same thing — the help letter does.
+        """
+        return time.time() < self._hold_until
+
     def find_client_by_email(self, bare_email: str, strict: bool = False) -> dict or None:
         """
         Finds a client by bare email, scanning the list of all clients.
@@ -699,9 +794,19 @@ class XuiClient:
             return None
         target = bare_email.strip().lower()
 
+        # Asked a moment ago and got nothing: the answer has not changed since,
+        # and asking again would cost each letter of this cycle a timeout.
+        #
+        # Only for a strict lookup. There "could not ask" is said as itself,
+        # and saying it a little too long costs a letter one more cycle. A
+        # plain lookup answers None for it — the same None as "no such
+        # client" — and the panel's pages act on that: held back, the page
+        # that had just created a client read it back as never created.
+        if strict and self.recently_failed():
+            raise self.unavailable()
         clients = self.get_all_clients()
         if clients is None and strict:
-            raise XuiUnavailable("3x-ui did not hand over the client list")
+            raise self.unavailable()
         if not clients:
             return None
 

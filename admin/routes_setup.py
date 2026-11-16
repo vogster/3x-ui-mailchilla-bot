@@ -105,7 +105,7 @@ def setup_page(request: Request, back: str = "/"):
         inbound["selected"] = inbound["id"] in selected
 
     words = [c["word"] for c in tariffs.codes_for(first["id"])]
-    return templates.TemplateResponse("setup.html", {
+    return templates.TemplateResponse(request, "setup.html", {
         "request": request,
         "service_name": config.SERVICE_NAME,
         "back": _safe_path(back),

@@ -82,7 +82,7 @@ def _page(request: Request, error: str = "", done: str = "", status_code: int = 
             secret=totp.grouped(secret),
             account=config.ADMIN_PANEL_USER,
         )
-    response = templates.TemplateResponse("totp.html", context, status_code=status_code)
+    response = templates.TemplateResponse(request, "totp.html", context, status_code=status_code)
     # The page holds the secret while it is being set up; it is not for a
     # cache, nor for the back button of whoever sits down next.
     response.headers["Cache-Control"] = "no-store"

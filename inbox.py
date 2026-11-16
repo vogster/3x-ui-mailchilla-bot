@@ -183,9 +183,23 @@ class TryLater(Exception):
     against the letter and after MAX_ATTEMPTS it is marked read and given up on
     — right for a letter that trips the code, and exactly wrong for an outage,
     which would otherwise eat every registration that arrived during it. A
-    letter put off this way stays unread and uncounted, and the rest of the
-    cycle is skipped: whatever stopped this one will stop the next.
+    letter put off this way stays unread and uncounted.
+
+    The cycle goes on to the next letter. It used to stop there, on the
+    reasoning that whatever stopped this one would stop the rest — true of
+    letters that need what is missing, and not of the others: with 3x-ui away
+    nobody got so much as "that command was not understood" until it came
+    back. It is the handler's business not to spend a timeout on every letter
+    while the trouble lasts.
+
+    `needs_somebody` is for trouble that will not pass by itself — a token the
+    panel refuses, say. The letter waits either way; what changes is how it is
+    said, and how loudly.
     """
+
+    def __init__(self, reason: str = "", needs_somebody: bool = False):
+        super().__init__(reason)
+        self.needs_somebody = needs_somebody
 
 
 # --- Letters that must not be answered ---
@@ -676,8 +690,17 @@ _last_error = ""
 # fixing whatever it tripped over.
 MAX_ATTEMPTS = 3
 _attempts = {}
-# Whether the last cycle ended on a letter put off (see TryLater).
+# Whether the last cycle put any letter off (see TryLater), since when letters
+# have been waiting, why, and when that was last said in the log.
 _putting_off = False
+_put_off_since = 0.0
+_put_off_said_at = 0.0
+_put_off_reason = ""
+_put_off_needs_somebody = False
+# While letters wait, the log is told again this often. Once was not enough:
+# the first warning scrolls away, and a token that will never be accepted
+# looked, a day later, like a quiet mailbox.
+PUT_OFF_REMINDER = 15 * 60
 
 
 # --- Clearing out the mailbox ---
@@ -909,6 +932,9 @@ def mail_health() -> dict:
         # dealt with: letters are being put off (see TryLater). Without this
         # the dashboard would call such a loop healthy.
         "waiting": _putting_off,
+        # Why, in the handler's words, and whether it will pass by itself.
+        "waiting_reason": _put_off_reason,
+        "waiting_needs_somebody": _put_off_needs_somebody,
     }
 
 
@@ -948,6 +974,7 @@ def check_mail(handle):
     depend on the loop's own helpers.
     """
     global _consecutive_failures, _last_ok_at, _last_error, _putting_off
+    global _put_off_since, _put_off_said_at, _put_off_reason, _put_off_needs_somebody
 
     if not config.IMAP_USER or not config.IMAP_PASSWORD:
         logger.error("IMAP credentials are not configured; skipping the mail check.")
@@ -978,7 +1005,7 @@ def check_mail(handle):
         phase = "handling the letters"
         if messages:
             logger.info(f"New letters found to handle: {len(messages)}")
-        put_off = False
+        put_off, why, needs_somebody = 0, "", False
         for num in messages:
             msg_id = None
             try:
@@ -1034,13 +1061,15 @@ def check_mail(handle):
                     _attempts.pop(msg_id, None)
 
             except TryLater as e:
-                # Not counted against the letter and not marked read. The rest
-                # of the cycle is skipped: what stopped this one stops them all.
-                put_off = True
-                level = logging.DEBUG if _putting_off else logging.WARNING
-                logger.log(level, f"Letter #{num} is put off until the next check: {e}. "
-                                  f"It stays unread, and so do the ones after it.")
-                break
+                # Not counted against the letter and not marked read — and the
+                # cycle goes on: the next letter may need nothing that is
+                # missing. What is said about it is said once for the cycle,
+                # below, not once a letter.
+                put_off += 1
+                why = why or str(e)
+                needs_somebody = needs_somebody or getattr(e, "needs_somebody", False)
+                logger.debug(f"Letter #{num} is put off until the next check: {e}.")
+                continue
 
             except Exception as e:
                 if msg_id:
@@ -1057,12 +1086,38 @@ def check_mail(handle):
                     _mark_seen(mail, num)
                     _attempts.pop(msg_id, None)
 
-        # Said once when it starts and once when it ends: while 3x-ui is away
-        # the same letter is put off every POLL_INTERVAL_SECONDS, and a warning
+        # Said when it starts, again every PUT_OFF_REMINDER while it lasts,
+        # and once when it ends. Not on every cycle: while 3x-ui is away the
+        # same letters are put off every POLL_INTERVAL_SECONDS, and a warning
         # each time would bury the dashboard's list of problems under one fact.
-        if _putting_off and not put_off and messages:
+        now = time.time()
+        if put_off:
+            if not _putting_off:
+                _put_off_since = now
+            # A different kind of trouble is news; different words for the same
+            # kind are not. A panel restarting behind a proxy is a timeout,
+            # then a refused connection, then a 502 — one outage, and saying
+            # each of them would be a warning every poll.
+            changed = needs_somebody != _put_off_needs_somebody
+            if not _putting_off or changed or now - _put_off_said_at >= PUT_OFF_REMINDER:
+                waited = int((now - _put_off_since) // 60)
+                # Trouble that waits for a person is an error, and is worded
+                # as something to do; trouble that passes is a warning.
+                logger.log(
+                    logging.ERROR if needs_somebody else logging.WARNING,
+                    f"{put_off} letter(s) are waiting: {why}."
+                    + (f" They have been for {waited} min." if waited else "")
+                    + (" This will not pass by itself — nobody who needs 3x-ui gets an answer "
+                       "until it is put right." if needs_somebody else
+                       " They stay unread and are tried again on every check.")
+                    + " Letters that need nothing from it are still answered.")
+                _put_off_said_at = now
+            _put_off_reason, _put_off_needs_somebody = why, needs_somebody
+        elif _putting_off and messages:
             logger.info("Letters that were put off are being handled again.")
-        _putting_off = put_off
+        if not put_off:
+            _put_off_reason, _put_off_needs_somebody = "", False
+        _putting_off = bool(put_off)
 
         if cleanup_due():
             # On the connection that is already open, and only once the letters

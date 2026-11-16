@@ -18,6 +18,11 @@ the log file off. Two things behind that, for the test nobody has written yet:
 a write through statefile into the project directory is an error rather than a
 file, and whatever else has appeared there by the end of the run is named.
 
+And it keeps the run off the network. A test that forgot to put a stand-in
+where 3x-ui goes used to ask the real address from .env — a panel somewhere,
+or ten seconds of nothing — and pass or fail by what answered. A request that
+gets as far as actually being sent is now an error that says so.
+
 Each module still moves the paths about as it likes — tests/test_tariffs.py
 and the panel tests give every test a directory of its own. What they put
 back afterwards is now this run's path rather than the installation's.
@@ -84,6 +89,44 @@ def _guarded_write(path, data, **dump_options):
 
 
 statefile.write_json = _guarded_write
+
+
+class NetworkReached(BaseException):
+    """
+    A test tried to reach the network.
+
+    Not an Exception, on purpose. The code under test catches Exception round
+    every request it makes — a panel that does not answer is ordinary — so an
+    AssertionError raised here was swallowed and came out as an outage: the
+    test with the missing stand-in went on to exercise what happens when
+    3x-ui is away, and often passed. This goes through those handlers and
+    fails the test.
+    """
+
+
+def _no_network(self, request, **kwargs):
+    """
+    requests.Session.send, refusing. Every stand-in the tests use replaces the
+    session or the client above this point, so only a request nobody stood in
+    for arrives here.
+    """
+    raise NetworkReached(
+        f"a test tried to reach the network: {request.method} {request.url}. Put a stand-in "
+        f"where the panel goes — see FakeXui in tests/test_panel_routes.py — rather than "
+        f"letting a test depend on what answers there.")
+
+
+import requests  # noqa: E402
+
+requests.Session.send = _no_network
+
+# Importing the panel starts the thread that asks GitHub whether a newer
+# version is out. It waits half a minute first — but a test that saves a
+# setting wakes it, and then the test run was asking GitHub about this
+# repository. Marked as started already, so that starting it does nothing.
+import updater  # noqa: E402
+
+updater._started = True
 
 
 def _listing() -> set:

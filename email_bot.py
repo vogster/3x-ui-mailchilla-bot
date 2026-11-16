@@ -13,6 +13,7 @@ reach.
 """
 import logging
 import re
+import threading
 import time
 import uuid
 from email.utils import parseaddr
@@ -26,6 +27,7 @@ from xui_client import XuiClient, XuiUnavailable, get_shared_client
 # The transport, imported by name so that everything the panel and the tests
 # already call on this module keeps working — including patching it, since the
 # handlers below look these up as module globals at call time.
+from mailer import SmtpSession  # noqa: F401
 from mailer import (  # noqa: F401
     build_message,
     open_smtp,
@@ -310,7 +312,12 @@ def handle_status(email_addr: str):
 def handle_help(email_addr: str):
     """Sending the help information."""
     xui = get_shared_client()
-    client_info = xui.find_client_by_email(email_addr)
+    # With the panel known to be away the letter goes without the link rather
+    # than waiting ten seconds to learn the same thing: help is the one answer
+    # that is worth having either way. `getattr`, since a stand-in for the
+    # client need not know the question.
+    away = getattr(xui, "recently_failed", lambda: False)()
+    client_info = None if away else xui.find_client_by_email(email_addr)
 
     sub_url = None
     if client_info:
@@ -327,13 +334,22 @@ def handle_unknown(email_addr: str, subject_received: str):
                      templates.get_notice("unknown", subject=(subject_received or "").strip()))
 
 
-def get_all_active_emails_from_xui(xui_client) -> list:
+def get_all_active_emails_from_xui(xui_client, strict: bool = False) -> list:
     """
     Asks 3x-ui for every client and keeps only the active ones.
     Returns a list of bare emails, extracted from the remark through parseaddr,
     fit for SMTP even when the remark is shaped as 'Name <email>'.
+
+    :param strict: raise XuiUnavailable when the list could not be had, rather
+                   than answering with nobody. A broadcast asks this way: with
+                   the panel away it used to go out to no one and report
+                   itself done.
     """
     clients = xui_client.get_all_clients()
+    if clients is None and strict:
+        # In the panel's own words where it has them: see XuiClient.unavailable.
+        explain = getattr(xui_client, "unavailable", None)
+        raise explain() if explain else XuiUnavailable("3x-ui does not answer")
     if not clients:
         logger.warning("Could not fetch the client list from 3x-ui, or it is empty.")
         return []
@@ -393,17 +409,23 @@ def handle_broadcast(broadcast_body: str, subject: str = None, emails: list = No
     success_count = 0
     failed_count = 0
     try:
-        for to_email in emails:
-            failed_address = ""
-            try:
-                time.sleep(0.5)
-                send_email_reply(to_email, subject, message)
-                success_count += 1
-            except Exception as e:
-                failed_count += 1
-                failed_address = to_email
-                logger.error(f"Could not send the broadcast to {to_email}: {e}")
-            broadcasts.progress(job, success_count, failed_count, failed_address)
+        # One sign-in for the lot, not one a recipient: see SmtpSession. Each
+        # letter is still a letter of its own, to one address — nobody's
+        # address is shown to anybody else — and the pause between them stays.
+        with SmtpSession() as session:
+            for to_email in emails:
+                failed_address = ""
+                try:
+                    time.sleep(0.5)
+                    send_email_reply(to_email, subject, message, session=session)
+                    success_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    failed_address = to_email
+                    logger.error(f"Could not send the broadcast to {to_email}: {e}")
+                broadcasts.progress(job, success_count, failed_count, failed_address)
+            if session.connections > 1:
+                logger.info(f"The broadcast took {session.connections} SMTP connections.")
     except BaseException as e:
         # Not a letter that failed — those are counted above — but the loop
         # itself. Said in the record, or the page would show a broadcast that
@@ -597,15 +619,25 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
             else:
                 broadcast_content = body_clean
 
-        _mark_seen(mail_conn, msg_num)
-        if broadcast_content:
-            sent_count = handle_broadcast(broadcast_content)
-            send_email_reply(from_email, templates.notice_subject("broadcast_done"),
-                             templates.get_notice("broadcast_done", count=sent_count,
-                                                  code_text=broadcast_content))
-        else:
+        if not broadcast_content:
+            _mark_seen(mail_conn, msg_num)
             send_email_reply(from_email, templates.notice_subject("broadcast_empty"),
                              templates.get_notice("broadcast_empty"))
+            return
+
+        # Who it goes to is settled now, while the letter is still unread: with
+        # 3x-ui away this raises, the letter is put off like any other, and the
+        # broadcast goes out when the panel is back. It used to be asked after
+        # the letter was marked read — and a panel that did not answer meant a
+        # broadcast to nobody, reported to the administrator as done.
+        recipients = get_all_active_emails_from_xui(get_shared_client(), strict=True)
+
+        _mark_seen(mail_conn, msg_num)
+        # And the sending itself is not done here. This runs in the poll loop,
+        # and a broadcast takes minutes: for all of them the bot read no
+        # mailbox, and whoever wrote a code word meanwhile waited for the last
+        # of somebody else's letters to leave.
+        _in_background(_broadcast_by_mail, broadcast_content, recipients, from_email)
         return
 
     # Only what the sender typed, and only whole words: see readable_text and
@@ -651,6 +683,55 @@ def process_message(msg_num, from_email: str, subject: str, body: str, mail_conn
     _mark_seen(mail_conn, msg_num)
 
 
+def _in_background(work, *args):
+    """
+    Runs `work(*args)` on a thread of its own and comes straight back.
+
+    A daemon thread: a broadcast in flight when the process is stopped stops
+    with it, as one started from the panel does. A name of its own so that the
+    tests can run the work in place and wait for nothing.
+    """
+    threading.Thread(target=work, args=args, name="broadcast-by-mail", daemon=True).start()
+
+
+def _broadcast_by_mail(content: str, recipients: list, report_to: str):
+    """
+    A broadcast asked for by letter: the sending, then the report to whoever
+    asked. Runs off the poll loop — see process_message.
+
+    Nothing may escape from here: there is no caller left to hear it, only a
+    thread that would die with a traceback and an administrator who was never
+    told how their broadcast went.
+    """
+    sent, broke_off, job_id = 0, False, None
+    try:
+        if recipients:
+            # Opened here rather than left to the sending, so that what is
+            # reported afterwards is read back by its id. Looked for by its
+            # text it could be another broadcast altogether — the same words
+            # sent again after a failure, which is exactly when one is.
+            subject = templates.text("notice.broadcast_default_subject")
+            job_id = broadcasts.start(subject, content, len(recipients), source=broadcasts.MAIL)
+            sent = handle_broadcast(content, subject=subject, emails=recipients, job_id=job_id)
+    except Exception as e:
+        logger.error(f"The broadcast asked for by {report_to} broke off: {e}", exc_info=True)
+        broke_off = True
+        if job_id:
+            broadcasts.finish(job_id, error=f"{type(e).__name__}: {e}")
+            sent = (broadcasts.get(job_id) or {}).get("sent", 0)
+    try:
+        if broke_off:
+            # Not "finished": said as what it was, with how far it got.
+            send_email_reply(report_to, templates.notice_subject("broadcast_cut"),
+                             templates.get_notice("broadcast_cut", count=sent,
+                                                  total=len(recipients), code_text=content))
+        else:
+            send_email_reply(report_to, templates.notice_subject("broadcast_done"),
+                             templates.get_notice("broadcast_done", count=sent, code_text=content))
+    except Exception as e:
+        logger.error(f"Could not report the broadcast back to {report_to}: {e}")
+
+
 def _handle_letter(*args, **kwargs):
     """
     process_message, as the poll loop is given it.
@@ -664,7 +745,11 @@ def _handle_letter(*args, **kwargs):
     try:
         return process_message(*args, **kwargs)
     except XuiUnavailable as e:
-        raise _inbox.TryLater("3x-ui does not answer") from e
+        # In the panel's own words, and saying which kind of trouble it is: a
+        # panel that is away comes back, one that refuses the bot's token
+        # waits for somebody to change a setting.
+        raise _inbox.TryLater(str(e) or "3x-ui does not answer",
+                              needs_somebody=getattr(e, "denied", False)) from e
 
 
 def describe_tariffs(known: list) -> list:

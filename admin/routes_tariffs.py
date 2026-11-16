@@ -154,7 +154,7 @@ def tariffs_list(request: Request, saved: str = "", error: str = "", issued: str
             orphans[group] = orphans.get(group, 0) + 1
 
     return templates.TemplateResponse(
-        "tariffs.html",
+        request, "tariffs.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -193,7 +193,7 @@ def tariff_new(request: Request):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return templates.TemplateResponse("tariff_edit.html", _form_context(request))
+    return templates.TemplateResponse(request, "tariff_edit.html", _form_context(request))
 
 
 @router.get("/tariffs/{tariff_id}/edit", response_class=HTMLResponse)
@@ -204,7 +204,7 @@ def tariff_edit(request: Request, tariff_id: str):
     tariff = tariffs.get(tariff_id)
     if not tariff:
         return RedirectResponse("/tariffs", status_code=303)
-    return templates.TemplateResponse("tariff_edit.html", _form_context(request, tariff))
+    return templates.TemplateResponse(request, "tariff_edit.html", _form_context(request, tariff))
 
 
 @router.post("/tariffs/save", response_class=HTMLResponse)
@@ -244,11 +244,11 @@ async def tariff_save(request: Request,
         broken["id"] = tariff_id
         broken["inbound_ids"] = [int(i) for i in values["inbound_ids"] if str(i).isdigit()]
         return templates.TemplateResponse(
-            "tariff_edit.html", _form_context(request, broken, error=str(e)))
+            request, "tariff_edit.html", _form_context(request, broken, error=str(e)))
     except OSError as e:
         logger.error(f"Could not write tariffs.json: {e}")
         return templates.TemplateResponse(
-            "tariff_edit.html",
+            request, "tariff_edit.html",
             _form_context(request, values,
                           error=i18n.t("Could not write the settings file: {error}", error=e)))
 
@@ -328,7 +328,7 @@ def code_new(request: Request, tariff: str = "", generated: str = "1"):
     if not known:
         return RedirectResponse("/tariffs", status_code=303)
     return templates.TemplateResponse(
-        "code_edit.html",
+        request, "code_edit.html",
         _code_form_context(request, {
             "word": tariffs.generate_word() if generated == "1" else "",
             "tariff_id": tariff or known[0]["id"],
@@ -348,7 +348,7 @@ def code_edit(request: Request, word: str):
     if not code:
         return RedirectResponse("/tariffs?tab=codes", status_code=303)
     return templates.TemplateResponse(
-        "code_edit.html",
+        request, "code_edit.html",
         _code_form_context(request, _code_row(code, _names()), was=code["word"]))
 
 
@@ -385,11 +385,11 @@ def code_save(request: Request,
         broken = dict(values)
         broken["expires_input"] = (expires_on or "").strip()
         return templates.TemplateResponse(
-            "code_edit.html", _code_form_context(request, broken, error=str(e), was=was))
+            request, "code_edit.html", _code_form_context(request, broken, error=str(e), was=was))
     except OSError as e:
         logger.error(f"Could not write tariffs.json: {e}")
         return templates.TemplateResponse(
-            "code_edit.html",
+            request, "code_edit.html",
             _code_form_context(request, values, was=was,
                                error=i18n.t("Could not write the settings file: {error}", error=e)))
 
@@ -409,7 +409,7 @@ def code_card(request: Request, word: str):
     if not code:
         return RedirectResponse("/tariffs?tab=codes", status_code=303)
     return templates.TemplateResponse(
-        "code_card.html",
+        request, "code_card.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -459,7 +459,7 @@ def tariff_card(request: Request, tariff_id: str):
 
     known = {ib["id"]: ib for ib in (get_shared_client().get_inbounds() or [])}
     return templates.TemplateResponse(
-        "tariff_card.html",
+        request, "tariff_card.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,

@@ -396,7 +396,7 @@ def broadcast_kind_options():
 
 # Service messages: each has its own keys for subject, text and, where needed, a list.
 NOTICE_KINDS = ("unknown", "not_registered", "status_error",
-                "create_error", "broadcast_done", "broadcast_empty")
+                "create_error", "broadcast_done", "broadcast_cut", "broadcast_empty")
 
 
 def notice_subject(kind: str) -> str:

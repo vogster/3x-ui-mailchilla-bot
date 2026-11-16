@@ -5,7 +5,7 @@ An email bot and web panel for <a href="https://github.com/MHSanaei/3x-ui">3x-ui
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/Python-3.9+-blue" alt="Python 3.9+">
+<img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python 3.10+">
 <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
 </p>
 
@@ -54,6 +54,8 @@ You write a letter with a command, in the subject or in the body - the bot handl
 
 `/broadcast` is carried out only when the mailbox's server vouches for the sender - SPF, DKIM or DMARC passing for the administrator's address. A From header alone is something anybody can type; without that proof nothing is sent and the administrator gets a letter saying so. On Gmail, Yandex or Mail.ru that needs no setting up. On a mail server of your own, name it in Settings → Mail → *Proof of the sender* — the name it signs its `Authentication-Results` headers with, which the *Look in the mailbox* button reads off the newest letters for you. Its headers are then read in full, however many it spreads its verdict over, and a header under any other name is ignored; without the name, only the top-most header is read, and on a server that adds none for some letters that is a header the sender brought. Letters written by machines - bounces, autoresponders, newsletters - are read and left unanswered, and no address gets more than ten answers an hour.
 
+When 3x-ui does not answer, the letters that need it - a registration, `/status`, a broadcast - wait unread and are taken again on the next check, while `/help` and everything else are answered at once. The dashboard and the log say that letters are waiting and why; a token or password the panel refuses is said in those words, since that one does not pass by itself.
+
 The sender's name lands in the client's comment - the list then shows people rather than addresses. For everyone registered before that, one button on the Mail tab reads the names out of the letters already in the mailbox and offers a table of who to fill in.
 
 **🖥️ The web panel**
@@ -76,7 +78,7 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Broadcast](docs/screenshots/broadcast.png)
 
-A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. The Broadcast page lists what is being sent right now and what went out before it - how many letters have left, how many did not arrive and to whom - whether it was started from the panel or by mail with `/broadcast`, and a dot on the menu link breathes for as long as letters are going out. Pressing Send while one is still running asks first. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
+A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. A broadcast signs in to the mail server once and sends every letter over that connection - each still a letter of its own, to one address - and opens it again if it drops half way. The Broadcast page lists what is being sent right now and what went out before it - how many letters have left, how many did not arrive and to whom - whether it was started from the panel or by mail with `/broadcast`, and a dot on the menu link breathes for as long as letters are going out. Pressing Send while one is still running asks first. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
 
 The recipient list has search, filters (active, disabled, limit spent, traffic running low) and sorting. "All" and "None" act on whatever the filter left - so "everyone who ran out of traffic" is two movements.
 
@@ -142,7 +144,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/m
 
 The installer asks for the language first, then for access to 3x-ui and the sign-in for its own panel, and does the rest itself: packages, a system user, the latest released version into `/opt/mailchilla`, a virtual environment, `.env`, the systemd service and the `mailchilla` command. At the end it prints the address, the password and the tunnel command.
 
-Debian 11+, Ubuntu 22.04+, CentOS/AlmaLinux/Rocky/Fedora. Python 3.9 or newer is required — Ubuntu 20.04 ships 3.8 and the installer will say so rather than leave a half-installed copy.
+Debian 12+, Ubuntu 22.04+, AlmaLinux/Rocky 9, Fedora. Python 3.10 or newer is required. Debian 11 ships 3.9 and Ubuntu 20.04 ships 3.8, and the installer will say so rather than leave a half-installed copy; on AlmaLinux and Rocky 9, where `python3` is 3.9 as well, it installs `python3.11` beside it and uses that.
 
 Running a script straight off the internet as root deserves a look first. If you would rather:
 
@@ -153,7 +155,7 @@ curl -LO https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/ins
 <details>
 <summary><b>Installing by hand</b></summary>
 
-Python 3.9+, and a reachable 3x-ui panel.
+Python 3.10+, and a reachable 3x-ui panel.
 
 ```bash
 git clone https://github.com/vogster/3x-ui-mailchilla-bot.git mailchilla
@@ -346,7 +348,19 @@ mailchilla update
 
 Versions are tags, not the tip of a branch: the command asks GitHub for the newest `vX.Y.Z`, shows what changed from `CHANGELOG.md` and waits for a yes.
 
-Before touching anything it copies `.env`, `settings.json`, `email_texts.json` and `tariffs.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them.
+Before touching anything it copies `.env`, `settings.json`, `email_texts.json` and `tariffs.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them. If the new version's dependencies will not install, it goes back before anything is restarted.
+
+**0.2.0 needs Python 3.10**, where 0.1.x ran on 3.9. Look before updating:
+
+```bash
+/opt/mailchilla/venv/bin/python --version
+```
+
+On 3.9 the update cannot go through. Install a newer Python beside the system's — on AlmaLinux and Rocky 9 that is `dnf install python3.11`; on Debian 11, which has none to offer, the way is to upgrade the system — then rebuild the environment with it and update again:
+
+```bash
+sudo python3.11 -m venv --clear /opt/mailchilla/venv && sudo /opt/mailchilla/venv/bin/pip install -r /opt/mailchilla/requirements.txt && sudo chown -R mailchilla: /opt/mailchilla/venv && sudo mailchilla restart
+```
 
 Files edited on the server — a template, say — are put aside with `git stash` rather than blocking the update; the command tells you how to get them back.
 

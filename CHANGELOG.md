@@ -10,6 +10,13 @@ read as something a person wants to know before updating.
 
 ## [Unreleased]
 
+**This version needs Python 3.10 or newer; 0.1.x ran on 3.9.** Check before
+you say yes: `/opt/mailchilla/venv/bin/python --version`. On 3.9 the update
+stops while installing dependencies and the service is left on the version it
+had — the README, under Updating, has the three commands that move an
+installation to a newer Python. Debian 12, Ubuntu 22.04 and newer already
+have one.
+
 ### Added
 
 - **The Broadcast page says what is being sent.** Until now a running
@@ -217,6 +224,15 @@ read as something a person wants to know before updating.
 
 ### Security
 
+- **Newer versions of the libraries underneath, and Python 3.10 with them.**
+  `requests` 2.34.2, `jinja2` 3.1.6, `fastapi` 0.162.5, `starlette` 1.7.0,
+  `python-multipart` 0.0.32 and `python-dotenv` 1.2.4 — none with a known
+  vulnerability, where the versions shipped before had nineteen between
+  them. The ones that mattered most were in what reads the panel's
+  forms, the sign-in form among them: requests built to keep the panel busy.
+  Their fixes exist only in releases that need Python 3.10, which is why the
+  minimum moved; 3.9 has had no security fixes of its own since October 2025.
+
 - **Two-step sign-in for the panel.** Settings → General → *Signing in* adds a
   six-digit code from an authenticator app (TOTP — Google Authenticator,
   Aegis, 2FAS, a password manager) to the password. The panel can read every
@@ -270,6 +286,37 @@ read as something a person wants to know before updating.
 
 ### Fixed
 
+- **With 3x-ui away the bot goes on answering whoever it can.** One letter that
+  needed the panel used to stop the whole mailbox: nobody was even told their
+  command was not understood until the panel came back. Now registrations and
+  `/status` wait, unread, and `/help` and everything else are answered at
+  once. The log says how many letters are waiting and why, and says it again
+  every quarter of an hour for as long as they do.
+- **An update whose dependencies will not install no longer stops half way.**
+  `mailchilla update` used to end on that step without a word: the new code
+  in place, the old packages under it, the service not restarted. It now says
+  what failed, puts the previous version back and leaves the service as it
+  was. The installer looks for a newer Python beside the system's, and on
+  AlmaLinux and Rocky 9 installs one.
+- **A token or password 3x-ui refuses is said to be exactly that.** It used to
+  look the same as a panel that was switched off, and after the first warning
+  scrolled away it looked like a quiet mailbox. It is an error now, on the
+  dashboard and in the log, naming the setting to check.
+- **A broadcast sent by mail no longer stops the bot reading its mailbox.** It
+  ran in the same loop that reads letters, so for the minutes it took nobody
+  who wrote was answered. It runs beside it now, and the report comes back
+  when it has finished, as before — or, if it broke off half way, says that it
+  did and how many letters had gone.
+- **A broadcast by mail sent while 3x-ui was away went to nobody and was
+  reported as done.** The letter now waits until the panel is back and the
+  broadcast goes out then.
+- **A broadcast signs in to the mail server once, not once a recipient.** Every
+  letter used to open a connection of its own, which is slow and which some
+  mail servers count against the account. If the connection drops half way
+  through, it is opened again and the broadcast carries on from the letter it
+  was sending. If the mail server is down or refuses the password, the
+  broadcast ends quickly with everybody listed as not reached, instead of
+  trying the same thing once for each of them.
 - **A code word that begins another no longer makes a letter ambiguous.** With
   `AURORA` and `AURORA-FAMILY` both in use, a letter carrying the longer word
   was read as carrying both, and its sender was asked which subscription they

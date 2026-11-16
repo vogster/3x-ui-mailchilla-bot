@@ -133,7 +133,7 @@ def serve(args):
     stand_mail.install(mailboxes)
 
     def keep_letter(server_host, port, user, password, to_email, subject, message,
-                    service_name=None, extra_headers=None, automatic=True):
+                    service_name=None, extra_headers=None, automatic=True, session=None):
         # Assembled as it would be for sending, so a letter that cannot be
         # built fails here exactly as it would in front of an SMTP server —
         # and handed back, because the caller files a copy of what it sent in

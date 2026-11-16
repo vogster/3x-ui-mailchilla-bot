@@ -100,7 +100,7 @@ def _login_page(request: Request, error: str = "", status_code: int = 200):
     and a key one of them forgot would be a form with no way to give the code.
     """
     return templates.TemplateResponse(
-        "login.html",
+        request, "login.html",
         {"request": request, "error": error, "service_name": config.SERVICE_NAME,
          "two_step": twostep.on()},
         status_code=status_code,
@@ -363,8 +363,13 @@ def _mail_block():
     if health.get("waiting"):
         # The mailbox itself is fine, so none of the checks above or below
         # would say a word — and meanwhile nobody is getting an answer.
+        if health.get("waiting_needs_somebody"):
+            # Not an outage to sit out: the panel answers, and refuses.
+            return {"state": "bad",
+                    "text": i18n.t("letters are waiting: 3x-ui refuses the bot's credentials"),
+                    "detail": health.get("waiting_reason", "")}
         return {"state": "bad", "text": i18n.t("letters are waiting: 3x-ui does not answer"),
-                "detail": ""}
+                "detail": health.get("waiting_reason", "")}
     if health["last_ok_at"] is None:
         return {"state": "wait", "text": i18n.t("no check has got through yet")}
     ago = max(int(time.time() - health["last_ok_at"]), 0)
@@ -564,7 +569,7 @@ def dashboard(request: Request):
     problems_total = applog.unread_count("WARNING")
 
     return templates.TemplateResponse(
-        "dashboard.html",
+        request, "dashboard.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,

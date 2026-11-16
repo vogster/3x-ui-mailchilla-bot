@@ -160,7 +160,7 @@ def clients_list(request: Request, q: str = ""):
         "live_tariffs": sorted(t["name"] for t in tariffs.all_tariffs()),
     }
     context.update(new_dialog_context())
-    return templates.TemplateResponse("clients.html", context)
+    return templates.TemplateResponse(request, "clients.html", context)
 
 
 def tariff_choices() -> list:
@@ -294,7 +294,7 @@ def client_new_form(request: Request):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return templates.TemplateResponse("client_new.html", _new_client_context(request))
+    return templates.TemplateResponse(request, "client_new.html", _new_client_context(request))
 
 
 @router.post("/clients/new", response_class=HTMLResponse)
@@ -337,7 +337,7 @@ def client_new_submit(
         if wants_json:
             return JSONResponse({"ok": False, "error": message}, status_code=400)
         return templates.TemplateResponse(
-            "client_new.html", _new_client_context(request, raw, message), status_code=400
+            request, "client_new.html", _new_client_context(request, raw, message), status_code=400
         )
 
     client_email = email_bot.build_client_email(raw["email"])
@@ -450,7 +450,7 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
     last_online = xui.get_last_online()
 
     return templates.TemplateResponse(
-        "client_detail.html",
+        request, "client_detail.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -706,7 +706,7 @@ def client_edit_form(request: Request, client_uuid: str, error: str = ""):
         days_left = 0
 
     return templates.TemplateResponse(
-        "client_edit.html",
+        request, "client_edit.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,

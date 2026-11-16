@@ -129,7 +129,7 @@ def settings_form(request: Request, error: str = "", saved: str = ""):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return templates.TemplateResponse("settings.html", _build_context(request, error, saved))
+    return templates.TemplateResponse(request, "settings.html", _build_context(request, error, saved))
 
 
 @router.post("/settings")
@@ -226,14 +226,14 @@ def settings_submit(
         settings.save(values)
     except (ValueError, TypeError) as e:
         return templates.TemplateResponse(
-            "settings.html",
+            request, "settings.html",
             _build_context(request, error=i18n.t("Could not save: {error}", error=e)),
             status_code=400,
         )
     except OSError as e:
         logger.error(f"Could not write settings.json: {e}")
         return templates.TemplateResponse(
-            "settings.html",
+            request, "settings.html",
             _build_context(request, error=i18n.t("Could not write the settings file: {error}", error=e)),
             status_code=500,
         )

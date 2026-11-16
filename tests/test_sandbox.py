@@ -85,5 +85,33 @@ class NothingIsLeftBehind(unittest.TestCase):
         self.assertEqual(sandbox.left_behind(), [])
 
 
+class TheNetworkIsOutOfReach(unittest.TestCase):
+    def test_a_request_that_nobody_stood_in_for_is_an_error(self):
+        # Not a timeout and not somebody's real panel answering.
+        import requests
+        with self.assertRaises(sandbox.NetworkReached) as caught:
+            requests.get("http://panel.invalid:2053/panel/api/clients/list", timeout=1)
+        self.assertIn("panel.invalid", str(caught.exception))
+
+    def test_and_is_not_taken_for_a_panel_that_is_away(self):
+        # The client catches Exception round every request: a panel that does
+        # not answer is ordinary. Raised as one, the refusal came out of
+        # get_all_clients as None — an outage — and the test with the missing
+        # stand-in went on to pass.
+        from xui_client import XuiClient
+        xui = XuiClient()
+        xui.base_url, xui.api_token, xui.is_logged_in = "http://panel.invalid:2053", "token", True
+        with self.assertRaises(sandbox.NetworkReached):
+            xui.get_all_clients()
+        self.assertFalse(issubclass(sandbox.NetworkReached, Exception))
+
+    def test_the_update_check_does_not_start(self):
+        # Or a test that saves a setting wakes it, and it asks GitHub.
+        import threading
+        import updater
+        updater.start()
+        self.assertNotIn("update-check", [thread.name for thread in threading.enumerate()])
+
+
 if __name__ == "__main__":
     unittest.main()

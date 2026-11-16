@@ -234,6 +234,10 @@ GROUPS = [
             ("notice.create_error_text", "Registration error — text", TEXT, ""),
             ("notice.broadcast_done_subject", "Broadcast report — subject", LINE, ""),
             ("notice.broadcast_done_text", "Broadcast report — text", TEXT, "Substitution: {count}"),
+            ("notice.broadcast_cut_subject", "Broadcast cut short — subject", LINE, ""),
+            ("notice.broadcast_cut_text", "Broadcast cut short — text", TEXT,
+             "Sent to the administrator when a broadcast asked for by mail breaks "
+             "off before the last letter. Substitutions: {count}, {total}"),
             ("notice.broadcast_empty_subject", "Empty broadcast — subject", LINE, ""),
             ("notice.broadcast_empty_text", "Empty broadcast — text", TEXT, ""),
             ("notice.broadcast_unverified_subject", "Unverified broadcast — subject", LINE, ""),
@@ -370,6 +374,12 @@ DEFAULTS_BY_LANG = {
             "Try sending the code word again in a little while, or write to the administrator.",
         "notice.broadcast_done_subject": "The broadcast is finished",
         "notice.broadcast_done_text": "Letters sent: {count}.\nThe text of the broadcast:",
+        "notice.broadcast_cut_subject": "The broadcast broke off",
+        "notice.broadcast_cut_text":
+            "The broadcast stopped before it was finished. Letters sent: {count} of {total}.\n"
+            "The rest were not sent. The reason is in the log of the panel; the Broadcast "
+            "page shows who was not reached.\n"
+            "The text of the broadcast:",
         "notice.broadcast_empty_subject": "The broadcast was not sent",
         "notice.broadcast_empty_text":
             "The text of the broadcast is empty.\n"
@@ -503,6 +513,12 @@ DEFAULTS_BY_LANG = {
             "Попробуйте отправить кодовое слово ещё раз чуть позже или напишите администратору.",
         "notice.broadcast_done_subject": "Рассылка завершена",
         "notice.broadcast_done_text": "Отправлено писем: {count}.\nТекст рассылки:",
+        "notice.broadcast_cut_subject": "Рассылка оборвалась",
+        "notice.broadcast_cut_text":
+            "Рассылка остановилась, не дойдя до конца. Отправлено писем: {count} из {total}.\n"
+            "Остальные не отправлены. Причина — в логе панели; на странице «Рассылка» видно, "
+            "до кого письмо не дошло.\n"
+            "Текст рассылки:",
         "notice.broadcast_empty_subject": "Рассылка не отправлена",
         "notice.broadcast_empty_text":
             "Текст рассылки пуст.\n"
