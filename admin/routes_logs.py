@@ -26,7 +26,7 @@ def logs_view(request: Request, level: str = "", q: str = "", limit: int = 300, 
         limit = 300
 
     return templates.TemplateResponse(
-        "logs.html",
+        request, "logs.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,

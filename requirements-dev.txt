@@ -1,0 +1,11 @@
+# What the tests need and an installation does not.
+#
+# The panel's routes are exercised through fastapi.testclient, which is built on
+# httpx — a real HTTP client, so the tests go through routing, redirects and the
+# session cookie exactly as a browser would. Keeping it out of requirements.txt
+# means a server running the bot does not carry a test dependency it will never
+# import.
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+#     python -m unittest discover -s tests
+httpx==0.28.1

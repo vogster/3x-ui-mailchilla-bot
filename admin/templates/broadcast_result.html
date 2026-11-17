@@ -5,6 +5,11 @@
 <h1 style="margin: 0 0 8px 0;">
     {% if done %}{{ t("The broadcast is finished") }}{% else %}{{ t("The broadcast is running") }}{% endif %}
 </h1>
+<p class="muted" style="margin: 0 0 18px 0;">
+    {{ t("Started") }} {{ started }},
+    {% if source == "mail" %}{{ t("by mail, with /broadcast") }}{% else %}{{ t("from the panel") }}{% endif %}{% if finished %};
+    {{ t("finished [broadcast]") }} {{ finished }}{% endif %}.
+</p>
 
 {% if error %}
 <div class="flash error">
@@ -32,6 +37,19 @@
     </div>
 </div>
 
+{% if failed_addresses %}
+<div class="panel" style="margin-top: 18px;">
+    <div class="panel-head">
+        <h2>{{ t("Not delivered") }}</h2>
+        <span class="muted">{{ t("the reason for each is in the log") }}</span>
+    </div>
+    <div style="padding: 16px 20px; line-height: 1.8;">
+        {% for address in failed_addresses %}<span class="mono">{{ address }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% if failed_unnamed %}
+        <span class="muted">{{ t("and {count} more", count=failed_unnamed) }}</span>{% endif %}
+    </div>
+</div>
+{% endif %}
+
 <div class="panel" style="margin-top: 18px;">
     <div class="panel-head"><h2>{{ t("Broadcast text") }}</h2></div>
     <div style="padding: 20px;">
@@ -41,7 +59,7 @@
 </div>
 
 <div style="margin-top: 18px; display:flex; gap:10px;">
-    <a href="/broadcast" class="btn primary">{{ t("New broadcast") }}</a>
+    <a href="/broadcast" class="btn primary">{% if done %}{{ t("New broadcast") }}{% else %}{{ t("To the broadcasts") }}{% endif %}</a>
     <a href="/clients" class="btn">{{ t("To the client list") }}</a>
 </div>
 

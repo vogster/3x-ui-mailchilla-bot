@@ -1,0 +1,49 @@
+{# A short table of clients, for the tariff card and the code card. The client
+   list has its own, with filters, sorting and the connection dots; this one is
+   deliberately plain — it answers "who is here", and everything about one
+   person is a click away on their own card.
+   Expects: rows (from admin.rows._client_row) and empty_text. #}
+{% if rows %}
+<div class="tscroll">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t("Email / name") }}</th>
+                <th>{{ t("Status") }}</th>
+                <th>{{ t("Traffic") }}</th>
+                <th>{{ t("Registered") }}</th>
+                <th>{{ t("Expiry") }}</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for c in rows %}
+            <tr>
+                <td>
+                    <a href="/clients/{{ c.uuid }}" class="row-link">
+                        <div class="mono" style="white-space: nowrap;">{{ c.remark or c.bare_email }}</div>
+                        {% if c.comment and c.comment != c.remark %}
+                        <div class="muted">{{ c.comment }}</div>
+                        {% endif %}
+                    </a>
+                </td>
+                <td>
+                    {% if c.enable %}
+                    <span class="badge on nodot">{{ t("Active [badge]") }}</span>
+                    {% else %}
+                    <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
+                    {% endif %}
+                </td>
+                <td class="mono">
+                    {% if c.unlimited %}{{ c.used_gb }} {{ t("GB") }} <span class="muted">· {{ t("no limit") }}</span>
+                    {% else %}{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}{% endif %}
+                </td>
+                <td class="mono">{{ c.created }}</td>
+                <td class="mono">{{ c.expiry }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">{{ empty_text }}</div>
+{% endif %}

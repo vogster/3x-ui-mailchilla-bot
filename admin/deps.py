@@ -12,9 +12,12 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import broadcasts
 import config
 import i18n
+import renewal
 import settings
+import tariffs
 import updater
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -48,7 +51,10 @@ def setup_status():
     missing = []
     if not (config.IMAP_SERVER and config.IMAP_USER and config.IMAP_PASSWORD):
         missing.append(i18n.t("the mailbox"))
-    if not config.XUI_INBOUND_IDS:
+    # A tariff with no inbounds cannot register anybody, and a panel with no
+    # tariff at all cannot either. Judged by the ids alone, without asking
+    # 3x-ui: this runs on every page render.
+    if not any(t["inbound_ids"] for t in tariffs.all_tariffs()):
         missing.append(i18n.t("the inbounds for new clients"))
     if not config.ADMIN_EMAIL:
         missing.append(i18n.t("the administrator address"))
@@ -68,6 +74,13 @@ templates.env.globals["setup_status"] = setup_status
 # Reads only what the background check left in memory, so it costs a page
 # render nothing and never reaches the network itself.
 templates.env.globals["update_status"] = updater.status
+# Whether letters are going out right now, for the dot on the menu's Broadcast
+# link — a count read from memory, like the two above.
+templates.env.globals["broadcasts_running"] = broadcasts.running
+# An auto-renewal in a few words, and the seven days for the form's picker:
+# the tariff pages and the client pages both want them.
+templates.env.globals["renew_text"] = renewal.describe
+templates.env.globals["renew_weekdays"] = renewal.weekday_options
 
 
 def check_panel_configured():

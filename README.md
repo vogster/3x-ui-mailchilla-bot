@@ -5,7 +5,7 @@ An email bot and web panel for <a href="https://github.com/MHSanaei/3x-ui">3x-ui
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/Python-3.9+-blue" alt="Python 3.9+">
+<img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python 3.10+">
 <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
 </p>
 
@@ -28,6 +28,7 @@ The project started with a simple need: handing out subscriptions to people you 
 - [Features](#-features)
 - [Quick start](#-quick-start)
 - [First run](#-first-run)
+- [Tariffs](#-tariffs)
 - [Settings](#-settings)
 - [Reaching the panel](#-reaching-the-panel)
 - [Managing it](#-managing-it)
@@ -47,9 +48,13 @@ You write a letter with a command, in the subject or in the body - the bot handl
 | Command | What it does |
 |---|---|
 | the code word | creates the client in 3x-ui, sends back the subscription link |
-| `/status` | traffic left, expiry, status |
+| `/status` | traffic left, expiry, status, whether the subscription renews by itself, and the devices registered against the limit when there is one |
 | `/help` | instructions for setting up a client app |
 | `/broadcast` | a letter to every active client (from the administrator only) |
+
+`/broadcast` is carried out only when the mailbox's server vouches for the sender - SPF, DKIM or DMARC passing for the administrator's address. A From header alone is something anybody can type; without that proof nothing is sent and the administrator gets a letter saying so. On Gmail, Yandex or Mail.ru that needs no setting up. On a mail server of your own, name it in Settings → Mail → *Proof of the sender* — the name it signs its `Authentication-Results` headers with, which the *Look in the mailbox* button reads off the newest letters for you. Its headers are then read in full, however many it spreads its verdict over, and a header under any other name is ignored; without the name, only the top-most header is read, and on a server that adds none for some letters that is a header the sender brought. Letters written by machines - bounces, autoresponders, newsletters - are read and left unanswered, and no address gets more than ten answers an hour.
+
+When 3x-ui does not answer, the letters that need it - a registration, `/status`, a broadcast - wait unread and are taken again on the next check, while `/help` and everything else are answered at once. The dashboard and the log say that letters are waiting and why; a token or password the panel refuses is said in those words, since that one does not pass by itself.
 
 The sender's name lands in the client's comment - the list then shows people rather than addresses. For everyone registered before that, one button on the Mail tab reads the names out of the letters already in the mailbox and offers a table of who to fill in.
 
@@ -57,13 +62,15 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Client list](docs/screenshots/clients.png)
 
+- Tariffs: traffic, term, a device limit, automatic renewal and inbounds, each with code words of its own. As many as you like, and a client made by hand can be stamped from one
 - A client list with live search, sorting and filters (status, mail, connection, period, traffic)
 - Who is connected right now shows as a dot beside the address - green breathes, red sits still - on the list, on a client's own page and in the broadcast's recipient list. It refreshes itself every twenty seconds without disturbing anything you are in the middle of
 - **Last online**, as its own column and as a line on the card: minutes and hours while it is fresh, a date once it is past a week, a dash for somebody who has never connected. The exact moment is in the tooltip, and the column sorts, so the people who have stopped using the thing are two clicks away
-- The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button. Beside it, how the mail loop is doing - a bot that has quietly stopped reading the mailbox otherwise looks exactly like a mailbox nobody writes to
-- A client's card: traffic, expiry, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
+- **Subscription fetched**, on the card and as a filter on the list: when the client's app last asked for the subscription, or that it never has. Last online says whether the app is connected; this says whether it was ever set up, so the people who registered and got no further are one filter away. "Never" is said only of somebody the panel has not seen connect either: a client set up before 3x-ui began recording fetches reads "no record" and is not counted among them. Shown when the 3x-ui panel records it, and not at all when it does not
+- The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button. Beside it, how the mail loop is doing - a bot that has quietly stopped reading the mailbox otherwise looks exactly like a mailbox nobody writes to - and how many people are on each tariff, with what they have spent
+- A client's card: traffic, expiry, the auto-renewal, the devices registered against the limit, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
 - Each inbound also carries its own ready-made connection URL, the same string 3x-ui's copy button hands out. One click copies it
-- Creating a client by hand, changing the limit, the expiry or the set of inbounds, disabling an account
+- Creating a client by hand, changing the limit, the expiry, the device limit, the renewal or the set of inbounds, disabling an account
 - Resending the invitation and writing a personal letter, straight from the card
 
 ![Client card](docs/screenshots/client.png)
@@ -72,11 +79,25 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Broadcast](docs/screenshots/broadcast.png)
 
-A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
+A letter to chosen recipients or to every active client. Sending runs in the background, the page shows the progress, and closing the tab does not break it. A broadcast signs in to the mail server once and sends every letter over that connection - each still a letter of its own, to one address - and opens it again if it drops half way. The Broadcast page lists what is being sent right now and what went out before it - how many letters have left, how many did not arrive and to whom - whether it was started from the panel or by mail with `/broadcast`, and a dot on the menu link breathes for as long as letters are going out. Pressing Send while one is still running asks first. The message kind sets the colour of the stripe in the letter: plain, information, warning, urgent.
 
 The recipient list has search, filters (active, disabled, limit spent, traffic running low) and sorting. "All" and "None" act on whatever the filter left - so "everyone who ran out of traffic" is two movements.
 
 And something completely unserious: the **Roulette** button rolls the visible recipients past like a CS:GO case opening, rarity colours and all, and leaves exactly one of them ticked. Rarity comes from traffic spent, so gold goes to the hungriest.
+
+**📮 The mailbox**
+
+![The mailbox](docs/screenshots/mail.png)
+
+The bot's own mailbox, from the panel: Inbox, Sent and Trash, with search by address, name or subject. Beside an open letter stands the client who wrote it - status, tariff, traffic, expiry and the word they came in through, a click away from their card - or a plain "not a client". In the list itself a client's letters carry their tariff, so the people you already serve stand out from the rest at a glance.
+
+It only looks. Opening a letter does not mark it read, because an unread letter is how the bot knows it still owes somebody an answer. An HTML letter is drawn in a sealed frame where nothing in it runs, and pictures from other servers stay hidden until you ask for them - each one tells the sender the letter was opened. Attachments are downloaded, never opened in the panel.
+
+SMTP keeps no copy of what it sends, so the bot now puts one of every letter into the Sent folder itself - unless the provider has already filed it, as Gmail does. Letters sent before the update are not there.
+
+A second mailbox can join it: Support, set up on the Mail tab in Settings, below the bot's own. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Once the reply has gone, the letter it answers is marked read and answered, so the list tells what has been dealt with from what nobody has got to. That mark is the only thing these pages ever change in a mailbox, and never in the bot's own.
+
+Nobody watches Support's mailbox the way the bot watches its own, so with Gotify set up the bot looks at it once a minute and pushes a notification about whatever has arrived since: who wrote, and about what - one push for each letter, in a title and a text you write yourself, and when more than five come at once, the newest five and one push more that counts the rest. It only looks; no letter is marked read. Letters already there when it first looks are not announced, a restart does not repeat what was said, and a letter that arrived while the bot was down is announced when it comes back. The switch and the wording are on the Gotify tab, beside the registration push's. Left unset, nothing about the Mail page changes.
 
 **💌 The letters**
 
@@ -86,7 +107,11 @@ Table-based layout with inline styles, flat colours, a text version in every let
 
 The welcome letter carries a QR code of the subscription link, for the reader who opened their mail on a computer and would otherwise be copying the link across to their phone by hand. It is drawn on the server and travels inside the letter - no QR service is handed everyone's subscription link.
 
-Every text is editable from the panel: subjects, headings, captions, the footer, the service replies. Each letter has a test-send button.
+The registration letter opens with what the subscription is: the tariff by name, the term and the traffic limit. The name is the one the client is actually on, read from their group in 3x-ui, so somebody already registered who writes another tariff's word is told what they still have rather than what the word would have given them. A client from before tariffs existed carries no group, and then the line is simply left out.
+
+Two addresses of yours travel with the letters, both optional and both set on the General tab. The support address is in the footer of every letter and, in its own words, in the registration letter — where somebody is setting a connection up for the first time. It is a link to write to, so pressing it opens a new letter already addressed. The link to the instructions sits in the registration letter below every way of connecting — the buttons, the QR code, the link to copy — because reading about it comes after trying it.
+
+Every text is editable from the panel: subjects, headings, captions, the footer, the service replies. Each letter has a test-send button. The parts that can be left out — the QR code, the link to the instructions, either support line — are framed blocks with a switch of their own, beside the text each one governs.
 
 ![Letter settings](docs/screenshots/settings-mail.png)
 
@@ -106,7 +131,7 @@ The interface strings live in `lang/`, the letter texts in the panel itself, one
 
 ![Logs](docs/screenshots/logs.png)
 
-The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration.
+The process log in the browser: filter by level, search, exception tracebacks. Unread warnings rise to the dashboard. A push to Gotify on every registration, on every letter that arrives for Support, and when Xray on the server stops - with another when it is running again.
 
 The panel also notices when a newer version has been released and says so in a banner, with a link to what changed and the command to run. It updates nothing by itself, and the check can be switched off.
 
@@ -122,7 +147,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/m
 
 The installer asks for the language first, then for access to 3x-ui and the sign-in for its own panel, and does the rest itself: packages, a system user, the latest released version into `/opt/mailchilla`, a virtual environment, `.env`, the systemd service and the `mailchilla` command. At the end it prints the address, the password and the tunnel command.
 
-Debian 11+, Ubuntu 22.04+, CentOS/AlmaLinux/Rocky/Fedora. Python 3.9 or newer is required — Ubuntu 20.04 ships 3.8 and the installer will say so rather than leave a half-installed copy.
+Debian 12+, Ubuntu 22.04+, AlmaLinux/Rocky 9, Fedora. Python 3.10 or newer is required. Debian 11 ships 3.9 and Ubuntu 20.04 ships 3.8, and the installer will say so rather than leave a half-installed copy; on AlmaLinux and Rocky 9, where `python3` is 3.9 as well, it installs `python3.11` beside it and uses that.
 
 Running a script straight off the internet as root deserves a look first. If you would rather:
 
@@ -133,7 +158,7 @@ curl -LO https://raw.githubusercontent.com/vogster/3x-ui-mailchilla-bot/main/ins
 <details>
 <summary><b>Installing by hand</b></summary>
 
-Python 3.9+, and a reachable 3x-ui panel.
+Python 3.10+, and a reachable 3x-ui panel.
 
 ```bash
 git clone https://github.com/vogster/3x-ui-mailchilla-bot.git mailchilla
@@ -152,7 +177,7 @@ python run.py
 
 One command brings up both the bot and the panel. The panel is always raised - there is nowhere else to configure the project. To run the bot on its own: `python email_bot.py`.
 
-`.env` holds only what is needed before the panel can come up: access to 3x-ui, the panel's own sign-in, its address and the logging settings. Everything else - the mailbox, the language, the code word, limits, inbounds, Gotify - is set in the panel after the first sign-in and kept in `settings.json`.
+`.env` holds only what is needed before the panel can come up: access to 3x-ui, the panel's own sign-in, its address and the logging settings. Everything else - the mailbox, the language, Gotify - is set in the panel after the first sign-in and kept in `settings.json`, and what a client gets lives in tariffs beside it.
 
 ---
 
@@ -162,9 +187,61 @@ A fresh copy knows nothing about your mailbox or your inbounds. After the first 
 
 ![Setup wizard](docs/screenshots/setup.png)
 
-The wizard goes step by step: service, mail, inbounds, registration rules, then the optional notifications and app buttons. Every step saves at once - a closed tab loses nothing. The mail step has a working connection check.
+The wizard goes step by step: service, mail, inbounds and the first tariff, then the optional notifications and app buttons. Every step saves at once - a closed tab loses nothing. The mail step has a working connection check.
 
 "I will do it myself" dismisses the banner. The wizard is the same settings fields, laid out in order.
+
+---
+
+## 🎟️ Tariffs
+
+A tariff is what a client gets: traffic, term and the inbounds they are added to - and, if you like, a limit on devices and a renewal that happens by itself. Each has its own code word, and a letter carrying that word registers the sender on that tariff. There can be as many tariffs as you like - a generous one for the family, a small one for a trial, one with no word at all that can only be reached another way.
+
+![Tariffs](docs/screenshots/tariffs.png)
+
+| Field | What it means |
+|---|---|
+| Name | yours to read; it names the tariff in the panel and in the log |
+| Code word | the word a letter must carry. Unique across tariffs, matched as a whole word |
+| Traffic limit | in GB; 0 means unlimited |
+| Subscription length | in days; 0 means it never expires |
+| Device limit | how many devices may use the subscription; 0 means no limit. Needs a recent 3x-ui |
+| Auto-renewal | whether 3x-ui renews the client by itself when the term runs out: every so many days, on a day of the month or on a day of the week, and how many times at most. Needs a term, and a recent 3x-ui |
+| Inbounds | the client is added to each of them, in order |
+
+The dashboard counts who is on which tariff and what they have spent, the broadcast can be narrowed to one tariff, and `/status` tells a client which one they are on. Every tariff and every code has a card of its own: a tariff's shows who is on it, a code's shows everybody who came in through that word - each a click away from their own client card.
+
+**Who is on which tariff is kept in 3x-ui itself**, in the client's group, named after the tariff. Nothing has to be kept in step: the 3x-ui panel shows the same grouping, and a group changed there by hand is simply the truth. The client list shows the tariff beside the name and can filter by it, including "without one" - which is what anybody registered before tariffs existed will be. Renaming a tariff renames the group and carries its clients across, which is why two tariffs may not share a name. Deleting one leaves its clients exactly as they are: they hold their own limits, and the label they carry outlives the tariff - the list marks it with a dashed chip and the tariffs page counts such groups under "Groups without a tariff".
+
+**Auto-renewal is 3x-ui's own as well.** At the moment the term runs out the panel moves the expiry on and starts the traffic count again, instead of cutting the client off - which is how "100 GB a month" is said: a limit of 100, a term of 30 days, renewal every 30. The first period is the tariff's term; the renewal sets when each one after it ends - so many days later, or on the next such day of the month or of the week, by the clock of the 3x-ui server. A cap on the number of renewals makes a subscription that ends by itself after, say, three months. It needs a term: a subscription that never expires never reaches the moment it would be renewed at, and the forms will not set one without it. The client's card shows the renewal and how many have been used, the edit form changes it or switches it off, and the registration letter and `/status` say that the subscription renews and how many renewals are left - only while one will actually happen, since that line is a promise. As with the device limit, what the letter states is what the panel holds after the client was created, not what the tariff asked for: a 3x-ui from before auto-renewal takes the client without it, the log says so, and the letter promises nothing.
+
+**The device limit is 3x-ui's own**, counted by the hardware id an app sends when it fetches the subscription. A device stays registered until it is taken off, so a client's card lists theirs - model, system, app, first and last seen - with a button to forget one or all of them; that frees the slot for whichever device asks next, and is what to press when somebody writes that their new phone is not let in. The registration letter states the limit when there is one, and `/status` answers with how many devices are registered out of how many, which ones, and - once every slot is taken - that the administrator has to free one. A 3x-ui from before such limits takes the client and drops the limit without a word - the bot reads the client back, says so in the log, and leaves the line out of the letter.
+
+**A tariff is read once, when the client is created.** From that moment the values live on the client in 3x-ui, so editing a tariff changes nothing for anybody already registered - it describes the next client, not the last one.
+
+Two details worth knowing about the word. It is matched whole, so `START` is not found inside `RESTART`; and it is looked for only in the part of a letter its sender actually typed, so a reply quoting the welcome letter does not count as a fresh registration. If one letter carries the words of two tariffs, the bot writes back and asks which is meant rather than guessing.
+
+**Code words are a thing of their own**, on their own tab beside the tariffs. A code is a word, the tariff it opens, how many activations are left in it, a note for you, and a switch:
+
+![Code words](docs/screenshots/codes.png)
+
+| Activations | What it is |
+|---|---|
+| empty | the word you hand out openly - works for everybody who writes it |
+| 1 | a personal invitation - spent by whoever uses it first |
+| any number | works that many times |
+
+A code can also carry a date it works until - the last day, to the end of it. A word given out for a weekend stops on its own rather than waiting to be remembered on Monday; an empty date means it never runs out by itself. A code that has run out of activations or out of days stays on the list, struck through, with the record of who came in through it.
+
+That number is the whole difference between the two, which is why there is one form for both. Press **Generate** for a word nobody could guess - ten characters with no `0`/`O` or `1`/`I` in them, since somebody will be typing it off a screen - or type a memorable one yourself.
+
+A tariff can have several words: a seasonal one beside the permanent one, or one per group of people. Any of them can be switched off on its own the moment it leaks, without touching the tariff or the other words. Switching a code off keeps the record of who came in through it; removing it from the list throws that away.
+
+If an address that is already registered uses a code, the code is not spent: they simply get their link again, and a personal invitation stays for the person it was meant for.
+
+Somebody already registered who writes another tariff's word simply gets their subscription link again. Moving a client between tariffs is the administrator's decision, not something a more generous word can do for them.
+
+Updating from 0.1.x needs nothing: the old code word, limit, term and inbounds become a tariff called "Basic" on the first start, and everybody registered before carries on untouched.
 
 ---
 
@@ -176,16 +253,20 @@ Everything that changes during normal use is set in the panel and applies on the
 
 | Tab | What is inside |
 |---|---|
-| **General** | interface language, service name, subscription base address, administrator address |
-| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, connection check |
-| **Registration** | inbounds for new clients, traffic limit, expiry, code word, flow |
+| **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions, two-step sign-in |
+| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, the mail server's name for the proof of a sender, clearing the mailbox out, connection check; below it, the Support mailbox |
+| **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
-| **Gotify** | server address, token, priority, notification text |
-| **Letters** | the language letters go out in, and every text of every letter |
+| **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support, and of the one about Xray stopping |
+| **Letters** | the language letters go out in, every text of every letter, a switch for each block that can be left out, and — as its own item beside the templates — reminding a client who has gone quiet |
 
 The Mail tab has a check: the panel signs in to the mailbox over IMAP and to SMTP with whatever is in the fields (no need to save first) and reports back step by step. If an administrator address is set, a test letter goes there too.
 
-Settings are kept in `settings.json` and the letter texts in `email_texts.json`, both beside the project. The mailbox is picked up on the next polling cycle.
+The same tab can keep the mailbox tidy. Nobody reads it — every letter in it has been answered already — and after a year of registrations it holds thousands. Switched on, the bot moves the read letters to the Trash every so many days, on the connection it is polling with anyway. Only read ones: the flag is set after a letter has been dealt with, so an unread letter is one still owed an answer, which after a spell of the mailbox being unreachable may be a registration that has not happened yet. Nothing is deleted outright, so a schedule set too eagerly can be undone from the mail client until the Trash empties itself.
+
+The Letters tab keeps one more thing beside the templates, set apart from them in its own menu item: reminding a client who has gone quiet. Switched on, the bot checks — on the same schedule as the mailbox cleanup — who 3x-ui has not seen online for longer than the period you set, and sends the letter for it, asking whether something is wrong. A client who registered and never connected at all counts from the registration date rather than being skipped for having no online record - and gets a letter of their own, with a text you can edit beside the usual one: somebody who never fetched the subscription has no subscription to check, and is offered the setup instructions again instead. The test letter on the Letters tab sends either of the two. The check runs again on its own schedule, so a client still gone next time is reminded again rather than only once.
+
+Settings are kept in `settings.json`, the letter texts in `email_texts.json` and the tariffs in `tariffs.json`, all three beside the project. The mailbox is picked up on the next polling cycle.
 
 **Secrets.** The mailbox passwords and the Gotify token are edited in the panel. Passwords are shown as dots and nothing else, the token keeps a few characters at either end so you can tell one from another, and either opens with the eye button. The real value never reaches the page markup, it is requested separately. `settings.json` therefore holds secrets: the file is in `.gitignore`, and it should not carry generous permissions.
 
@@ -205,6 +286,8 @@ Then open `http://localhost:8080`.
 
 The alternative is a reverse proxy with HTTPS. Setting `ADMIN_PANEL_HOST=0.0.0.0` without one is a bad idea.
 
+**Two-step sign-in.** Settings → General → *Signing in* adds a second step: a six-digit code from an authenticator app (TOTP - Google Authenticator, Aegis, 2FAS, a password manager, any of them). The page shows a QR code, the app scans it, and nothing is switched on until the app has produced a right code - so a code that never scanned cannot lock you out. From then on the password alone does not open the panel. A code works once, wrong ones run out after five in five minutes, and switching the second step off takes a code too. For a new phone there is *Set up again* on the same page: one code buys a new QR code, and the old entry keeps working until the new one has produced a right code. Lost the phone? `mailchilla totp-off` on the server takes it off; that needs a shell there, which is exactly what a stolen password does not give.
+
 ---
 
 ## 🖥️ Managing it
@@ -222,6 +305,7 @@ mailchilla
 | `mailchilla log` | the journal, following |
 | `mailchilla update` | check for a new version and install it |
 | `mailchilla passwd` | change the panel's username or password |
+| `mailchilla totp-off` | take two-step sign-in off, for when the phone is lost |
 | `mailchilla port` | change the port |
 | `mailchilla tunnel` | the ready-made SSH tunnel command |
 | `mailchilla check` | sign in to 3x-ui and report back |
@@ -256,7 +340,7 @@ WantedBy=multi-user.target
 Two things that are easy to trip over:
 
 - **Do not use `EnvironmentFile` for `.env`.** The application reads it itself through python-dotenv, and systemd parses such files by its own rules - two parsers on one file will disagree.
-- **The user needs write access** to the project directory: `settings.json`, `email_texts.json` and `logs/` are written there.
+- **The user needs write access** to the project directory: `settings.json`, `email_texts.json`, `tariffs.json` and `logs/` are written there.
 
 </details>
 
@@ -270,11 +354,23 @@ mailchilla update
 
 Versions are tags, not the tip of a branch: the command asks GitHub for the newest `vX.Y.Z`, shows what changed from `CHANGELOG.md` and waits for a yes.
 
-Before touching anything it copies `.env`, `settings.json` and `email_texts.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them.
+Before touching anything it copies `.env`, `settings.json`, `email_texts.json` and `tariffs.json` to `/opt/mailchilla-backups/<date>/`. If the panel does not answer after the restart, it goes back to the previous version and restores them. If the new version's dependencies will not install, it goes back before anything is restarted.
+
+**0.2.0 needs Python 3.10**, where 0.1.x ran on 3.9. Look before updating:
+
+```bash
+/opt/mailchilla/venv/bin/python --version
+```
+
+On 3.9 the update cannot go through. Install a newer Python beside the system's — on AlmaLinux and Rocky 9 that is `dnf install python3.11`; on Debian 11, which has none to offer, the way is to upgrade the system — then rebuild the environment with it and update again:
+
+```bash
+sudo python3.11 -m venv --clear /opt/mailchilla/venv && sudo /opt/mailchilla/venv/bin/pip install -r /opt/mailchilla/requirements.txt && sudo chown -R mailchilla: /opt/mailchilla/venv && sudo mailchilla restart
+```
 
 Files edited on the server — a template, say — are put aside with `git stash` rather than blocking the update; the command tells you how to get them back.
 
-New settings and new letter texts need no migration: a key absent from `settings.json` falls back to the default in `config.py`, and `email_texts.json` stores only what actually differs from the shipped text.
+New settings and new letter texts need no migration: a key absent from `settings.json` falls back to the default in `config.py`, and `email_texts.json` stores only what actually differs from the shipped text. Tariffs need none either: an installation without `tariffs.json` gets one built out of the code word and limits it already had.
 
 For a manual installation the old route still works: `git pull` and `systemctl restart`.
 
@@ -289,13 +385,25 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `install.sh` | the installer: one command, English or Russian |
 | `mailchilla.sh` | managing an installed copy: the menu and the subcommands |
 | `run.py` | the entry point: the bot in a background thread, the panel in the main one |
-| `email_bot.py` | IMAP polling, parsing letters, commands, sending |
+| `email_bot.py` | what a letter means: the commands, registrations, the letters sent back |
+| `mailer.py` | sending: the MIME message, SMTP, the Gotify push |
+| `inbox.py` | reading: the IMAP poll loop and the health of it |
+| `mailfolders.py` | the mailbox as the panel shows it: folders, letters, copies of sent ones |
+| `support_watch.py` | a look at Support's mailbox once a minute, and a push about what is new |
+| `xray_watch.py` | a question to 3x-ui once a minute about Xray, and a push when the answer changes |
+| `broadcasts.py` | the record of broadcasts being sent and recently sent |
 | `xui_client.py` | the 3x-ui API client |
 | `templates.py` | assembling letters with Jinja2 - HTML and a text version |
 | `email_texts.py` | the editable letter texts, one set per language |
 | `i18n.py` | the interface translator: catalogue lookup and the two language settings |
 | `lang/` | the interface catalogues, one module per language |
 | `settings.py` | settings layered over `.env` |
+| `totp.py` | the codes of two-step sign-in (TOTP, RFC 6238) |
+| `tariffs.py` | the tariffs and the code words that open them |
+| `renewal.py` | auto-renewal: what a tariff may ask for, and what 3x-ui holds for a client |
+| `inactivity.py` | reminding a client who has gone quiet |
+| `updater.py` | noticing that a newer version has been released |
+| `statefile.py` | writing the state files: atomically, and readable by their owner alone |
 | `config.py` | environment variables |
 | `applog.py` | log collection into a buffer and a file |
 | `admin/` | the FastAPI web panel |
@@ -306,6 +414,17 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 ## 🛠️ Development
 
 Forks and pull requests are welcome. The main branch is `main`.
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m unittest discover -s tests   # what CI runs
+```
+
+Most of the tests are pure — the settings coercion, the code-word matching, the letter texts. `tests/test_panel_routes.py` is the other kind: it drives the panel through `fastapi.testclient` with 3x-ui stubbed out, and exists for one failure in particular — a template reading a context key the route never sent. Jinja resolves that to Undefined in silence, the page still renders, and the missing part is found by somebody clicking a week later. A new page or a new context key wants a line in that file.
+
+A test run leaves the project directory as it found it: every test module starts with `import sandbox`, which moves `settings.json`, `email_texts.json` and `tariffs.json` to a temporary directory and switches the log file off before anything is loaded. A new test file needs that line too, and `tests/test_sandbox.py` fails for one without it.
+
+To look at a change rather than test it, there is a stand: `python docs/stand.py --lang en` copies the tree to a temporary directory and starts the panel there on stand-ins - a 3x-ui kept in memory with invented clients, two mailboxes, and an outbox that is a folder, so nothing is ever sent. Its `/stand` page takes a letter "to the bot" and shows what was answered. The screenshots in this file are taken from the same stand-ins by `python docs/shots.py`.
 
 ```bash
 git checkout -b feature/my-feature

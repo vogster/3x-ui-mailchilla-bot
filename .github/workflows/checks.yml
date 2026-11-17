@@ -16,12 +16,15 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # The floor the code actually needs: list[int] in annotations, which
-          # FastAPI evaluates at run time.
-          python-version: "3.9"
+          # The floor: the oldest Python the versions pinned in requirements.txt
+          # still install on, and the one install.sh asks for (PY_MIN_*). Tested
+          # on the oldest, since that is where a newer idiom fails.
+          python-version: "3.10"
 
       - name: Install
-        run: pip install -r requirements.txt
+        # The dev file adds what only the tests need, so an installation does
+        # not carry it.
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: The shell scripts must parse
         run: bash -n install.sh && bash -n mailchilla.sh

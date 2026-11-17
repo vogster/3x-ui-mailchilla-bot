@@ -24,6 +24,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
 import email_texts
+import renewal
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,10 @@ class _SafeFormat(dict):
 def text(key: str, **values) -> str:
     """A string from the editable texts, with its values substituted in."""
     values.setdefault("service", config.SERVICE_NAME)
+    # Available to every text, like the service name: an installation sets them
+    # once and any letter may mention either.
+    values.setdefault("support", config.SUPPORT_EMAIL)
+    values.setdefault("manual", config.MANUAL_URL)
     raw = email_texts.get(key)
     try:
         return raw.format_map(_SafeFormat(values))
@@ -99,8 +104,30 @@ def _split(value):
 
 _env.globals["t"] = text
 _env.globals["split"] = _split
+def _mailto(value, address: str):
+    """
+    Turns the support address inside an already-rendered line into a link.
+
+    The address arrives through the editable texts as a substitution, so it
+    cannot carry markup of its own — a text is text, and letting it hold HTML
+    would make every letter field a place where markup can be typed. Instead
+    the address is found in the finished line and wrapped here, which keeps the
+    text plain and still gives the reader something to press.
+    """
+    address = (address or "").strip()
+    if not address:
+        return value
+    shown = escape(address)
+    link = Markup(
+        '<a href="mailto:{href}" style="color: #45b866; text-decoration: none; '
+        'font-weight: 600;">{shown}</a>'
+    ).format(href=address, shown=address)
+    return Markup(str(value).replace(str(shown), str(link)))
+
+
 _env.filters["emph"] = _emph
 _env.filters["plain"] = _plain
+_env.filters["mailto"] = _mailto
 
 
 # How the subscription QR is referred to from the HTML: <img src="cid:QR_CID">.
@@ -138,6 +165,9 @@ def qr_png(url: str) -> bytes:
 def _render(name: str, **context) -> Email:
     """Builds the HTML and text pair from the templates of the same name."""
     context.setdefault("service_name", config.SERVICE_NAME)
+    # Every letter carries the support address in its footer, so it is set here
+    # rather than by each builder. Empty means the footer says nothing about it.
+    context.setdefault("support", _support("FOOTER_SUPPORT_ENABLED"))
     try:
         html = _env.get_template(f"{name}.html").render(**context)
     except Exception as e:
@@ -161,15 +191,92 @@ def _app_links(sub_url):
     return apps
 
 
+def _manual_link():
+    """
+    The link to the instructions, or nothing.
+
+    Two ways to have none: no address to send anybody to, or the switch turned
+    off for an installation whose letters say enough already. Either way the
+    letter closes up around it, as it does for an app with no scheme.
+    """
+    url = (config.MANUAL_URL or "").strip()
+    if not url or not config.WELCOME_MANUAL_ENABLED:
+        return None
+    return {"url": url, "button": text("welcome.button_manual")}
+
+
+def _support(switch: str) -> str:
+    """
+    The support address for the block named by that switch, or nothing.
+
+    Each place the address appears has a switch of its own — the footer of
+    every letter, and the registration letter's own line — because an
+    installation may well want the signature without the second offer of help,
+    or the other way round. An empty address silences both regardless.
+    """
+    if not getattr(config, switch, True):
+        return ""
+    return (config.SUPPORT_EMAIL or "").strip()
+
+
 def _fmt_gb(value_bytes) -> str:
     return text("common.unit_gb", gb=round(value_bytes / GB, 2))
+
+
+def _weekday_words(day: int) -> str:
+    """
+    The words for a day of the week, 1 for Monday, out of the one editable
+    list of seven.
+
+    One text rather than seven fields, since they are only ever edited as a
+    set. A list somebody left six or eight long cannot be counted into, and
+    the shipped one is used instead: a letter naming the wrong day is worse
+    than one in the original wording.
+    """
+    def seven(raw):
+        return [part.strip() for part in str(raw or "").split(",") if part.strip()]
+
+    words = seven(email_texts.get("common.weekdays"))
+    if len(words) != 7:
+        words = seven(email_texts.default("common.weekdays"))
+    return words[day - 1] if len(words) == 7 and 1 <= day <= 7 else ""
+
+
+def _renewal_text(renew) -> str:
+    """
+    What a letter says about auto-renewal; empty when it should say nothing.
+
+    `renew` is what renewal.of_client() read off the client. Nothing is said
+    for a panel that does not say, for a client with no renewal — and for one
+    whose renewal will not fire again: the cap is spent, or there is no expiry
+    for it to act on. A line about renewal is a promise that the subscription
+    carries on, and the client plans by it.
+    """
+    if not renew or not renew.get("mode") or renew.get("active") is False:
+        return ""
+    mode, value = renew["mode"], int(renew.get("value") or 0)
+    if mode == renewal.DAYS:
+        words = text("common.renew_days", days=value)
+    elif mode == renewal.MONTHDAY:
+        words = text("common.renew_monthday", day=value)
+    elif mode == renewal.WEEKDAY and _weekday_words(value):
+        words = text("common.renew_weekday", weekday=_weekday_words(value))
+    else:
+        return ""
+    # How many are still to come, when there is a cap. A setting that never
+    # went through of_client carries no count, and its cap is then all of them.
+    left = renew["left"] if "left" in renew else (int(renew.get("max") or 0) or None)
+    if left is not None:
+        words = text("common.renew_left", renewal=words, left=left)
+    return words
 
 
 def welcome_subject(renewed=False) -> str:
     return text("welcome.subject_again" if renewed else "welcome.subject_new")
 
 
-def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
+def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="",
+                      limit_hwid=0, renew=None) -> Email:
     """The letter carrying the subscription link, on registration or resent."""
     # Somebody reading their mail on a computer has the link on the wrong
     # machine, and carrying it across to the phone by hand is exactly the sort
@@ -181,21 +288,48 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False) -> Email:
         title=welcome_subject(renewed),
         renewed=renewed,
         sub_url=sub_url,
+        # The name of the tariff, beside the term and the limit it gave. Empty
+        # for anybody registered before tariffs existed, and then the line is
+        # simply not drawn — an empty "Tariff:" says less than no line at all.
+        tariff=tariff or "",
         qr_cid=QR_CID if qr else "",
         images={QR_CID: qr} if qr else None,
         apps=[{"label": a["label"],
                "url": a["url"],
                "button": text("welcome.button_app", app=a["label"])}
               for a in _app_links(sub_url)],
+        manual=_manual_link(),
+        # This letter's own support line, switched separately from the footer's.
+        support_block=_support("WELCOME_SUPPORT_ENABLED"),
         expire_text=(text("welcome.value_forever") if not expire_days
                      else text("welcome.value_days", days=expire_days)),
         limit_text=(text("welcome.value_unlimited") if not limit_gb
                     else text("welcome.value_gb", gb=limit_gb)),
+        # How many devices may use the subscription. Empty when there is no
+        # limit, and the line is then left out: "Devices: unlimited" would be a
+        # line about a restriction that is not there. Stated when there is one,
+        # because the third phone being refused is otherwise the first the
+        # client hears of it.
+        devices_text=(text("welcome.value_devices", count=int(limit_hwid))
+                      if limit_hwid and int(limit_hwid) > 0 else ""),
+        # Whether the subscription renews by itself when the term is up. Left
+        # out when it does not: the term above already says when it ends.
+        renewal_text=_renewal_text(renew),
     )
 
 
-def get_status_email(email, is_active, up, down, total, expiry_time_ms) -> Email:
-    """The letter with the subscription status and traffic spent."""
+def get_status_email(email, is_active, up, down, total, expiry_time_ms,
+                     tariff: str = "", device_limit: int = 0, devices=None,
+                     renew=None) -> Email:
+    """
+    The letter with the subscription status and traffic spent.
+
+    `device_limit` is how many devices the client may use, 0 for no limit —
+    and then nothing about devices is said at all. `devices` is what the
+    registered ones call themselves, one string each and "" for one that did
+    not say; None means 3x-ui states the limit but would not list them, which
+    is not the same as nobody being registered.
+    """
     used = (up or 0) + (down or 0)
     percent = None
     if total and total > 0:
@@ -219,7 +353,67 @@ def get_status_email(email, is_active, up, down, total, expiry_time_ms) -> Email
         used_text=used_text,
         percent=percent,
         meter_text=text("status.meter_text", percent=percent) if percent is not None else "",
+        # The client's group in 3x-ui, which this project names after the
+        # tariff. Empty for anybody registered before tariffs existed, and the
+        # line is then left out rather than showing a blank.
+        tariff=tariff or "",
+        # Beside "valid until": with a renewal that date is not the end, and
+        # somebody watching it come closer should be told so.
+        renewal_text=_renewal_text(renew),
+        **_status_devices(device_limit, devices),
     )
+
+
+def _status_devices(device_limit, devices) -> dict:
+    """
+    What the status letter says about devices.
+
+    Somebody asks for their status when something is wrong, and "the new phone
+    will not connect" is that. The count against the limit tells them why; the
+    names tell them which device is in the way; and when every slot is taken
+    there is a line saying what to do, because the figures alone do not.
+    """
+    limit = int(device_limit or 0)
+    if limit <= 0:
+        return {"devices_text": "", "device_names": "", "devices_full": False}
+    if devices is None:
+        # The limit is known and the list is not. "0 of 2" would be a claim
+        # about something nobody was able to check.
+        return {"devices_text": text("status.value_devices_limit", limit=limit),
+                "device_names": "", "devices_full": False}
+    devices = list(devices)
+    return {
+        "devices_text": text("status.value_devices", used=len(devices), limit=limit),
+        # Only those that said what they are: a device that did not is still
+        # counted above, but a gap between two commas names nothing.
+        "device_names": ", ".join(str(d).strip() for d in devices if str(d or "").strip()),
+        "devices_full": len(devices) >= limit,
+    }
+
+
+def get_inactivity_email(email, days, never_set_up: bool = False) -> Email:
+    """
+    A nudge to a client who has not connected in a while.
+
+    `never_set_up` is for somebody who registered and never fetched the
+    subscription or connected: they get a different text, since "check your
+    subscription with /status" is advice for an app that was working once.
+
+    Built through the same "notice" markup as the service replies: the letter
+    is a title and a couple of paragraphs, which is exactly that template's
+    shape, and a client card carrying its own layout would draw the same box
+    twice for no reason.
+    """
+    key = "inactivity.text_unused" if never_set_up else "inactivity.text"
+    paragraphs = _split(text(key, email=email, days=days))
+    # The footer already carries the address when it has one; this is the
+    # letter's own mention, the way the registration letter has one besides
+    # its footer. An empty address means nothing to write to, so the line is
+    # left out rather than reading "write to us: ".
+    support = (config.SUPPORT_EMAIL or "").strip()
+    if support:
+        paragraphs.append(text("inactivity.support"))
+    return get_notice_email(title=text("inactivity.subject"), paragraphs=paragraphs)
 
 
 def _howto_steps():
@@ -263,7 +457,7 @@ def broadcast_kind_options():
 
 # Service messages: each has its own keys for subject, text and, where needed, a list.
 NOTICE_KINDS = ("unknown", "not_registered", "status_error",
-                "create_error", "broadcast_done", "broadcast_empty")
+                "create_error", "broadcast_done", "broadcast_cut", "broadcast_empty")
 
 
 def notice_subject(kind: str) -> str:

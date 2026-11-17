@@ -40,7 +40,7 @@ BACKUP_DIR="/opt/mailchilla-backups"
 UI_LANG="$INSTALL_LANG"
 
 ENV_FILE="$INSTALL_DIR/.env"
-STATE_FILES=(".env" "settings.json" "email_texts.json")
+STATE_FILES=(".env" "settings.json" "email_texts.json" "tariffs.json")
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
@@ -155,6 +155,10 @@ declare -A MSG=(
 [ru.u_restart]="Перезапускаем..."
 [en.u_ok]="Updated to {0}."
 [ru.u_ok]="Обновлено до {0}."
+[en.u_deps_failed]="The new version's dependencies could not be installed. This installation runs Python {0}; the new version may need a newer one."
+[ru.u_deps_failed]="Зависимости новой версии не удалось установить. Эта установка работает на Python {0}; новой версии может требоваться более новый."
+[en.u_deps_rolled]="Put {0} back. The service was not restarted and nothing else was changed."
+[ru.u_deps_rolled]="Возвращена версия {0}. Служба не перезапускалась, больше ничего не изменено."
 [en.u_rollback]="The panel did not come up. Rolling back to {0}..."
 [ru.u_rollback]="Панель не поднялась. Откатываемся на {0}..."
 [en.u_rolled]="Rolled back. Look at the log: mailchilla log"
@@ -210,7 +214,15 @@ declare -A MSG=(
 [en.c_auth]="3x-ui refused the credentials (HTTP {0}). Check XUI_API_TOKEN, or the username and password, in {1}."
 [en.c_net]="No answer from {0}. Check XUI_URL in {1}."
 [en.c_odd]="3x-ui answered, but not as expected. Look at the log: mailchilla log"
+[en.c_no_tariffs]="There is not a single tariff. A letter with a code word will register nobody until one exists."
+[en.c_no_codes]="No code word works: every one is switched off or used up. Nobody can register by mail."
+[en.c_tariff_empty]="The tariff {0} has no inbounds ticked. Registration on it will fail."
+[en.c_tariff_gone]="The tariff {0} names inbounds that 3x-ui does not have: {1}. Registration breaks off on them."
 [ru.c_auth]="3x-ui отклонил доступы (HTTP {0}). Проверьте XUI_API_TOKEN или логин с паролем в {1}."
+[ru.c_no_tariffs]="Нет ни одного тарифа. Пока его нет, письмо с кодовым словом никого не зарегистрирует."
+[ru.c_no_codes]="Ни одно кодовое слово не работает: все выключены или израсходованы. Зарегистрироваться письмом невозможно."
+[ru.c_tariff_empty]="В тарифе {0} не отмечен ни один inbound. Регистрация по нему не пройдёт."
+[ru.c_tariff_gone]="В тарифе {0} указаны inbound'ы, которых нет в 3x-ui: {1}. Регистрация на них обрывается."
 [ru.c_net]="Адрес {0} не отвечает. Проверьте XUI_URL в {1}."
 [ru.c_odd]="3x-ui ответил, но не так, как ожидалось. Посмотрите лог: mailchilla log"
 
@@ -225,6 +237,13 @@ declare -A MSG=(
 [ru.un_ask]="Точно удалить Mailchilla?"
 [en.un_done]="Mailchilla has been removed."
 [ru.un_done]="Mailchilla удалена."
+
+[en.t2_none]="Two-step sign-in is not on; there is nothing to switch off."
+[ru.t2_none]="Двухэтапный вход не включён — отключать нечего."
+[en.t2_off]="Two-step sign-in is off: the panel opens with the password alone. Set it up again in Settings → General."
+[ru.t2_off]="Двухэтапный вход отключён: панель открывается одним паролем. Настроить заново — в Настройки → Основные."
+[en.t2_fail]="Could not switch two-step sign-in off. Nothing was changed."
+[ru.t2_fail]="Не удалось отключить двухэтапный вход. Ничего не изменено."
 
 [en.lang_saved]="The menu language has been changed. The language of the panel and of the letters is set in the panel itself."
 [ru.lang_saved]="Язык меню изменён. Язык панели и писем задаётся в самой панели."
@@ -459,15 +478,57 @@ except Exception:
 if not body.get("success"):
     print("ODD"); sys.exit(0)
 print("OK", len(body.get("obj") or []))
+
+# A reachable panel is only half the question. These are the three ways
+# registration stops working in silence, and none of them shows up in the log
+# until somebody writes in and gets nothing back.
+import tariffs
+tariffs.load()
+known = {i.get("id") for i in (body.get("obj") or [])}
+all_tariffs = tariffs.all_tariffs()
+if not all_tariffs:
+    print("NOTARIFFS")
+elif not tariffs.live_words():
+    print("NOCODES")
+def one_line(value):
+    # The shell reads this a line at a time; a name with a newline in it would
+    # arrive as two findings, the second of them nonsense.
+    return " ".join(str(value).split())
+
+for t in all_tariffs:
+    if not t["inbound_ids"]:
+        print("EMPTY", one_line(t["name"]))
+    else:
+        missing = sorted(set(t["inbound_ids"]) - known)
+        if missing:
+            # The ids first: a tariff name may hold spaces, so it has to be
+            # what is left over rather than what is up to the first space.
+            print("GONE", ",".join(str(i) for i in missing), one_line(t["name"]))
 ' 2>/dev/null)" || out="NET"
 
-    status="${out%% *}"
-    case "$status" in
-        OK)   good "$(t c_ok "${out#OK }")" ;;
-        AUTH) bad "$(t c_auth "${out#AUTH }" "$ENV_FILE")" ;;
-        ODD)  bad "$(t c_odd)" ;;
-        *)    bad "$(t c_net "$(env_get XUI_URL)" "$ENV_FILE")" ;;
-    esac
+    # The probe prints one line per finding, so each is read on its own rather
+    # than only the first: a panel that answers can still be unable to register
+    # anybody, and that is worth saying in the same breath.
+    local line status rest name ids
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        status="${line%% *}"
+        rest="${line#"$status"}"
+        rest="${rest# }"
+        case "$status" in
+            OK)         good "$(t c_ok "$rest")" ;;
+            AUTH)       bad "$(t c_auth "$rest" "$ENV_FILE")" ;;
+            ODD)        bad "$(t c_odd)" ;;
+            NOTARIFFS)  warn "$(t c_no_tariffs)" ;;
+            NOCODES)    warn "$(t c_no_codes)" ;;
+            EMPTY)      warn "$(t c_tariff_empty "$rest")" ;;
+            GONE)       ids="${rest%% *}"; name="${rest#"$ids"}"; name="${name# }"
+                        warn "$(t c_tariff_gone "$name" "$ids")" ;;
+            *)          bad "$(t c_net "$(env_get XUI_URL)" "$ENV_FILE")" ;;
+        esac
+    done <<EOF
+$out
+EOF
     printf '\n'
 }
 
@@ -501,6 +562,79 @@ cmd_passwd() {
     printf '\n'
     [ "$generated" = "1" ] && printf '  %s%-14s%s %s%s%s\n' "$D" "$(t p_new)" "$N" "$B$YEL" "$pass" "$N"
     good "$(t p_saved)"
+    printf '\n'
+}
+
+# Asks the installation about the second step of signing in, or takes it off.
+# Prints ON, OFF or DONE; anything else, nothing included, is a failure — a
+# copy from before 0.2.0 has no such setting to ask about.
+#
+# Run as the service's own user where that can be arranged. The code being run
+# lives in a directory that user can write to, and root has no business
+# executing it; the file then also keeps its owner, and a write that fails
+# half-way leaves no root-owned temporary file for the service to trip over on
+# its every save afterwards.
+two_step_py() {
+    local as_user=()
+    if command -v runuser >/dev/null 2>&1 && id "$SERVICE_USER" >/dev/null 2>&1; then
+        as_user=(runuser -u "$SERVICE_USER" --)
+    fi
+    # ${as_user[@]+…}: an empty array is an unbound variable to set -u before
+    # bash 4.4.
+    (cd "$INSTALL_DIR" && ${as_user[@]+"${as_user[@]}"} "$INSTALL_DIR/venv/bin/python" -B -c '
+import sys
+sys.path.insert(0, ".")
+import logging
+logging.disable(logging.CRITICAL)
+import settings
+settings.load()
+if sys.argv[1] == "off":
+    settings.save_two_step("")
+    print("DONE")
+else:
+    print("ON" if settings.two_step_on() else "OFF")
+' "$1" 2>/dev/null) || true
+}
+
+# For whoever has lost the phone the codes were on. It asks for nothing but
+# root, and that is the design rather than a gap in it: the second step guards
+# against a password that got out, and a shell on the server is the one thing
+# such a password does not give.
+cmd_totp_off() {
+    need_root totp-off || return 1; need_install
+    local was_active=0
+    printf '\n'
+    case "$(two_step_py state)" in
+        ON)  ;;
+        OFF) good "$(t t2_none)"; printf '\n'; return 0 ;;
+        *)   bad "$(t t2_fail)"; printf '\n'; return 1 ;;
+    esac
+
+    # Stopped first: the running panel holds the secret in memory and writes
+    # the whole of settings.json on its next save, the secret with it.
+    if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+        was_active=1
+        systemctl stop "$SERVICE"
+    fi
+    local result
+    result="$(two_step_py off)"
+    # Where runuser was not to be had the file was written by root, and the
+    # service must still be able to read it — the temporary one beside it too,
+    # if the write stopped half-way.
+    chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/settings.json" 2>/dev/null || true
+    chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/settings.json.tmp" 2>/dev/null || true
+    lock_state_files
+    if [ "$was_active" = "1" ]; then
+        systemctl start "$SERVICE"
+        wait_for_panel || warn "$(t st_silent)"
+    fi
+    if [ "$result" = "DONE" ]; then
+        good "$(t t2_off)"
+    else
+        bad "$(t t2_fail)"
+        printf '\n'
+        return 1
+    fi
     printf '\n'
 }
 
@@ -618,6 +752,23 @@ changelog_for() {
 
 python_minor() { python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0; }
 
+# The state files hold the mailbox passwords and the code words, and the log
+# names everybody who wrote. chown -R leaves a mode as it finds it, and a copy
+# written by a version before 0.2.0 is readable by every account on the server
+# until the panel next saves it — which may be never. So they are closed here,
+# on every update, rather than left for the application to get round to.
+lock_state_files() {
+    local file
+    for file in "${STATE_FILES[@]}"; do
+        if [ -f "$INSTALL_DIR/$file" ]; then
+            chmod 600 "$INSTALL_DIR/$file"
+        fi
+    done
+    if [ -d "$INSTALL_DIR/logs" ]; then
+        chmod -R go-rwx "$INSTALL_DIR/logs"
+    fi
+}
+
 cmd_update() {
     need_root update || return 1; need_install
     local current latest dirty stash_made=0 backup
@@ -670,11 +821,36 @@ cmd_update() {
     git_repo checkout --quiet --force "$latest"
 
     dim "$(t u_deps)"
-    "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" >/dev/null
+    # Checked, not left to set -e. A release whose dependencies do not install
+    # here - one that needs a newer Python, above all - used to end the script
+    # on this line: the new code checked out, the old packages under it, the
+    # service not restarted and still running what it had in memory, and
+    # nothing said about any of it. The service has not been touched yet, so
+    # putting the code back is the whole of the way out.
+    local pip_log
+    pip_log="$(mktemp)"
+    if ! "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" \
+            >/dev/null 2>"$pip_log"; then
+        printf '\n'
+        warn "$(t u_deps_failed "$("$INSTALL_DIR/venv/bin/python" -c \
+            'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo '?')")"
+        tail -n 4 "$pip_log" | sed 's/^/      /'
+        rm -f "$pip_log"
+        git_repo checkout --quiet --force "$current"
+        # In case some of the new packages did go in before the one that failed.
+        "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" \
+            >/dev/null 2>&1 || true
+        chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        lock_state_files
+        bad "$(t u_deps_rolled "$current")"
+        printf '\n'
+        return 1
+    fi
+    rm -f "$pip_log"
 
     install -m 755 "$INSTALL_DIR/mailchilla.sh" /usr/local/bin/mailchilla 2>/dev/null || true
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-    chmod 600 "$ENV_FILE"
+    lock_state_files
 
     dim "$(t u_restart)"
     systemctl restart "$SERVICE"
@@ -693,6 +869,7 @@ cmd_update() {
             [ -f "$backup/$file" ] && cp -a "$backup/$file" "$INSTALL_DIR/$file"
         done
         chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+        lock_state_files
         systemctl restart "$SERVICE"
         bad "$(t u_rolled)"
         printf '\n'
@@ -731,7 +908,7 @@ cmd_help() {
     printf '\n  %s%s%s\n\n' "$B" "$(t help_usage)" "$N"
     printf '     mailchilla %s%s%s\n\n' "$D" "— $(t help_nomenu)" "$N"
     local c
-    for c in status start stop restart log update passwd port tunnel check \
+    for c in status start stop restart log update passwd totp-off port tunnel check \
              enable disable autostart backup lang uninstall version help; do
         printf '     mailchilla %s\n' "$c"
     done
@@ -833,6 +1010,7 @@ main() {
         log|logs)  cmd_log ;;
         update)    cmd_update ;;
         passwd|password) cmd_passwd ;;
+        totp-off|2fa-off) cmd_totp_off ;;
         port)      cmd_port ;;
         tunnel|ssh) cmd_tunnel ;;
         check)     cmd_check ;;

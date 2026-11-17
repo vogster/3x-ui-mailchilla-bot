@@ -185,7 +185,9 @@
                     <td><a href="/clients/{{ c.uuid }}" class="row-link mono">{{ c.email }}</a></td>
                     <td class="muted">{{ c.comment }}</td>
                     <td class="mono" style="white-space:nowrap;">{{ c.used_gb }} / {{ c.limit_gb }} {{ t("GB") }}</td>
-                    <td style="width:120px;"><div class="bar" style="width:100%;"><div style="width: {{ c.percent }}%;"></div></div></td>
+                    <td style="width:120px;">
+                        <div class="bar {% if c.percent >= 100 %}full{% elif c.percent >= 80 %}near{% endif %}"
+                             style="width:100%;"><div style="width: {{ c.percent }}%;"></div></div></td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -249,50 +251,70 @@
     </div>
 </div>
 
+{% if tariff_rows %}
 <div class="panel" style="margin-top: 20px;">
     <div class="panel-head">
-        <h2>{{ t("Inbounds") }}</h2>
-        <a href="/settings" class="btn small">{{ t("Configure") }}</a>
+        <h2>{{ t("Tariffs") }}</h2>
+        <a href="/tariffs" class="btn small">{{ t("Configure") }}</a>
     </div>
-    {% if missing_inbounds %}
-    <div style="padding: 0 20px;">
+    {% if broken_tariffs %}
+    <div style="padding: 14px 20px 0 20px;">
+        {% for broken in broken_tariffs %}
         <div class="flash error">
-            {{ t("The settings tick inbounds that do not exist:") }}
-            <b class="mono">{{ missing_inbounds|join(", ") }}</b>. {{ t("Registration breaks off on them.") }}
+            {{ t("The tariff {name} names inbounds that 3x-ui does not have:", name=broken.name) }}
+            <b class="mono">{{ broken.missing|join(", ") }}</b>.
+            {{ t("Registration breaks off on them.") }}
+            <a href="/tariffs/{{ broken.id }}/edit">{{ t("Edit") }}</a>
         </div>
+        {% endfor %}
     </div>
     {% endif %}
-    {% if inbounds %}
     <div class="tscroll">
         <table>
             <thead>
-                <tr><th>{{ t("Name") }}</th><th>{{ t("Protocol") }}</th><th>{{ t("Port") }}</th><th>{{ t("Clients") }}</th><th>{{ t("For registrations") }}</th></tr>
+                <tr>
+                    <th>{{ t("Name") }}</th>
+                    <th>{{ t("Clients") }}</th>
+                    <th>{{ t("Traffic") }}</th>
+                    <th>{{ t("What it hands out") }}</th>
+                </tr>
             </thead>
             <tbody>
-            {% for ib in inbounds %}
+            {% for row in tariff_rows %}
                 <tr>
-                    <td>{{ ib.remark }}
-                        {% if not ib.enable %}<span class="badge off" style="margin-left:6px;">{{ t("off") }}</span>{% endif %}
-                    </td>
-                    <td class="mono muted">{{ ib.protocol }}</td>
-                    <td class="mono muted">{{ ib.port }}</td>
-                    <td class="mono">{{ ib.clients }}</td>
                     <td>
-                        {% if ib.configured %}
-                        <span class="badge on">{{ t("yes") }}</span>
+                        {% if row.orphan %}
+                        <span class="muted">{{ row.name }}</span>
+                        <span class="badge off" style="margin-left:6px;">{{ t("no such tariff") }}</span>
                         {% else %}
-                        <span class="muted">{{ t("no") }}</span>
+                        <a href="/tariffs/{{ row.id }}" class="row-link">{{ row.name }}</a>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ row.clients }}</td>
+                    <td class="mono">{{ row.used_gb }} {{ t("GB") }}</td>
+                    <td class="mono muted">
+                        {% if row.orphan %}—
+                        {% else %}
+                        {% if row.limit_gb %}{{ row.limit_gb }} {{ t("GB") }}{% else %}{{ t("no limit") }}{% endif %} ·
+                        {% if row.expire_days %}{{ row.expire_days }} {{ t("d [days]") }}{% else %}{{ t("No expiry") }}{% endif %}
                         {% endif %}
                     </td>
                 </tr>
             {% endfor %}
+            {% if without_tariff %}
+                <tr>
+                    <td class="muted">{{ t("without a tariff") }}</td>
+                    <td class="mono">{{ without_tariff }}</td>
+                    <td class="mono muted">—</td>
+                    <td class="mono muted">—</td>
+                </tr>
+            {% endif %}
             </tbody>
         </table>
     </div>
-    {% else %}
-    <div class="empty">{{ t("Could not fetch the inbound list") }}</div>
-    {% endif %}
 </div>
+{% endif %}
+
 {% include "_client_new_dialog.html" %}
 
 {% if server %}

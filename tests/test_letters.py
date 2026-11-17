@@ -4,6 +4,8 @@ Building a letter.
 Every letter goes out in two forms, and the welcome letter carries a picture —
 which is one more MIME layer, and only when there is a picture to carry.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config
@@ -131,3 +133,189 @@ class MimeShape(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTariffInTheLetter(unittest.TestCase):
+    """
+    The name of the tariff, beside the term and the limit it gave.
+
+    It answers the question the numbers do not: somebody who writes back asking
+    "which one am I on?" was told in the first letter.
+    """
+
+    def setUp(self):
+        self.saved = config.MAIL_LANG
+        config.MAIL_LANG = "ru"
+        email_texts.load()
+
+    def tearDown(self):
+        config.MAIL_LANG = self.saved
+        email_texts.load()
+
+    def test_it_stands_with_the_term_and_the_limit(self):
+        mail = templates.get_welcome_email("https://example.com/sub/abc", 90, 100,
+                                           tariff="Standard")
+        for part in (mail.html, mail.text):
+            self.assertIn("Standard", part)
+            self.assertLess(part.index("Standard"), part.index("Срок действия"))
+
+    def test_no_tariff_means_no_line(self):
+        # Anybody registered before tariffs existed carries no group, and an
+        # empty "Тариф:" says less than no line at all.
+        mail = templates.get_welcome_email("https://example.com/sub/abc", 90, 100)
+        self.assertNotIn("Тариф", mail.html)
+        self.assertNotIn("Тариф", mail.text)
+
+    def test_the_text_part_keeps_its_line_breaks(self):
+        # trim_blocks eats the newline after a tag, which once glued two lines
+        # of a letter together.
+        text = templates.get_welcome_email("https://example.com/sub/abc", 90, 100,
+                                           tariff="Standard").text
+        self.assertIn("Тариф: Standard\n", text)
+        self.assertNotIn("StandardСрок", text)
+
+
+class SupportAndInstructions(unittest.TestCase):
+    """
+    The address to write to and the page to read, both optional. An
+    installation with neither should promise neither — an empty line inviting
+    somebody to write to nobody is worse than no line.
+    """
+
+    def setUp(self):
+        self.saved = (config.SUPPORT_EMAIL, config.MANUAL_URL,
+                      config.WELCOME_MANUAL_ENABLED, config.WELCOME_SUPPORT_ENABLED,
+                      config.FOOTER_SUPPORT_ENABLED, config.MAIL_LANG)
+        config.MAIL_LANG = "ru"
+        config.WELCOME_SUPPORT_ENABLED = True
+        config.FOOTER_SUPPORT_ENABLED = True
+        email_texts.load()
+
+    def tearDown(self):
+        (config.SUPPORT_EMAIL, config.MANUAL_URL,
+         config.WELCOME_MANUAL_ENABLED, config.WELCOME_SUPPORT_ENABLED,
+         config.FOOTER_SUPPORT_ENABLED, config.MAIL_LANG) = self.saved
+        email_texts.load()
+
+    def welcome(self):
+        return templates.get_welcome_email("https://example.com/sub/abc", 90, 100)
+
+    def test_the_support_address_reaches_every_letter(self):
+        config.SUPPORT_EMAIL = "help@example.com"
+        for mail in (self.welcome(),
+                     templates.get_status_email("ben@example.com", True, 1, 2, 0, 0),
+                     templates.get_notice("unknown", subject="?"),
+                     templates.get_inactivity_email("ben@example.com", 30)):
+            self.assertIn("help@example.com", mail.html)
+            self.assertIn("help@example.com", mail.text)
+
+    def test_no_address_means_no_line(self):
+        config.SUPPORT_EMAIL = ""
+        mail = templates.get_status_email("ben@example.com", True, 1, 2, 0, 0)
+        self.assertNotIn("Вопросы", mail.html)
+        self.assertNotIn("Вопросы", mail.text)
+
+    def test_the_registration_letter_says_it_twice_on_purpose(self):
+        # Once in its own words, where somebody is setting things up, and once
+        # in the footer every letter carries.
+        config.SUPPORT_EMAIL = "help@example.com"
+        mail = self.welcome()
+        self.assertIn("Напишите нам", mail.html)
+        self.assertIn("Вопросы", mail.html)
+
+    def test_the_inactivity_letter_mentions_it_in_its_own_words_too(self):
+        # Same idea as the registration letter: the footer is a signature, this
+        # is help offered directly to somebody who may have stopped noticing it.
+        config.SUPPORT_EMAIL = "help@example.com"
+        mail = templates.get_inactivity_email("ben@example.com", 30)
+        self.assertIn("написать нам", mail.html)
+        self.assertIn("Вопросы", mail.html)
+
+    def test_the_inactivity_letter_drops_its_own_line_with_no_address(self):
+        config.SUPPORT_EMAIL = ""
+        mail = templates.get_inactivity_email("ben@example.com", 30)
+        self.assertNotIn("написать нам", mail.html)
+        self.assertNotIn("написать нам", mail.text)
+
+    def test_the_instructions_are_a_link_in_the_letter(self):
+        config.MANUAL_URL = "https://example.com/howto"
+        config.WELCOME_MANUAL_ENABLED = True
+        mail = self.welcome()
+        self.assertIn("https://example.com/howto", mail.html)
+        self.assertIn("https://example.com/howto", mail.text)
+
+    def test_the_switch_takes_the_link_away(self):
+        config.MANUAL_URL = "https://example.com/howto"
+        config.WELCOME_MANUAL_ENABLED = False
+        self.assertNotIn("https://example.com/howto", self.welcome().html)
+
+    def test_no_address_means_no_link_whatever_the_switch(self):
+        config.MANUAL_URL = ""
+        config.WELCOME_MANUAL_ENABLED = True
+        mail = self.welcome()
+        self.assertNotIn("Как настроить", mail.html)
+
+    def test_each_support_line_has_its_own_switch(self):
+        # The footer is a signature; the line in the registration letter is
+        # help offered to somebody setting a connection up. An installation may
+        # well want one without the other, so one switch each.
+        config.SUPPORT_EMAIL = "help@example.com"
+
+        config.WELCOME_SUPPORT_ENABLED = False
+        config.FOOTER_SUPPORT_ENABLED = True
+        mail = self.welcome()
+        self.assertNotIn("Напишите нам", mail.html)
+        self.assertNotIn("Напишите нам", mail.text)
+        self.assertIn("Вопросы", mail.html)
+
+        config.WELCOME_SUPPORT_ENABLED = True
+        config.FOOTER_SUPPORT_ENABLED = False
+        mail = self.welcome()
+        self.assertIn("Напишите нам", mail.html)
+        self.assertNotIn("Вопросы", mail.html)
+        self.assertNotIn("Вопросы", mail.text)
+
+    def test_the_footer_switch_reaches_every_letter(self):
+        # It is the footer of all of them, not of the registration letter.
+        config.SUPPORT_EMAIL = "help@example.com"
+        config.FOOTER_SUPPORT_ENABLED = False
+        for mail in (templates.get_status_email("ben@example.com", True, 1, 2, 0, 0),
+                     templates.get_notice("unknown", subject="?")):
+            self.assertNotIn("help@example.com", mail.html)
+            self.assertNotIn("help@example.com", mail.text)
+
+    def test_the_substitutions_work_in_any_text(self):
+        # {support} and {manual} are offered to every editable text, like
+        # {service}, so a rewritten letter can mention either.
+        config.SUPPORT_EMAIL = "help@example.com"
+        config.MANUAL_URL = "https://example.com/howto"
+        self.assertEqual(templates.text("common.support"), "Вопросы: help@example.com")
+
+    def test_the_address_is_a_link_to_write_to(self):
+        # A reader who has to select and copy an address has already been given
+        # one more chore than they came for.
+        config.SUPPORT_EMAIL = "help@example.com"
+        html = self.welcome().html
+        self.assertIn('href="mailto:help@example.com"', html)
+        # Both places it appears: the letter's own line and the footer.
+        self.assertEqual(html.count('href="mailto:'), 2)
+
+    def test_the_text_part_keeps_the_plain_address(self):
+        # Nothing to press in plain text, and a mailto: in it would read as
+        # markup that did not render.
+        config.SUPPORT_EMAIL = "help@example.com"
+        text = self.welcome().text
+        self.assertIn("help@example.com", text)
+        self.assertNotIn("mailto:", text)
+
+    def test_the_instructions_come_after_every_way_of_setting_it_up(self):
+        # The order somebody actually goes through: try it — the button, the
+        # apps, the code, the link to copy — then read about it, then ask.
+        config.MANUAL_URL = "https://example.com/howto"
+        config.SUPPORT_EMAIL = "help@example.com"
+        config.WELCOME_MANUAL_ENABLED = True
+        html = self.welcome().html
+        manual_at = html.index("https://example.com/howto")
+        self.assertLess(html.index("btn-cell"), manual_at)          # the app buttons
+        self.assertLess(html.index("welcome.manual_intro" and "sub/abc"), manual_at)
+        self.assertLess(manual_at, html.index("mailto:help@example.com"))

@@ -13,10 +13,13 @@ can come up: its own login, address and port, and access to 3x-ui.
 import json
 import logging
 import os
+import re
 import threading
 
 import config
 import i18n
+import statefile
+import totp
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +30,27 @@ MANAGED_KEYS = (
     # General
     "PANEL_LANG", "MAIL_LANG",
     "SERVICE_NAME", "ADMIN_EMAIL", "XUI_SUBSCRIPTION_BASE_URL",
+    "SUPPORT_EMAIL", "MANUAL_URL", "FOOTER_SUPPORT_ENABLED",
     # Mail
     "IMAP_SERVER", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD",
     "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
-    "POLL_INTERVAL_SECONDS",
+    "POLL_INTERVAL_SECONDS", "MAIL_AUTH_SERVER",
+    "MAIL_CLEANUP_ENABLED", "MAIL_CLEANUP_DAYS", "MAIL_CLEANUP_LAST_AT",
+    "INACTIVITY_REMINDER_ENABLED", "INACTIVITY_REMINDER_DAYS", "INACTIVITY_REMINDER_LAST_AT",
+    # Support — a second mailbox, answered by a person rather than the bot.
+    # Empty by default, which is also how the Mail page tells whether to offer
+    # it at all.
+    "SUPPORT_IMAP_SERVER", "SUPPORT_IMAP_PORT", "SUPPORT_IMAP_USER", "SUPPORT_IMAP_PASSWORD",
+    "SUPPORT_SMTP_SERVER", "SUPPORT_SMTP_PORT", "SUPPORT_SMTP_USER", "SUPPORT_SMTP_PASSWORD",
     # Registration
     "XUI_INBOUND_IDS", "XUI_FLOW", "LIMIT_GB", "EXPIRE_DAYS",
     "CODEWORD", "REMARK_INCLUDE_NAME", "WELCOME_QR_ENABLED",
+    "WELCOME_MANUAL_ENABLED", "WELCOME_SUPPORT_ENABLED",
     # Notifications
     "GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_PRIORITY", "GOTIFY_TITLE", "GOTIFY_MESSAGE",
+    "SUPPORT_NOTIFY_ENABLED", "SUPPORT_NOTIFY_TITLE", "SUPPORT_NOTIFY_MESSAGE",
+    "SUPPORT_NOTIFY_MARK",
+    "XRAY_NOTIFY_ENABLED", "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE",
     # App schemes for the "Add to …" buttons in the letter
     "HAPP_URL", "INCY_URL",
     # The version check
@@ -43,18 +58,40 @@ MANAGED_KEYS = (
     # Housekeeping: the first-run wizard was finished or declined. It has no
     # field on the settings page — only /setup touches it.
     "SETUP_DONE",
+    # The second step of signing in. Not on the settings form either: it has a
+    # page of its own, and save() will not take it from anywhere else.
+    "TOTP_SECRET",
 )
 
 # These values never reach the page markup in full: a mask goes instead, and
 # the real value can be asked for separately with the reveal button.
-SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN"})
+SECRET_KEYS = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD", "GOTIFY_TOKEN",
+                          "SUPPORT_IMAP_PASSWORD", "SUPPORT_SMTP_PASSWORD",
+                          "TOTP_SECRET"})
 
 # Of those, the ones shown as dots and nothing else. Seeing a few characters at
 # either end helps when a value has to be told apart from another one — which
 # is the case for a token, of which there may be several. A password is worth
 # nothing to recognise and something to leak: over a shoulder, in a screenshot,
 # on a shared screen. The reveal button is there for when it is really needed.
-FULLY_MASKED = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD"})
+FULLY_MASKED = frozenset({"IMAP_PASSWORD", "SMTP_PASSWORD",
+                          "SUPPORT_IMAP_PASSWORD", "SUPPORT_SMTP_PASSWORD",
+                          "TOTP_SECRET"})
+
+# Of the secrets, the ones the reveal button does not hand back. A mailbox
+# password is revealed because it has to be checked against what the provider
+# issued. The secret behind the sign-in codes has no such use: it is shown
+# once, while the app is being set up, and from then on anybody who can read
+# it can make the codes — a session left open on somebody else's computer
+# would be a second step undone for good.
+NEVER_REVEALED = frozenset({"TOTP_SECRET"})
+
+# Keys that save() takes only through a door of their own. The settings form
+# and the Letters tab both hand save() whatever arrived in a request, and the
+# second step is not something a request should be able to take off without
+# the code it asks for. save_two_step() is that door; its callers are the page
+# that has just checked a code, and the command on the server.
+GUARDED = frozenset({"TOTP_SECRET"})
 
 # The form sends this in place of a secret the user did not touch.
 UNCHANGED = "•••unchanged•••"
@@ -64,7 +101,8 @@ UNCHANGED = "•••unchanged•••"
 # false value mean different things. No key: the installation predates the
 # wizard, and whether it is configured shows in the settings themselves.
 # false: the wizard was deliberately not taken, and the banner should show.
-WRITE_ON_DEMAND = frozenset({"SETUP_DONE"})
+WRITE_ON_DEMAND = frozenset({"SETUP_DONE", "MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT",
+                             "SUPPORT_NOTIFY_MARK", "TOTP_SECRET"})
 
 _lock = threading.RLock()
 
@@ -122,18 +160,46 @@ def _coerce(key, value):
         if address and "@" not in address:
             raise ValueError(i18n.t("the administrator address must contain an @"))
         return address
-    if key in ("IMAP_SERVER", "SMTP_SERVER"):
+    if key == "SUPPORT_EMAIL":
+        # Shown to clients rather than used to send anything, so the case is
+        # left as typed: Support@… is somebody's choice about how it reads.
+        address = str(value or "").strip()
+        if address and "@" not in address:
+            raise ValueError(i18n.t("the support address must contain an @"))
+        return address
+    if key == "MANUAL_URL":
+        return str(value or "").strip().rstrip("/")
+    if key in ("IMAP_SERVER", "SMTP_SERVER", "SUPPORT_IMAP_SERVER", "SUPPORT_SMTP_SERVER"):
         # Empty means the bot simply will not reach for the mailbox, and says
-        # as much in the log.
+        # as much in the log. For the support pair, empty is also the ordinary
+        # state — the Mail page has no Support tab until both are set.
         return str(value or "").strip()
-    if key in ("IMAP_USER", "SMTP_USER"):
+    if key in ("IMAP_USER", "SMTP_USER", "SUPPORT_IMAP_USER", "SUPPORT_SMTP_USER"):
         return str(value or "").strip()
+    if key == "MAIL_AUTH_SERVER":
+        # Compared with what a header says, which is read in lower case. A
+        # name that could never match is refused rather than saved: with it
+        # every /broadcast by mail would be turned away and nothing would say
+        # why.
+        text = str(value or "").strip().lower()
+        if text and not re.fullmatch(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?", text):
+            raise ValueError(i18n.t(
+                "the mail server's name may hold only letters, digits, dots, hyphens and underscores"))
+        return text
+    if key == "TOTP_SECRET":
+        # Empty is the second step switched off. Anything else has to be a
+        # secret an app could have been given: one that is not would mean a
+        # code is asked for at the door and no code is ever right.
+        text = totp.normalise(value)
+        if text and not totp.valid_secret(text):
+            raise ValueError(i18n.t("the two-step secret is not valid base32"))
+        return text
     if key in SECRET_KEYS:
         # Spaces at the edges are almost always debris from the clipboard.
         return str(value or "").strip()
-    if key == "IMAP_PORT":
+    if key in ("IMAP_PORT", "SUPPORT_IMAP_PORT"):
         return _port(value, "IMAP")
-    if key == "SMTP_PORT":
+    if key in ("SMTP_PORT", "SUPPORT_SMTP_PORT"):
         return _port(value, "SMTP")
     if key in ("HAPP_URL", "INCY_URL"):
         # Empty simply leaves that app's button out of the letter.
@@ -150,7 +216,8 @@ def _coerce(key, value):
         if not 0 <= number <= 10:
             raise ValueError(i18n.t("the Gotify priority must be between 0 and 10"))
         return number
-    if key in ("GOTIFY_TITLE", "GOTIFY_MESSAGE"):
+    if key in ("GOTIFY_TITLE", "GOTIFY_MESSAGE", "SUPPORT_NOTIFY_TITLE", "SUPPORT_NOTIFY_MESSAGE",
+               "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
         text = str(value or "").strip()
         if not text:
             raise ValueError(i18n.t("the notification text cannot be empty"))
@@ -167,8 +234,38 @@ def _coerce(key, value):
     if key == "UPDATE_DISMISSED_VERSION":
         # A version string or nothing; it is only ever compared, never shown.
         return str(value or "").strip().lstrip("v")
+    if key == "MAIL_CLEANUP_DAYS":
+        # Days, never zero: "clear the mailbox every no days" is not a schedule,
+        # and a zero left in the file would make every poll a cleanup.
+        number = int(value)
+        if number < 1:
+            raise ValueError(i18n.t("the cleanup interval must be at least one day"))
+        return number
+    if key == "SUPPORT_NOTIFY_MARK":
+        # "<uidvalidity>:<uid>", which the bot writes for itself. Anything else
+        # reads as no mark, which costs nothing: the mailbox is then taken as
+        # it stands and only what arrives afterwards is announced.
+        text = str(value or "").strip()
+        return text if re.fullmatch(r"\d+:\d+", text) else ""
+    if key in ("MAIL_CLEANUP_LAST_AT", "INACTIVITY_REMINDER_LAST_AT"):
+        # A unix time the bot writes for itself. Anything unreadable means "not
+        # yet", which costs one run rather than an error on startup.
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return 0.0
+    if key == "INACTIVITY_REMINDER_DAYS":
+        # Days, never zero: "remind after no days" is not a threshold, and a
+        # zero left in the file would nag every client on every sweep.
+        number = int(value)
+        if number < 1:
+            raise ValueError(i18n.t("the inactivity period must be at least one day"))
+        return number
     if key in ("REMARK_INCLUDE_NAME", "SETUP_DONE", "UPDATE_CHECK_ENABLED",
-               "WELCOME_QR_ENABLED"):
+               "MAIL_CLEANUP_ENABLED", "INACTIVITY_REMINDER_ENABLED",
+               "SUPPORT_NOTIFY_ENABLED", "XRAY_NOTIFY_ENABLED",
+               "WELCOME_QR_ENABLED", "WELCOME_MANUAL_ENABLED",
+               "WELCOME_SUPPORT_ENABLED", "FOOTER_SUPPORT_ENABLED"):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")
@@ -178,7 +275,9 @@ def _coerce(key, value):
 # The notification texts are read by the administrator, not by a client, so an
 # untouched default follows the panel's own language. Something typed into the
 # field is left exactly as typed — it is then in _stored and never comes here.
-_TRANSLATED_DEFAULTS = ("GOTIFY_TITLE", "GOTIFY_MESSAGE")
+# The text of the Support push is not among them: "{sender}: {subject}" is the
+# same in every language.
+_TRANSLATED_DEFAULTS = ("GOTIFY_TITLE", "GOTIFY_MESSAGE", "SUPPORT_NOTIFY_TITLE")
 
 
 def _apply():
@@ -194,11 +293,9 @@ def _apply():
 def _write(values: dict):
     """Writes the json atomically, so an interrupted write leaves no broken file."""
     ordered = {key: values[key] for key in MANAGED_KEYS if key in values}
-    tmp_path = SETTINGS_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(ordered, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    os.replace(tmp_path, SETTINGS_PATH)
+    # Through statefile, which also keeps the file to its owner: this one holds
+    # the mailbox passwords.
+    statefile.write_json(SETTINGS_PATH, ordered)
 
 
 def load():
@@ -243,7 +340,32 @@ def save(new_values: dict):
     owns the settings, and the json should describe the state in full rather
     than depend on what .env happens to hold. A key absent from new_values keeps
     its current value, which is how a secret the user did not touch survives.
+
+    A guarded key is refused here whatever it is set to — see GUARDED.
     """
+    for key in new_values:
+        if key in GUARDED:
+            raise ValueError(i18n.t("unknown setting: {key}", key=key))
+    return _save(new_values)
+
+
+def save_two_step(secret: str):
+    """
+    Switches the second step of signing in on, with this secret, or off with "".
+
+    The one way TOTP_SECRET is ever written. Whoever calls it has already
+    decided the change is allowed: the page checks a code first, and the
+    command on the server is run by somebody who could edit the file anyway.
+    """
+    return _save({"TOTP_SECRET": secret})
+
+
+def two_step_on() -> bool:
+    """Whether signing in asks for a code as well as the password."""
+    return bool(config.TOTP_SECRET)
+
+
+def _save(new_values: dict):
     with _lock:
         merged = {}
         for key in MANAGED_KEYS:
@@ -274,8 +396,8 @@ def is_stored(key: str) -> bool:
 
 def secret(key: str) -> str:
     """The real value of a secret, for the reveal button on the settings page."""
-    if key not in SECRET_KEYS:
-        raise ValueError(f"{key} is not a secret")
+    if key not in SECRET_KEYS or key in NEVER_REVEALED:
+        raise ValueError(f"{key} is not a secret that can be revealed")
     with _lock:
         return str(_stored.get(key, BASE[key]) or "")
 

@@ -1,6 +1,7 @@
 """The web panel for running the 3x-ui email bot (FastAPI)."""
 import secrets
 import logging
+import threading
 import time
 from datetime import datetime
 
@@ -13,8 +14,11 @@ import config
 import email_bot
 import email_texts
 import i18n
+import mailfolders
 import settings as app_settings
+import tariffs
 import updater
+from admin import twostep
 from admin.deps import (
     templates,
     check_panel_configured,
@@ -28,6 +32,8 @@ logger = logging.getLogger(__name__)
 # Lay settings.json over .env before anything reads config.
 app_settings.load()
 email_texts.load()
+# After the settings: a first run builds the opening tariff out of them.
+tariffs.load()
 applog.install()
 # Idempotent, like the two above: the panel may be imported on its own, without
 # run.py having started anything.
@@ -48,16 +54,120 @@ app.add_middleware(
 )
 
 
+class _NoWayBack:
+    """
+    Cross-Origin-Opener-Policy on every response.
+
+    A page of somebody else's that was opened from the panel — from a link in
+    a letter on the Mail pages, above all — gets no handle on the tab it was
+    opened from, whatever the link asked for. The Mail page already takes
+    rel="opener" off the links it can see; this is the browser being told the
+    same thing about the ones it cannot. Plain ASGI rather than
+    @app.middleware, which wraps every response in a task of its own for the
+    sake of one header.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def with_header(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(name.lower() == b"cross-origin-opener-policy" for name, _ in headers):
+                    headers.append((b"cross-origin-opener-policy", b"same-origin"))
+                message = dict(message, headers=headers)
+            await send(message)
+
+        await self.app(scope, receive, with_header)
+
+
+app.add_middleware(_NoWayBack)
+
+
 # ---------------------------------------------------------------------------
 # Authentication (templates / require_auth live in admin/deps.py)
 # ---------------------------------------------------------------------------
+def _login_page(request: Request, error: str = "", status_code: int = 200):
+    """
+    The sign-in form, with a field for the code when there is a second step.
+
+    One place for all four ways the form is drawn: the field is a context key,
+    and a key one of them forgot would be a form with no way to give the code.
+    """
+    return templates.TemplateResponse(
+        request, "login.html",
+        {"request": request, "error": error, "service_name": config.SERVICE_NAME,
+         "two_step": twostep.on()},
+        status_code=status_code,
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, error: str = ""):
     check_panel_configured()
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": error, "service_name": config.SERVICE_NAME},
-    )
+    return _login_page(request, error)
+
+
+# --- Guessing at the password ---
+# The form used to answer as many guesses a second as anybody cared to send.
+# Now an address gets this many wrong ones a minute, and while it is over that
+# nothing it sends is checked at all — the right password included, or the lock
+# would stop nothing.
+#
+# Deliberately a ceiling on the rate rather than a lock that needs lifting: ten
+# a minute is fourteen thousand a day, which no password worth the name falls
+# to, and whoever is locked out is back in within the minute. That matters
+# because behind a reverse proxy or the SSH tunnel every visitor arrives from
+# 127.0.0.1 — the limit is then one for everybody, and a lock that lasted
+# would let a stranger keep the administrator out for as long as they liked.
+LOGIN_ATTEMPTS = 10
+LOGIN_WINDOW = 60
+# address -> when its wrong guesses were made. In memory: a restart forgives.
+_failed_logins = {}
+_failed_lock = threading.Lock()
+
+
+def _recent_failures(address: str, now: float) -> list:
+    return [t for t in _failed_logins.get(address, ()) if now - t < LOGIN_WINDOW]
+
+
+def _admit(address: str) -> bool:
+    """
+    Whether this attempt may be checked at all — and if so, charges for it.
+
+    The charge is made here, before the password is looked at, and handed back
+    by _forgive when it turns out right. Checking first and counting the
+    failure afterwards were two steps, and the routes run on a pool of threads:
+    a burst of parallel guesses all passed the check before any of them had
+    been counted, which made the ten a minute nearer forty.
+    """
+    now = time.time()
+    with _failed_lock:
+        recent = _recent_failures(address, now)
+        if len(recent) >= LOGIN_ATTEMPTS:
+            return False
+        _failed_logins[address] = recent + [now]
+        # Addresses are strangers' and there is no end of them.
+        if len(_failed_logins) > 1000:
+            for stale in [a for a in _failed_logins if not _recent_failures(a, now)]:
+                del _failed_logins[stale]
+        return True
+
+
+def _forgive(address: str):
+    """The password was right: the slips before it are not held against anybody."""
+    with _failed_lock:
+        _failed_logins.pop(address, None)
+
+
+def _out_of_guesses(address: str) -> bool:
+    with _failed_lock:
+        return len(_recent_failures(address, time.time())) >= LOGIN_ATTEMPTS
 
 
 @app.post("/login")
@@ -65,31 +175,57 @@ def login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    code: str = Form(""),
     next: str = Form("/"),
 ):
     check_panel_configured()
-    if (
+    address = request.client.host if request.client else "?"
+    if not _admit(address):
+        # Not logged: one line a guess is a way to fill the log, and the line
+        # that matters was written when the door closed.
+        return _login_page(
+            request, i18n.t("Too many failed attempts. Wait a minute and try again."), 429)
+    # Whether a code is asked for is settled once, here: the wording of a
+    # refusal below must match the form the guess was typed into.
+    two_step = twostep.on()
+    password_right = (
         secrets.compare_digest(username.encode("utf-8"), config.ADMIN_PANEL_USER.encode("utf-8"))
         and secrets.compare_digest(password.encode("utf-8"), config.ADMIN_PANEL_PASSWORD.encode("utf-8"))
-    ):
-        request.session.clear()
-        request.session["user"] = username
-        logger.info(f"Signed in: user {username}, address {request.client.host if request.client else '?'}.")
-        # only local paths: see safe_path on why a leading slash is not enough
-        return RedirectResponse(url=safe_path(next), status_code=303)
-    logger.warning(
-        f"Failed sign-in attempt: login {username!r}, "
-        f"address {request.client.host if request.client else '?'}."
     )
-    return templates.TemplateResponse(
-        "login.html",
-        {
-            "request": request,
-            "error": i18n.t("The login or the password is wrong"),
-            "service_name": config.SERVICE_NAME,
-        },
-        status_code=401,
-    )
+    if password_right:
+        # The code is looked at only behind the right password: a code is used
+        # up by being right, and a stranger's guess at the password should not
+        # be able to spend the administrator's.
+        verdict = twostep.check(code)
+        if verdict == twostep.OK:
+            _forgive(address)
+            request.session.clear()
+            request.session["user"] = username
+            logger.info(f"Signed in: user {username}, address {address}.")
+            # only local paths: see safe_path on why a leading slash is not enough
+            return RedirectResponse(url=safe_path(next), status_code=303)
+        # Said in so many words, because it is the one line in this log that
+        # means the password is no longer a secret. The second step held —
+        # which is the moment to change the first.
+        logger.warning(f"Failed sign-in attempt: the password was right and the code was not "
+                       f"(login {username!r}, address {address}). If this was not you, "
+                       f"somebody knows the password: change it with `mailchilla passwd`.")
+        if verdict == twostep.LOCKED:
+            return _login_page(
+                request, i18n.t("Too many wrong codes. Wait a few minutes and try again."), 429)
+    else:
+        logger.warning(f"Failed sign-in attempt: login {username!r}, address {address}.")
+    if _out_of_guesses(address):
+        logger.warning(f"{LOGIN_ATTEMPTS} failed sign-in attempts from {address} within "
+                       f"{LOGIN_WINDOW} seconds; further ones are refused unchecked until "
+                       f"that has passed.")
+    # One wording for a wrong password and a wrong code: which of the two it
+    # was is exactly what somebody guessing would like to be told.
+    return _login_page(
+        request,
+        i18n.t("The login, the password or the code is wrong") if two_step
+        else i18n.t("The login or the password is wrong"),
+        401)
 
 
 @app.post("/lang")
@@ -144,16 +280,22 @@ def logout(request: Request):
 # The routes are mounted from separate modules
 # ---------------------------------------------------------------------------
 from admin.routes_clients import router as clients_router  # noqa: E402
+from admin.routes_tariffs import router as tariffs_router  # noqa: E402
 from admin.routes_broadcast import router as broadcast_router  # noqa: E402
 from admin.routes_settings import router as settings_router  # noqa: E402
 from admin.routes_logs import router as logs_router  # noqa: E402
+from admin.routes_mail import router as mail_router  # noqa: E402
 from admin.routes_setup import router as setup_router  # noqa: E402
+from admin.routes_totp import router as totp_router  # noqa: E402
 
 app.include_router(clients_router)
+app.include_router(tariffs_router)
 app.include_router(broadcast_router)
 app.include_router(settings_router)
 app.include_router(logs_router)
+app.include_router(mail_router)
 app.include_router(setup_router)
+app.include_router(totp_router)
 
 
 # ---------------------------------------------------------------------------
@@ -162,20 +304,9 @@ app.include_router(setup_router)
 GB = 1024 * 1024 * 1024
 
 
-def _used_bytes(client_obj):
-    traffic = client_obj.get("traffic") or {}
-    return int(traffic.get("up") or client_obj.get("up") or 0) + \
-           int(traffic.get("down") or client_obj.get("down") or 0)
-
-
 def _size(value: int) -> str:
-    """Bytes as the shortest unit that still reads as a number."""
-    value = float(value or 0)
-    for unit in ("B", "KB", "MB", "GB"):
-        if value < 1024 or unit == "GB":
-            break
-        value /= 1024
-    return f"{value:.0f} {unit}" if unit in ("B", "KB") else f"{value:.1f} {unit}"
+    """Bytes as the shortest unit that still reads as a number, up to GB."""
+    return mailfolders.format_size(value, ceiling="GB")
 
 
 def _size_pair(section: dict) -> str:
@@ -229,6 +360,16 @@ def _mail_block():
         return {"state": "bad",
                 "text": i18n.t("{n} checks in a row failed", n=health["failures"]),
                 "detail": health["error"]}
+    if health.get("waiting"):
+        # The mailbox itself is fine, so none of the checks above or below
+        # would say a word — and meanwhile nobody is getting an answer.
+        if health.get("waiting_needs_somebody"):
+            # Not an outage to sit out: the panel answers, and refuses.
+            return {"state": "bad",
+                    "text": i18n.t("letters are waiting: 3x-ui refuses the bot's credentials"),
+                    "detail": health.get("waiting_reason", "")}
+        return {"state": "bad", "text": i18n.t("letters are waiting: 3x-ui does not answer"),
+                "detail": health.get("waiting_reason", "")}
     if health["last_ok_at"] is None:
         return {"state": "wait", "text": i18n.t("no check has got through yet")}
     ago = max(int(time.time() - health["last_ok_at"]), 0)
@@ -291,81 +432,134 @@ def dashboard(request: Request):
     xui = get_shared_client()
     clients = xui.get_all_clients() or []
 
-    total = len(clients)
-    active = sum(1 for c in clients if c.get("enable") is True)
+    # One pass through the shared row builder, and every block below counts
+    # from those rows. The dashboard used to work the raw client objects over
+    # again with helpers of its own — a second way of asking "how much has this
+    # person spent", which is one more than the answer needs.
+    from admin.rows import client_row
+    rows = [client_row(c) for c in clients]
+
+    total = len(rows)
+    active = sum(1 for r in rows if r["enable"])
     blocked = total - active
 
     # None when the panel cannot say — an older build has no such endpoint —
     # and the card is then left out rather than showing a zero, which would
     # read as "nobody is connected".
     online = _online_count(clients)
-    total_traffic_gb = round(sum(_used_bytes(c) for c in clients) / GB, 2)
+    total_traffic_gb = round(sum(r["used_bytes"] for r in rows) / GB, 2)
 
     now_ms = datetime.now().timestamp() * 1000
     month_ms = 30 * 86400 * 1000
 
-    def row(client_obj, extra=None):
+    def row(client_row_obj, extra=None):
+        """One row for a dashboard block, out of the shared shape."""
         data = {
-            "uuid": XuiClient.client_key(client_obj),
-            "email": client_obj.get("email") or "",
-            "comment": (client_obj.get("comment") or "").strip(),
-            "enable": client_obj.get("enable") is True,
+            "uuid": client_row_obj["uuid"],
+            "email": client_row_obj["remark"],
+            "comment": client_row_obj["comment"],
+            "enable": client_row_obj["enable"],
         }
         data.update(extra or {})
         return data
 
     # Recent registrations — the panel fills createdAt for every client.
-    recent = sorted(clients, key=lambda c: c.get("createdAt") or 0, reverse=True)[:8]
+    recent = sorted(rows, key=lambda r: r["created_ms"], reverse=True)[:8]
     recent_rows = [
-        row(c, {"when": datetime.fromtimestamp((c.get("createdAt") or 0) / 1000).strftime("%d.%m.%Y %H:%M")
-                if c.get("createdAt") else "—"})
-        for c in recent
+        row(r, {"when": datetime.fromtimestamp(r["created_ms"] / 1000).strftime("%d.%m.%Y %H:%M")
+                if r["created_ms"] else "—"})
+        for r in recent
     ]
-    new_this_month = sum(1 for c in clients if (c.get("createdAt") or 0) >= now_ms - month_ms)
+    new_this_month = sum(1 for r in rows if r["created_ms"] >= now_ms - month_ms)
 
     # Who spends the most.
-    top = sorted(clients, key=_used_bytes, reverse=True)[:8]
-    top_rows = [row(c, {"used_gb": round(_used_bytes(c) / GB, 1)}) for c in top if _used_bytes(c) > 0]
+    top = sorted(rows, key=lambda r: r["used_bytes"], reverse=True)[:8]
+    top_rows = [row(r, {"used_gb": r["used_gb"]}) for r in top if r["used_bytes"] > 0]
 
     # Subscriptions running out and clients pressing against their limit: these
     # blocks appear only if anyone has an expiry or a limit set at all.
     expiring = []
-    for c in clients:
-        expiry = int(c.get("expiryTime") or 0)
+    for r, client in zip(rows, clients):
+        expiry = int(client.get("expiryTime") or 0)
         if expiry <= 0:
             continue
         days = (expiry / 1000 - datetime.now().timestamp()) / 86400
         if days <= 14:
-            expiring.append(row(c, {
-                "days": int(days) if days >= 0 else int(days),
+            expiring.append(row(r, {
+                "days": int(days),
                 "expired": days < 0,
                 "when": datetime.fromtimestamp(expiry / 1000).strftime("%d.%m.%Y"),
             }))
-    expiring.sort(key=lambda r: r["days"])
+    expiring.sort(key=lambda x: x["days"])
     expiring = expiring[:8]
 
     near_limit = []
-    for c in clients:
-        limit = int(c.get("totalGB") or 0)
-        if limit <= 0:
+    for r in rows:
+        if not r["limit_bytes"]:
             continue
-        percent = round(_used_bytes(c) / limit * 100, 1)
-        if percent >= 80:
-            near_limit.append(row(c, {"percent": min(percent, 100),
-                                      "used_gb": round(_used_bytes(c) / GB, 1),
-                                      "limit_gb": round(limit / GB, 1)}))
-    near_limit.sort(key=lambda r: r["percent"], reverse=True)
+        if r["percent"] >= 80:
+            near_limit.append(row(r, {"percent": r["percent"],
+                                      "used_gb": r["used_gb"],
+                                      "limit_gb": r["limit_gb"]}))
+    near_limit.sort(key=lambda x: x["percent"], reverse=True)
     near_limit = near_limit[:8]
 
-    # Inbounds: how many clients are in each, and whether it is in the set used
-    # for registrations.
-    configured = set(config.XUI_INBOUND_IDS)
+    # Tariffs: how many people are on each and what they have spent. Counted
+    # from the client list already in hand rather than asked of
+    # /clients/groups — the panel would answer the same numbers, and a page
+    # that adds a request per block ends up slow on the day 3x-ui is slow.
+    #
+    # A group naming a tariff that no longer exists is listed too, marked: the
+    # clients are still there and the figure is still real.
+    by_group = {}
+    for r in rows:
+        if not r["tariff"]:
+            continue
+        stats = by_group.setdefault(r["tariff"], {"clients": 0, "used": 0})
+        stats["clients"] += 1
+        stats["used"] += r["used_bytes"]
+
+    tariff_rows = []
+    for tariff in tariffs.all_tariffs():
+        stats = by_group.pop(tariff["name"], {"clients": 0, "used": 0})
+        tariff_rows.append({
+            "id": tariff["id"],
+            "name": tariff["name"],
+            "clients": stats["clients"],
+            "used_gb": round(stats["used"] / GB, 1),
+            "limit_gb": tariff["limit_gb"],
+            "expire_days": tariff["expire_days"],
+            "orphan": False,
+        })
+    for name, stats in sorted(by_group.items()):
+        tariff_rows.append({
+            "id": "", "name": name, "clients": stats["clients"],
+            "used_gb": round(stats["used"] / GB, 1),
+            "limit_gb": 0, "expire_days": 0, "orphan": True,
+        })
+    tariff_rows.sort(key=lambda r: (r["orphan"], -r["clients"], r["name"].lower()))
+
+    # The inbound list itself belongs to 3x-ui and to the tariff cards, not
+    # here; what is worth saying on a dashboard is the fault. A tariff naming an
+    # inbound the panel does not have breaks registration in silence — the panel
+    # adds the client down the list and stops at the first id that is not there,
+    # never reaching the rest — so each such tariff is named.
+    from admin.routes_clients import default_tariff, tariff_choices
+    first = default_tariff()
     inbounds = xui.get_inbounds()
     for ib in inbounds:
-        ib["configured"] = ib["id"] in configured
-        # the create dialog uses the selected field
-        ib["selected"] = ib["configured"]
-    missing_inbounds = sorted(configured - {ib["id"] for ib in inbounds})
+        # the create dialog starts from the first tariff
+        ib["selected"] = ib["id"] in set(first["inbound_ids"])
+    known_ids = {ib["id"] for ib in inbounds}
+    broken_tariffs = []
+    if inbounds:
+        # With 3x-ui unreachable the list comes back empty, and every tariff
+        # would look broken. Silence beats a page of false alarms.
+        for tariff in tariffs.all_tariffs():
+            missing = sorted(set(tariff["inbound_ids"]) - known_ids)
+            if missing:
+                broken_tariffs.append({"name": tariff["name"], "id": tariff["id"],
+                                       "missing": missing})
 
     # The machine behind the panel. None when it does not answer — the block
     # is then simply left out.
@@ -375,7 +569,7 @@ def dashboard(request: Request):
     problems_total = applog.unread_count("WARNING")
 
     return templates.TemplateResponse(
-        "dashboard.html",
+        request, "dashboard.html",
         {
             "request": request,
             "service_name": config.SERVICE_NAME,
@@ -392,12 +586,20 @@ def dashboard(request: Request):
             "inbounds": inbounds,
             "server": server,
             "mail": _mail_block(),
-            "missing_inbounds": missing_inbounds,
+            "broken_tariffs": broken_tariffs,
             "problems": problems,
             "problems_total": problems_total,
+            "tariffs": tariff_choices(),
+            "tariff_rows": tariff_rows,
+            # Anybody carrying no group at all: registered before tariffs
+            # existed, or made by hand in 3x-ui.
+            "without_tariff": sum(1 for r in rows if not r["tariff"]),
             "new_defaults": {
-                "limit_gb": config.LIMIT_GB,
-                "expire_days": config.EXPIRE_DAYS,
+                "tariff_id": first["id"],
+                "limit_gb": first["limit_gb"],
+                "expire_days": first["expire_days"],
+                "limit_hwid": first["limit_hwid"],
+                "renew": first["renew"],
                 "flow": config.XUI_FLOW,
             },
         },

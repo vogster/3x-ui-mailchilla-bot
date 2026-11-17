@@ -3,18 +3,33 @@
 {% block title %}{{ client.remark or client.bare_email }}{% endblock %}
 {% block nav_clients %}active{% endblock %}
 {% block content %}
+<style>
+    /* A link that keeps the panel's quiet manners: the browser's own blue
+       beside monospace text reads as a mistake. */
+    a.plain { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line); }
+    a.plain:hover { border-color: var(--fg-3); }
+
+    /* The status sits on the same line as the tiles beside it and at the size
+       the words among them use — 23px is for the figures. */
+    .status-value .on { color: var(--ok); }
+    .status-value .off { color: var(--err); }
+</style>
 <a href="/clients" class="back">← {{ t("Back to the list") }}</a>
 
 {% set toast = t("The client was created, the welcome letter is on its way") if created
    else t("The invitation with the subscription link is on its way") if sent == "welcome"
    else t("The letter is on its way") if sent == "message" else "" %}
-{% if toast %}
+{# Done by the time the page is back, so these say so plainly — unlike a
+   letter, which has only been handed to a background task. #}
+{% set done = t("The devices were forgotten: whichever fetch the subscription next take the slots") if sent == "devices"
+   else t("The device was forgotten, and its slot is free") if sent == "device" else "" %}
+{% if toast or done %}
 <script>
     // Success speaks through the toast, as everywhere else in the panel. The
     // handler waits for DOMContentLoaded because window.showToast is declared in
     // the base template, further down the document.
     window.addEventListener("DOMContentLoaded", function () {
-        window.showToast({{ (toast ~ " — " ~ t("the result is in the logs"))|tojson }});
+        window.showToast({{ (done or (toast ~ " — " ~ t("the result is in the logs")))|tojson }});
         // strip ?sent= from the address, or a refresh would repeat the toast
         if (window.history && history.replaceState) {
             history.replaceState(null, "", window.location.pathname);
@@ -24,6 +39,9 @@
 {% endif %}
 {% if error %}
 <div class="flash error" style="margin-top: 14px;">{{ error }}</div>
+{% endif %}
+{% if renewal_lost %}
+<div class="flash error" style="margin-top: 14px;">{{ t("The client was created without the auto-renewal asked for: 3x-ui did not keep it, so the subscription will end with its term. An older 3x-ui does not know auto-renewal; the log says which it was.") }}</div>
 {% endif %}
 
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
@@ -55,14 +73,42 @@
 <div class="cards">
     <div class="card">
         <div class="label">{{ t("Status") }}</div>
-        <div class="value" style="font-size: 18px;">
+        {# Plain text rather than the badge used everywhere else. The badge is
+           an inline-flex box carrying its own 12px and its own line-height, so
+           in a tile it came out both smaller than the figures beside it and
+           four pixels lower than them. All it contributes here is a colour,
+           and a colour does not need a box. #}
+        <div class="value status-value" style="font-size: 18px;">
             {% if client.enable %}
-            <span class="badge on nodot">{{ t("Active [badge]") }}</span>
+            <span class="on">{{ t("Active [badge]") }}</span>
             {% else %}
-            <span class="badge off nodot">{{ t("Disabled [badge]") }}</span>
+            <span class="off">{{ t("Disabled [badge]") }}</span>
             {% endif %}
         </div>
     </div>
+    <div class="card">
+        <div class="label">{{ t("Tariff") }}</div>
+        <div class="value" style="font-size: 18px;">
+            {% if client.tariff %}
+            {{ client.tariff }}
+            {% else %}
+            {# Registered before tariffs existed, or made by hand in 3x-ui.
+               A fact about them, not a gap to fill in. #}
+            <span class="muted">{{ t("not set") }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if client.sub_fetch_known %}
+    {# Beside "Last online", and not the same question: that one is whether
+       the app is connected, this one whether it was ever set up. #}
+    <div class="card">
+        <div class="label">{{ t("Subscription fetched") }}</div>
+        <div class="value" style="font-size: 18px;">
+            <span title="{{ client.sub_fetch_full }}"
+                  {% if not client.sub_fetch_ms %}class="muted"{% endif %}>{{ client.sub_fetch }}</span>
+        </div>
+    </div>
+    {% endif %}
     {% if last_seen_known or (online_known and client.online is not none) %}
     <div class="card">
         <div class="label">{{ t("Last online") }}</div>
@@ -90,6 +136,27 @@
         <div class="label">{{ t("Valid until") }}</div>
         <div class="value" style="font-size: 18px;">{{ client.expiry }}</div>
     </div>
+    {# Only for a client that has a limit. Without one there is nothing to
+       count, and on a panel from before device limits nothing to say. #}
+    {% if client.hwid_known and client.limit_hwid %}
+    <div class="card">
+        <div class="label">{{ t("Devices") }}</div>
+        <div class="value">{% if devices is not none %}{{ devices|length }} / {% endif %}{{ client.limit_hwid }}</div>
+    </div>
+    {% endif %}
+    {# Beside "Valid until", which with a renewal is not the end. Greyed once
+       it will not fire again: the cap is spent, or there is no expiry. #}
+    {% if client.renew_known and client.renew.mode %}
+    <div class="card">
+        <div class="label">{{ t("Auto-renewal") }}</div>
+        <div class="value" style="font-size: 18px;">
+            <span {% if not client.renew.active %}class="muted"{% endif %}>{{ client.renew_text }}</span>
+        </div>
+        {% if client.renew_note %}
+        <div class="muted" style="font-size: 12.5px; margin-top: 4px;">{{ client.renew_note }}</div>
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="card">
         <div class="label">{{ t("Days left") }}</div>
         <div class="value" style="{% if client.expired %}color:#f87171;{% endif %}">
@@ -102,7 +169,8 @@
     <div class="panel-head"><h2>{{ t("Traffic") }}</h2></div>
     <div style="padding: 20px;">
         {% if not client.unlimited %}
-        <div class="bar" style="width: 100%; height: 12px;">
+        <div class="bar {% if client.percent >= 100 %}full{% elif client.percent >= 80 %}near{% endif %}"
+             style="width: 100%; height: 12px;">
             <div style="width: {{ client.percent }}%;"></div>
         </div>
         <p class="muted" style="margin: 10px 0 16px 0;">{{ client.percent }}% {{ t("of the limit") }}</p>
@@ -118,6 +186,57 @@
         </div>
     </div>
 </div>
+
+{% if devices is not none %}
+<div class="panel" style="margin-top: 20px;">
+    <div class="panel-head">
+        <h2>{{ t("Registered devices") }} {{ fields.help(t("The devices 3x-ui has let in on this subscription, told apart by the hardware id the app sends. A device stays here until it is forgotten — so somebody with a new phone is kept out by the old one until its slot is freed.")) }}</h2>
+        {% if devices %}
+        <form method="post" action="/clients/{{ client.uuid }}/devices/forget"
+              data-confirm="{{ t('Forget every device? Nobody is disconnected: the slots are freed, and whichever devices fetch the subscription next take them.') }}">
+            <button type="submit" class="btn">{{ t("Forget all") }}</button>
+        </form>
+        {% endif %}
+    </div>
+    <div style="padding: 8px 20px 20px 20px;">
+        {% if devices %}
+        <div class="tscroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>{{ t("Device") }}</th>
+                        <th>{{ t("App") }}</th>
+                        <th>{{ t("First seen") }}</th>
+                        <th>{{ t("Last seen") }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for device in devices %}
+                    <tr>
+                        <td>
+                            {{ device.name }}
+                            <div class="muted mono">{% if device.system and device.system != device.name %}{{ device.system }} · {% endif %}{{ device.fingerprint }}</div>
+                        </td>
+                        <td class="mono">{{ device.app or "—" }}</td>
+                        <td class="mono">{{ device.first_seen }}</td>
+                        <td class="mono">{{ device.last_seen }}</td>
+                        <td style="text-align: right;">
+                            <form method="post" action="/clients/{{ client.uuid }}/devices/{{ device.id }}/forget">
+                                <button type="submit" class="btn">{{ t("Forget") }}</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted" style="margin: 12px 0 0 0;">{{ t("No device has registered yet.") }}</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div class="panel" style="margin-top: 20px;">
     <div class="panel-head"><h2>{{ t("Access") }}</h2></div>
@@ -205,7 +324,18 @@
                         <td class="mono">{% if client.flow and client.flow != "—" %}{{ client.flow }}{% else %}<span class="muted">{{ t("not set") }}</span>{% endif %}</td>
                     </tr>
                     <tr><td class="muted">security</td><td class="mono">{{ client.security }}</td></tr>
-                    <tr><td class="muted">{{ t("Device limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr><td class="muted">{{ t("IP limit") }}</td><td class="mono">{% if client.limit_ip %}{{ client.limit_ip }}{% else %}{{ t("no cap") }}{% endif %}</td></tr>
+                    <tr>
+                        <td class="muted">{{ t("Came in through") }} {{ fields.help(t("The code word this client registered with. It says how they arrived, not what they have now — a client can be moved to another tariff afterwards, and the word stays what it was. Empty for anybody registered before code words were kept, or added by hand in 3x-ui.")) }}</td>
+                        <td class="mono">
+                            {% if came_by %}
+                            <a href="/tariffs/codes/{{ came_by.word }}" class="plain">{{ came_by.word }}</a>
+                            {% if came_by.tariff %}<span class="muted"> · {{ came_by.tariff }}</span>{% endif %}
+                            {% else %}
+                            <span class="muted">{{ t("not known") }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
                     <tr><td class="muted">{{ t("Created") }}</td><td class="mono">{{ client.created_at }}</td></tr>
                     <tr><td class="muted">{{ t("Changed") }}</td><td class="mono">{{ client.updated_at }}</td></tr>
 

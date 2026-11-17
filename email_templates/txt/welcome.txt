@@ -4,8 +4,12 @@
 
 {{ t("welcome.intro_again" if renewed else "welcome.intro_new") | plain }}
 
-{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
-{{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
+{% if tariff %}{{ t("welcome.label_tariff") | plain }}: {{ tariff | plain }}
+{% endif %}{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
+{% if renewal_text %}{{ t("welcome.label_renewal") | plain }}: {{ renewal_text | plain }}
+{% endif %}{{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
+{% if devices_text %}{{ t("welcome.label_devices") | plain }}: {{ devices_text | plain }}
+{% endif %}
 
 {{ t("welcome.manual_intro") | plain }}
 {{ sub_url }}
@@ -13,8 +17,14 @@
 {{ t("welcome.apps_intro") | plain }}
 {% for app in apps %}  {{ app.button | plain }}: {{ app.url }}
 {% endfor %}{% endif %}
+{% if manual %}{{ manual.button | plain }}: {{ manual.url }}
+{% endif %}
+{% if support_block %}{{ t("welcome.support") | plain }}
+{% endif %}
 {% if t("welcome.commands_text") %}{{ t("welcome.commands_title") | plain }}
 {{ t("welcome.commands_text") | plain }}
 {% endif %}
 --
 {{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}

@@ -1,12 +1,20 @@
-requests==2.31.0
-python-dotenv==1.0.1
+requests==2.34.2
+python-dotenv==1.2.4
 # QR codes for the welcome letter. Pure Python and writes the PNG itself,
 # so no Pillow and nothing to compile on the server.
 segno==1.6.6
 
 # Веб-админка
-fastapi==0.115.6
+# These are the newest releases that still install on Python 3.10, which is
+# the oldest Python this project runs on (PY_MIN_* in install.sh, and the
+# version CI tests with). The ones after them need 3.11.
+fastapi==0.162.5
+# Named although fastapi would bring it: fastapi asks only for a minimum, and
+# pip then picks a different starlette for each Python it runs on. This is the
+# one the tests were run against.
+starlette==1.7.0
 uvicorn[standard]==0.34.0
-jinja2==3.1.5
-python-multipart==0.0.20
+jinja2==3.1.6
+# Reads the panel's forms, the sign-in form among them.
+python-multipart==0.0.32
 itsdangerous==2.2.0

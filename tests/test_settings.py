@@ -5,6 +5,8 @@ The layer the panel owns.
 of the code will trust, so each branch is checked — including the refusals,
 which is where a typo turns into a broken installation rather than an error.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config
@@ -106,6 +108,47 @@ class TranslatedDefaults(unittest.TestCase):
         settings._stored = {"PANEL_LANG": "ru", "GOTIFY_TITLE": "Мой текст"}
         settings._apply()
         self.assertEqual(config.GOTIFY_TITLE, "Мой текст")
+
+
+class TheMailServersName(unittest.TestCase):
+    """MAIL_AUTH_SERVER: compared with a header, so kept in the shape a header has it in."""
+
+    def test_it_is_kept_in_lower_case_without_the_spaces_round_it(self):
+        self.assertEqual(settings._coerce("MAIL_AUTH_SERVER", "  Mail.Example.NET "),
+                         "mail.example.net")
+
+    def test_empty_is_allowed_and_means_no_server_is_named(self):
+        for value in ("", "   ", None):
+            with self.subTest(value=value):
+                self.assertEqual(settings._coerce("MAIL_AUTH_SERVER", value), "")
+
+    def test_a_name_that_could_never_match_is_refused(self):
+        # Saved, it would turn away every /broadcast by mail and say nothing.
+        for value in ("mail.example.net; dmarc=pass", "mail example net", "https://mail.example.net",
+                      "mail.example.net.", "-mail.example.net", "почта.example.net"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    settings._coerce("MAIL_AUTH_SERVER", value)
+
+    def test_it_is_one_of_the_panels_settings(self):
+        self.assertIn("MAIL_AUTH_SERVER", settings.MANAGED_KEYS)
+        self.assertNotIn("MAIL_AUTH_SERVER", settings.SECRET_KEYS)
+
+
+class TheXrayPush(unittest.TestCase):
+    def test_its_settings_are_the_panels(self):
+        for key in ("XRAY_NOTIFY_ENABLED", "XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
+            self.assertIn(key, settings.MANAGED_KEYS)
+
+    def test_the_switch_is_a_yes_or_a_no(self):
+        self.assertIs(settings._coerce("XRAY_NOTIFY_ENABLED", "on"), True)
+        self.assertIs(settings._coerce("XRAY_NOTIFY_ENABLED", ""), False)
+
+    def test_a_notification_with_no_words_is_refused(self):
+        for key in ("XRAY_NOTIFY_TITLE", "XRAY_NOTIFY_MESSAGE"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    settings._coerce(key, "   ")
 
 
 if __name__ == "__main__":

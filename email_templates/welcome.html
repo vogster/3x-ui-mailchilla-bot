@@ -7,8 +7,11 @@
 </p>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px;">
+    {% if tariff %}{{ ui.stat(t("welcome.label_tariff"), tariff) }}{% endif %}
     {{ ui.stat(t("welcome.label_expire"), expire_text) }}
+    {% if renewal_text %}{{ ui.stat(t("welcome.label_renewal"), renewal_text) }}{% endif %}
     {{ ui.stat(t("welcome.label_limit"), limit_text) }}
+    {% if devices_text %}{{ ui.stat(t("welcome.label_devices"), devices_text) }}{% endif %}
 </table>
 
 {{ ui.button(sub_url, t("welcome.button_main")) }}
@@ -17,10 +20,14 @@
 <p style="margin: 24px 0 14px 0; color: #a0a0a8; font-size: 15px; text-align: center;">
     {{ t("welcome.apps_intro") | emph }}
 </p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{# The buttons in a table of their own, centred as a group rather than each in
+   half the letter's width: stretched across a desktop window they sat at
+   opposite ends and read as two unrelated things. On a phone .btn-cell turns
+   each into a full-width block and they stack, which is right there. #}
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
     <tr>
         {% for app in apps %}
-        <td class="btn-cell" align="center" style="padding: 0 5px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
+        <td class="btn-cell" align="center" style="padding: 0 6px;">{{ ui.button(app.url, app.button, primary=false) }}</td>
         {% endfor %}
     </tr>
 </table>
@@ -51,6 +58,33 @@
 
 <p style="margin: 26px 0 8px 0;">{{ t("welcome.manual_intro") | emph }}</p>
 {{ ui.code(sub_url) }}
+
+{# After every way of setting the subscription up — the button, the apps, the
+   code, the link to copy — and before the address to write to. That is the
+   order somebody goes through: try it, read about it, ask about it. #}
+{% if manual %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 20px;">
+    <tr>
+        <td align="center">
+            <a href="{{ manual.url }}" style="color: #a0a0a8; font-size: 15px; text-decoration: underline;">{{ manual.button }}</a>
+        </td>
+    </tr>
+</table>
+{% endif %}
+
+{% if support_block %}
+{# Its own box rather than another grey paragraph: this is the line somebody
+   looks for when nothing else in the letter has worked. It has a switch of
+   its own, apart from the address in the footer below. #}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 26px;">
+    <tr>
+        <td bgcolor="#141416" style="background-color: #141416; border: 1px solid #26262a;
+                   border-radius: 8px; padding: 14px 16px; color: #ededef; font-size: 15px;">
+            {{ t("welcome.support") | emph | mailto(support_block) }}
+        </td>
+    </tr>
+</table>
+{% endif %}
 
 {% if t("welcome.commands_title") or t("welcome.commands_text") %}
 <p style="margin: 26px 0 8px 0; color: #ededef; font-weight: 600;">{{ t("welcome.commands_title") | emph }}</p>

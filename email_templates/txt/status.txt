@@ -3,11 +3,18 @@
 {{ t("status.intro", email=email) | plain }}
 
 {{ t("status.label_status") | plain }}: {{ status_text | plain }}
-{{ t("status.label_expiry") | plain }}: {{ expiry_text | plain }}
-{{ t("status.label_used") | plain }}: {{ used_text | plain }}
-{% if meter_text %}{{ meter_text | plain }}
+{% if tariff %}{{ t("status.label_tariff") | plain }}: {{ tariff | plain }}
+{% endif %}{{ t("status.label_expiry") | plain }}: {{ expiry_text | plain }}
+{% if renewal_text %}{{ t("status.label_renewal") | plain }}: {{ renewal_text | plain }}
+{% endif %}{{ t("status.label_used") | plain }}: {{ used_text | plain }}
+{% if devices_text %}{{ t("status.label_devices") | plain }}: {{ devices_text | plain }}
+{% endif %}{% if meter_text %}{{ meter_text | plain }}
+{% endif %}{% if device_names %}{{ t("status.devices_list", names=device_names) | plain }}
+{% endif %}{% if devices_full and t("status.devices_full") %}{{ t("status.devices_full") | plain }}
 {% endif %}
 {% if t("status.outro") %}{{ t("status.outro") | plain }}
 {% endif %}
 --
 {{ service_name }}
+{% if support %}{{ t("common.support") | plain }}
+{% endif %}

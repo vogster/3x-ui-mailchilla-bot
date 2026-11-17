@@ -184,6 +184,30 @@
     .roulette-result .who { font-size: 15px; font-weight: 600; }
     .roulette-result .sub { font-size: 12px; color: var(--fg-3); }
     .rcpt .badge { font-size: 11.5px; }
+
+    /* The broadcasts that are running and the recent ones, above the form. */
+    #bc-jobs-box { margin-bottom: 22px; }
+    .bc-job {
+        display: flex; align-items: center; gap: 12px;
+        padding: 11px 20px; border-top: 1px solid var(--line-soft);
+        color: inherit; text-decoration: none; transition: background .12s;
+    }
+    .bc-job:hover { background: var(--surface-2); }
+    .bc-job .odot.done { background: var(--fg-3); }
+    .bc-job .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .bc-job .what .s { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bc-job .what .m { font-size: 12px; color: var(--fg-3); }
+    .bc-job .how { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .bc-job .how .bar > span { display: block; height: 100%; background: var(--ok); border-radius: 999px; }
+    .bc-job .how .c { font-size: 12.5px; color: var(--fg-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .bc-job .how .c.warn { color: var(--warn); }
+    .bc-job .how .c.bad { color: var(--err); }
+    .bc-none { padding: 16px 20px; color: var(--fg-3); border-top: 1px solid var(--line-soft); }
+    .bc-note { padding: 9px 20px; font-size: 12px; color: var(--fg-3); border-top: 1px solid var(--line-soft); }
+    @media (max-width: 620px) {
+        .bc-job { flex-wrap: wrap; }
+        .bc-job .how { flex: 1 0 100%; padding-left: 19px; }
+    }
 </style>
 
 <h1 style="margin: 0 0 6px 0;">{{ t("Mass broadcast") }}</h1>
@@ -192,6 +216,8 @@
 </p>
 
 {% if error %}<div class="flash error" style="margin-bottom: 20px;">{{ error }}</div>{% endif %}
+
+<div id="bc-jobs-box">{% include "_broadcast_jobs.html" %}</div>
 
 <form method="post" action="/broadcast" id="broadcast-form">
 <div class="bc-grid">
@@ -242,6 +268,20 @@
                 <option value="nearly">{{ t("Traffic running out") }}</option>
                 <option value="unlimited">{{ t("No limit") }}</option>
             </select>
+            {% if tariff_names %}
+            {# Its own axis, like the connection: "everybody on Trial whose
+               traffic is running out" is the question this page exists for.
+               The option values are labels rather than the names themselves —
+               "no tariff at all" has to be a choice, and an empty value already
+               means "any". #}
+            <select id="rcpt-tariff" title="{{ t('Tariff') }}">
+                <option value="">{{ t("All") }}</option>
+                {% for name in tariff_names %}
+                <option value="one" data-name="{{ name }}">{{ name }}</option>
+                {% endfor %}
+                <option value="none">{{ t("without one") }}</option>
+            </select>
+            {% endif %}
             {% if online_known %}
             <select id="rcpt-online" title="{{ t('Connection [filter]') }}">
                 <option value="">{{ t("All") }}</option>
@@ -295,6 +335,7 @@
                    data-percent="{{ c.percent }}"
                    data-limited="{{ 1 if c.limit_bytes else 0 }}"
                    data-online="{% if online_known and c.online is not none %}{{ 1 if c.online else 0 }}{% endif %}"
+                   data-tariff="{{ c.tariff }}"
                    {# the panel's own identifier, which is what the online list carries —
                       data-email is the bare address and would not match #}
                    data-remark="{{ c.remark }}">
@@ -331,7 +372,7 @@
                         </div>
                     </div>
                     {% if c.limit_bytes %}
-                    <div class="bar"><div style="width: {{ c.percent }}%;"></div></div>
+                    <div class="bar {% if c.percent >= 100 %}full{% elif c.percent >= 80 %}near{% endif %}"><div style="width: {{ c.percent }}%;"></div></div>
                     {% endif %}
                 </div>
             </label>
@@ -379,6 +420,7 @@
         var search = document.getElementById("rcpt-search");
         var clear = document.getElementById("rcpt-search-clear");
         var filterSel = document.getElementById("rcpt-filter");
+        var tariffSel = document.getElementById("rcpt-tariff");
         var sortSel = document.getElementById("rcpt-sort");
         var empty = document.getElementById("rcpt-empty");
         var summary = document.getElementById("rcpt-summary");
@@ -397,6 +439,11 @@
             // rather than replacing it: "disabled and connected" is a question
             // worth being able to ask.
             if (onlineSel && onlineSel.value !== "" && row.dataset.online !== onlineSel.value) return false;
+            if (tariffSel && tariffSel.value !== "") {
+                var option = tariffSel.options[tariffSel.selectedIndex];
+                var wanted = option.value === "none" ? "" : option.dataset.name;
+                if ((row.dataset.tariff || "") !== wanted) return false;
+            }
             var limited = row.dataset.limited === "1";
             switch (filterSel.value) {
                 case "active":    return row.dataset.enabled === "1";
@@ -541,6 +588,7 @@
         });
 
         filterSel.addEventListener("change", apply);
+        if (tariffSel) tariffSel.addEventListener("change", apply);
         if (onlineSel) onlineSel.addEventListener("change", apply);
         sortSel.addEventListener("change", function () {
             try { localStorage.setItem(SORT_KEY, sortSel.value); } catch (e) {}
@@ -556,11 +604,28 @@
             }
         } catch (e) {}
 
+        // Asked here rather than with data-confirm on the form: that question
+        // is put before any listener of the form's own has run, so somebody
+        // with nobody ticked would be asked about a second broadcast first and
+        // told to choose a recipient afterwards.
+        var agreed = false;
         form.addEventListener("submit", function (e) {
             if (!boxes.filter(function (b) { return b.checked; }).length) {
                 e.preventDefault();
                 window.showToast({{ t("Choose at least one recipient")|tojson }}, "error");
+                return;
             }
+            var jobs = document.querySelector("#bc-jobs-box .bc-jobs");
+            if (agreed || !jobs || jobs.dataset.running === "0") return;
+            // The way one letter goes out twice: Send, a tab closed, and Send
+            // again because nothing said the first was still going.
+            e.preventDefault();
+            window.confirmAction({{ t("A broadcast is still being sent. Send this one as well, alongside it?")|tojson }},
+                                 false).then(function (ok) {
+                if (!ok) return;
+                agreed = true;
+                form.requestSubmit();
+            });
         });
 
         apply();
@@ -869,6 +934,65 @@
         dlg.addEventListener("cancel", function (e) {
             if (spinning) e.preventDefault();
         });
+    })();
+</script>
+
+<script>
+    // The list of broadcasts is re-read while the page is open: every few
+    // seconds while one is being sent, and now and then otherwise — one
+    // started by mail begins without this page having had anything to do with
+    // it. Only that block is replaced, never the page: there may be a letter
+    // half written in the form below.
+    (function () {
+        var box = document.getElementById("bc-jobs-box");
+        if (!box || !window.fetch) return;
+        var BUSY = 3000, IDLE = 20000;
+
+        function running() {
+            var jobs = box.querySelector(".bc-jobs");
+            return !!jobs && jobs.dataset.running !== "0";
+        }
+
+        function again(stop) {
+            if (!stop) setTimeout(look, running() ? BUSY : IDLE);
+        }
+
+        function look() {
+            // A tab nobody is looking at asks nothing; it catches up when it is.
+            if (document.hidden) { again(false); return; }
+            fetch("/broadcast/jobs", { credentials: "same-origin", cache: "no-store" })
+                .then(function (response) {
+                    // 401 is a session that has lapsed: there is nothing more
+                    // to ask for, and the answer is not a list.
+                    if (response.status === 401) return { stop: true };
+                    if (!response.ok) return { stop: false };
+                    return response.text().then(function (html) { return { stop: false, html: html }; });
+                })
+                .catch(function () { return { stop: false }; })
+                .then(function (got) {
+                    if (got.html) { box.innerHTML = got.html; dot(); }
+                    again(got.stop);
+                });
+        }
+
+        // The dot on the menu link was drawn with the page. Kept in step with
+        // the list, or it would go on breathing over a broadcast this very
+        // page has just shown to be finished.
+        function dot() {
+            var link = document.querySelector('.sb-nav a[href="/broadcast"]');
+            if (!link) return;
+            var there = link.querySelector(".nav-dot");
+            if (running() && !there) {
+                there = document.createElement("span");
+                there.className = "odot on nav-dot";
+                there.title = {{ t("A broadcast is being sent")|tojson }};
+                link.appendChild(there);
+            } else if (!running() && there) {
+                there.remove();
+            }
+        }
+
+        again(false);
     })();
 </script>
 {% endblock %}

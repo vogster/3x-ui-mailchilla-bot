@@ -1,11 +1,13 @@
 import logging
 import threading
+import time
 import requests
 import uuid
 from datetime import datetime, timedelta
 from email.utils import parseaddr
 from urllib.parse import quote, unquote, urlsplit
 import config
+import renewal
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,38 @@ def epoch_ms(value) -> int:
     return number * 1000 if number < _SECONDS_CEILING else number
 
 
+class XuiUnavailable(Exception):
+    """
+    3x-ui could not be asked — as opposed to asked, and answering "no".
+
+    The two used to come back as the same None, and the bot believed the second:
+    during an outage a registered client asking for their status was told they
+    had never registered. Raised only where the caller asks for it (see
+    find_client_by_email), since the panel's pages are content with a None.
+
+    `denied` tells the two kinds of "could not ask" apart, because they end
+    differently. A panel that does not answer comes back by itself. One that
+    refuses the bot's token or password never will: somebody has to change a
+    setting, and has to be told so in those words.
+    """
+
+    def __init__(self, message: str = "", denied: bool = False):
+        super().__init__(message)
+        self.denied = denied
+
+
+class XuiDenied(Exception):
+    """3x-ui answered, and what it answered is that it will not let the bot in."""
+
+
+# How long after a request for the client list has failed the next lookup is
+# answered without asking again. A dead panel costs ten seconds a request, and
+# a mailbox with twenty unread letters used to mean twenty of them in a row;
+# the first failure now speaks for the rest of that cycle. Short enough that
+# the following cycle asks for itself.
+OUTAGE_HOLD = 10
+
+
 def get_shared_client():
     """Returns the process-wide XuiClient instance, created on first use."""
     global _shared_client
@@ -57,9 +91,23 @@ class XuiClient:
             self.is_logged_in = True
         else:
             self.is_logged_in = False
+        # Why the client list could not be had the last time it was asked for,
+        # as ("denied" | "unreachable" | "error", detail), and until when that
+        # answer stands in for asking again. See OUTAGE_HOLD.
+        self.last_failure = None
+        self._hold_until = 0.0
+        # How the last sign-in that failed did so: "refused" when the panel
+        # itself said no, "unreachable" when it could not be asked, "" when it
+        # answered something else.
+        self._login_failure = ""
 
-    def login(self):
-        """Signs in to the 3x-ui panel and keeps the session cookies."""
+    def login(self, quiet: bool = False):
+        """
+        Signs in to the 3x-ui panel and keeps the session cookies.
+
+        :param quiet: say a failure at DEBUG. See get_server_status.
+        """
+        level = logging.DEBUG if quiet else logging.ERROR
         if self.api_token:
             self.is_logged_in = True
             return True
@@ -68,6 +116,7 @@ class XuiClient:
             "username": self.username,
             "password": self.password
         }
+        self._login_failure = ""
         try:
             response = self.session.post(url, data=payload, timeout=10)
             if response.status_code == 200:
@@ -77,52 +126,129 @@ class XuiClient:
                     logger.info("Signed in to 3x-ui.")
                     return True
                 else:
-                    logger.error(f"Sign-in error from 3x-ui: {resp_json.get('msg')}")
+                    # The panel was there and said no, in its own words: a
+                    # wrong login or password, which no waiting puts right.
+                    # Only this counts as refused. A bare 403 may as well be a
+                    # proxy or a rate limiter in front of the panel, and that
+                    # does pass.
+                    self._login_failure = "refused"
+                    logger.log(level, f"Sign-in error from 3x-ui: {resp_json.get('msg')}")
             else:
-                logger.error(f"Could not sign in to 3x-ui. Status: {response.status_code}, body: {response.text}")
+                logger.log(level, f"Could not sign in to 3x-ui. Status: {response.status_code}, body: {response.text}")
+        except requests.RequestException as e:
+            self._login_failure = "unreachable"
+            logger.log(level, f"Exception while signing in to 3x-ui: {e}")
         except Exception as e:
-            logger.error(f"Exception while signing in to 3x-ui: {e}")
+            logger.log(level, f"Exception while signing in to 3x-ui: {e}")
         
         self.is_logged_in = False
         return False
 
-    def _request(self, method, endpoint, **kwargs):
-        """A wrapper around requests that logs in again when the session expires."""
-        with self._lock:
-            return self._request_locked(method, endpoint, **kwargs)
+    def _request(self, method, endpoint, quiet: bool = False, **kwargs):
+        """
+        A wrapper around requests that logs in again when the session expires.
 
-    def _request_locked(self, method, endpoint, **kwargs):
+        :param quiet: say a failure to get through at DEBUG rather than as an
+                      error. For a caller that asks on a schedule — a panel
+                      that is away is then one line when it starts, said by
+                      whoever is watching, and not one a minute from here.
+        """
+        with self._lock:
+            return self._request_locked(method, endpoint, quiet=quiet, **kwargs)
+
+    @staticmethod
+    def _landed_on_login(response, endpoint: str) -> bool:
+        """
+        Whether a request was answered with the sign-in page instead of its own.
+
+        This used to be `"login" in response.url`, and the client's address is
+        part of that URL: clients/traffic/loginov%40mail.ru passed for an
+        expired session on every single request. With a token that was a flat
+        "Access denied" — no status letter, no editing, no deleting for anybody
+        with those five letters in their address — and with a cookie a sign-in
+        and a repeat each time.
+
+        An expired session shows as a redirect, so one has to have happened;
+        and a redirect that ends on the page that was asked for — http to
+        https, say — is not the sign-in page, whatever its address spells.
+        """
+        if response.status_code != 200 or not getattr(response, "history", None):
+            return False
+        path = urlsplit(response.url).path
+        if path.endswith(urlsplit(endpoint).path):
+            return False
+        return "login" in path.lower()
+
+    def _request_locked(self, method, endpoint, quiet: bool = False, **kwargs):
         if not self.is_logged_in:
-            if not self.login():
-                raise Exception("No connection to the 3x-ui API (authorisation failed)")
+            if not self.login(quiet=quiet):
+                raise self._sign_in_failed("No connection to the 3x-ui API (authorisation failed)")
 
         url = f"{self.base_url}{endpoint}"
         try:
             response = self.session.request(method, url, timeout=10, **kwargs)
-            if response.status_code in (401, 403) or (response.status_code == 200 and "login" in response.url):
+            if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
                 if self.api_token:
-                    raise Exception(f"Access denied (status={response.status_code}) with the API token. Check XUI_API_TOKEN.")
+                    raise XuiDenied(f"Access denied (status={response.status_code}) with the API token. Check XUI_API_TOKEN.")
                 
                 logger.info("The 3x-ui session has expired. Signing in again...")
                 self.is_logged_in = False
-                if self.login():
+                if self.login(quiet=quiet):
                     url = f"{self.base_url}{endpoint}"
                     response = self.session.request(method, url, timeout=10, **kwargs)
+                    if response.status_code in (401, 403) or self._landed_on_login(response, endpoint):
+                        # Signed in a moment ago and turned away all the same:
+                        # not a session that lapsed, and not something that
+                        # passes. A panel that has started asking cookie
+                        # sessions for a CSRF token looks like this.
+                        raise XuiDenied(f"3x-ui turned the request away (status={response.status_code}) "
+                                        f"straight after a successful sign-in. An API token "
+                                        f"(XUI_API_TOKEN) is the way round.")
                 else:
-                    raise Exception("Signing in to 3x-ui again failed.")
+                    raise self._sign_in_failed("Signing in to 3x-ui again failed.")
             
+            if response.status_code == 200:
+                # The panel answered, so whatever was remembered about it not
+                # answering is out of date. This is what lets the read-back
+                # after creating a client go through: the creation itself was
+                # the news that the panel is there.
+                self._hold_until = 0.0
             return response
         except requests.RequestException as e:
-            logger.error(f"Network error on a request to 3x-ui ({endpoint}): {e}")
+            logger.log(logging.DEBUG if quiet else logging.ERROR,
+                       f"Network error on a request to 3x-ui ({endpoint}): {e}")
             raise
 
+    def _sign_in_failed(self, otherwise: str) -> Exception:
+        """The exception for a sign-in that did not work, by how it did not."""
+        if self._login_failure == "refused":
+            return XuiDenied("3x-ui did not accept XUI_USERNAME and XUI_PASSWORD")
+        if self._login_failure == "unreachable":
+            # In the family the callers file under "does not answer".
+            return requests.ConnectionError("3x-ui could not be reached to sign in")
+        return Exception(otherwise)
+
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
-                   inbound_ids: list = None, comment: str = "", flow: str = None):
+                   inbound_ids: list = None, comment: str = "", flow: str = None,
+                   group: str = "", limit_hwid: int = 0, renew: dict = None):
         """
         Adds a new client to every inbound listed.
+        :param renew: the auto-renewal, as renewal.clean() hands it over — a
+                      mode, a value and a cap; None or an empty mode is none.
+                      Like the device limit, a panel too old to know it takes
+                      the client and drops it in silence — see renewal.of_client().
+                      It does nothing for a client with no expiry, and saying
+                      so is the caller's business: the request is sent as asked.
         :param email: the client's unique email/identifier (a limited character
                       set: the panel refuses angle brackets and spaces)
         :param comment: a free-form comment — the sender's name goes here
+        :param group: the client group, which this project uses for the tariff
+                      name. 3x-ui creates the group on first use, so there is
+                      nothing to set up beforehand and this stays one request.
+        :param limit_hwid: how many devices may use the subscription, counted by
+                           the hardware id an app sends; 0 is no limit. A panel
+                           too old to know the field takes the client and drops
+                           it in silence — see device_limit().
         :param flow: the flow value (taken from the settings when not given)
         :param client_uuid: the client UUID (a new one is generated when absent)
         :param limit_gb: traffic limit in GB (taken from the config when absent)
@@ -177,18 +303,35 @@ class XuiClient:
                 "subId": "",
                 "limitIp": 0,
                 "enable": True,
-                "flow": flow
+                "flow": flow,
+                # Where the client belongs, kept in 3x-ui itself rather than in
+                # a file of ours: the panel shows it, an edit made there is the
+                # truth, and clients/list hands it back with everything else.
+                "group": group or ""
             },
             "inboundIds": inbound_ids
         }
-        
+        # Only when there is a limit to set. Without one the panel is asked
+        # exactly what it was asked before the field existed, so an older 3x-ui
+        # is never handed a key it has not heard of for the sake of a zero.
+        if limit_hwid and int(limit_hwid) > 0:
+            payload["client"]["limitHwid"] = int(limit_hwid)
+        # The same rule for a renewal: its four keys go only when there is
+        # one. The documented body of clients/add lists none of them, and the
+        # panel takes them all the same — as it does `group`.
+        renew_fields = renewal.panel_fields(renew)
+        payload["client"].update(renew_fields)
+
         try:
             response = self._request("POST", "/panel/api/clients/add", json=payload)
             
             if response.status_code == 200:
                 resp_json = response.json()
                 if resp_json.get("success"):
-                    logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}")
+                    logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}"
+                                + (f", group {group!r}" if group else "")
+                                + (f", devices {int(limit_hwid)}" if limit_hwid else "")
+                                + (f", renewal {renew_fields}" if renew_fields else ""))
                     return client_uuid, inbound_ids
                 else:
                     logger.error(f"Could not add client {email}: {resp_json.get('msg')}")
@@ -238,16 +381,45 @@ class XuiClient:
                 resp_json = response.json()
 
                 if resp_json.get("success"):
-                    return resp_json.get("obj", [])
+                    # `or []`, not a default: the panel is written in Go, where
+                    # an empty list may well arrive as "obj": null — and None
+                    # is what this method returns for "could not ask". A panel
+                    # with no clients yet would then look like one that is
+                    # down, and find_client_by_email(strict=True) would put
+                    # every first registration off for ever.
+                    self.last_failure = None
+                    self._hold_until = 0.0
+                    return resp_json.get("obj") or []
                 else:
                     logger.error(f"The panel returned an error while fetching the client list: {resp_json.get('msg')}")
+                    self._note_failure("error", str(resp_json.get("msg") or "the panel reported an error"))
             else:
                 logger.error(f"Unexpected 3x-ui status while fetching the client list: {response.status_code}")
+                self._note_failure("error", f"status {response.status_code}")
 
+        except XuiDenied as e:
+            logger.error(f"3x-ui refused the request for the client list: {e}")
+            self._note_failure("denied", str(e))
+        except requests.RequestException as e:
+            logger.error(f"Exception while fetching the client list: {e}")
+            self._note_failure("unreachable", type(e).__name__)
         except Exception as e:
             logger.error(f"Exception while fetching the client list: {e}")
+            self._note_failure("error", str(e))
 
         return None
+
+    def _note_failure(self, kind: str, detail: str):
+        """Remembers why the client list could not be had, and for how long that stands."""
+        self.last_failure = (kind, detail)
+        self._hold_until = time.time() + OUTAGE_HOLD
+
+    def unavailable(self) -> XuiUnavailable:
+        """XuiUnavailable for the failure last noted, in words fit for a log."""
+        kind, detail = self.last_failure or ("unreachable", "")
+        if kind == "denied":
+            return XuiUnavailable(f"3x-ui refuses the bot's credentials: {detail}", denied=True)
+        return XuiUnavailable("3x-ui does not answer" + (f" ({detail})" if detail else ""))
 
     def get_inbounds(self) -> list:
         """
@@ -285,7 +457,7 @@ class XuiClient:
             logger.error(f"Exception while fetching the inbound list: {e}")
         return []
 
-    def get_server_status(self) -> dict or None:
+    def get_server_status(self, quiet: bool = False) -> dict or None:
         """
         How the machine behind the panel is doing: processor, memory, disk,
         uptime and the versions of the panel and of xray.
@@ -293,19 +465,25 @@ class XuiClient:
         Returns None when the panel does not answer — the dashboard then simply
         leaves the block out rather than showing zeroes that look like a dead
         server.
+
+        :param quiet: say a failure at DEBUG rather than as a warning. For a
+                      caller that asks on a schedule and does its own telling:
+                      xray_watch asks once a minute, and a panel that is away
+                      for an hour would otherwise be sixty warnings saying so.
         """
+        level = logging.DEBUG if quiet else logging.WARNING
         try:
-            response = self._request("GET", "/panel/api/server/status")
+            response = self._request("GET", "/panel/api/server/status", quiet=quiet)
             if response.status_code != 200:
-                logger.warning(f"Unexpected status while fetching the server status: {response.status_code}")
+                logger.log(level, f"Unexpected status while fetching the server status: {response.status_code}")
                 return None
             resp_json = response.json()
             if not resp_json.get("success"):
-                logger.warning(f"The panel returned an error for the server status: {resp_json.get('msg')}")
+                logger.log(level, f"The panel returned an error for the server status: {resp_json.get('msg')}")
                 return None
             obj = resp_json.get("obj") or {}
         except Exception as e:
-            logger.warning(f"Exception while fetching the server status: {e}")
+            logger.log(level, f"Exception while fetching the server status: {e}")
             return None
 
         def pair(section):
@@ -359,6 +537,159 @@ class XuiClient:
         except Exception as e:
             logger.debug(f"Exception while fetching the online list: {e}")
             return None
+
+    def rename_group(self, old_name: str, new_name: str) -> bool:
+        """
+        Renames a client group, carrying every member across.
+
+        This project names a group after the tariff it stands for, so renaming
+        a tariff has to rename the group too — otherwise the clients created
+        before the rename stay in a group named after something that no longer
+        exists.
+        """
+        old_name = str(old_name or "").strip()
+        new_name = str(new_name or "").strip()
+        if not old_name or not new_name or old_name == new_name:
+            return True
+        try:
+            response = self._request("POST", "/panel/api/clients/groups/rename",
+                                     json={"oldName": old_name, "newName": new_name})
+            if response.status_code != 200:
+                logger.error(f"Unexpected status while renaming the group {old_name!r}: "
+                             f"{response.status_code}")
+                return False
+            resp_json = response.json()
+            if not resp_json.get("success"):
+                # An empty group — a tariff nobody has registered on yet — is
+                # not a row in the panel at all, so there is nothing to rename
+                # and nothing to worry about.
+                logger.info(f"The panel did not rename the group {old_name!r}: "
+                            f"{resp_json.get('msg')}. Nobody is in it yet, most likely.")
+                return False
+            logger.info(f"Group {old_name!r} renamed to {new_name!r}.")
+            return True
+        except Exception as e:
+            logger.error(f"Exception while renaming the group {old_name!r}: {e}")
+            return False
+
+    # ----------------------------------------------------------------------
+    # Devices
+    # ----------------------------------------------------------------------
+    # 3x-ui can limit how many devices use one subscription. It tells them
+    # apart by the hardware id (HWID) an app sends when it fetches the
+    # subscription, keeps a list of the ones it has let in, and refuses the
+    # next once the list is as long as the client's limitHwid. A device stays
+    # on that list until somebody takes it off — which is the whole of what the
+    # two calls below are for: a client with a new phone is otherwise locked
+    # out by the old one.
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    def last_sub_fetch(client_obj: dict):
+        """
+        When the client's app last fetched the subscription, in milliseconds —
+        0 for never — or None when the panel does not say.
+
+        3x-ui keeps it with the client's traffic counters, and clients/list
+        hands those back inside each row, so this costs no request. None and 0
+        are different answers, as with device_limit: 0 is a client who has
+        never once asked for the subscription, and a panel from before the
+        field existed has no such key — every client of it would otherwise
+        read as somebody who never set the app up.
+        """
+        traffic = (client_obj or {}).get("traffic")
+        if not isinstance(traffic, dict) or "lastSubFetch" not in traffic:
+            return None
+        # Through epoch_ms, like every other moment the panel reports: one
+        # build writes seconds and another milliseconds.
+        return epoch_ms(traffic.get("lastSubFetch"))
+
+    @staticmethod
+    def device_limit(client_obj: dict):
+        """
+        A client's device limit as the panel holds it, or None when the panel
+        does not know the field at all.
+
+        None and 0 are different answers. 0 is "no limit", and a build from
+        before HWID limits returns no such key — so a client just created with
+        a limit that comes back as None was created without it, and the tariff
+        is promising something nothing enforces.
+        """
+        if not client_obj or "limitHwid" not in client_obj:
+            return None
+        try:
+            return max(int(client_obj.get("limitHwid") or 0), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def device_label(device: dict) -> str:
+        """
+        What a registered device calls itself: its model, or failing that its
+        system — "Pixel 9", "windows 11" — and "" when it said neither.
+
+        A phone names its model; a desktop app as a rule sends only the system
+        it runs on. The empty answer is left to the caller, because the words
+        for "unknown" differ: the panel has its own language and a letter has
+        another.
+        """
+        model = str((device or {}).get("deviceModel") or "").strip()
+        if model:
+            return model
+        return " ".join(str((device or {}).get(key) or "").strip()
+                        for key in ("deviceOs", "osVersion")).strip()
+
+    def get_client_devices(self, email: str) -> list or None:
+        """
+        The devices registered against a client's limit, as the panel lists
+        them: id, deviceModel, deviceOs, osVersion, userAgent, a short
+        fingerprint, firstSeen and lastSeen.
+
+        None when the panel cannot say — an older build has no such route —
+        which is not the same as an empty list and must not be shown as one.
+        """
+        try:
+            # A POST that changes nothing, like the online list.
+            response = self._request("POST", f"/panel/api/clients/hwids/{quote(str(email), safe='')}")
+            if response.status_code != 200:
+                logger.debug(f"The panel does not list devices for {email}: {response.status_code}")
+                return None
+            resp_json = response.json()
+            if not resp_json.get("success"):
+                logger.debug(f"The panel returned no devices for {email}: {resp_json.get('msg')}")
+                return None
+            devices = resp_json.get("obj") or []
+            return [d for d in devices if isinstance(d, dict)] if isinstance(devices, list) else None
+        except Exception as e:
+            logger.debug(f"Exception while fetching the devices of {email}: {e}")
+            return None
+
+    def forget_client_devices(self, email: str, device_id=None) -> bool:
+        """
+        Takes one device off a client's list, or all of them when no id is given.
+
+        Nothing is disconnected by it: the slot is freed, and whichever device
+        fetches the subscription next takes it.
+        """
+        endpoint = f"/panel/api/clients/hwids/{quote(str(email), safe='')}"
+        what = "every device"
+        if device_id is not None:
+            endpoint += f"/{quote(str(device_id), safe='')}"
+            what = f"device {device_id}"
+        try:
+            response = self._request("DELETE", endpoint)
+            if response.status_code != 200:
+                logger.error(f"Unexpected status while forgetting {what} of {email}: "
+                             f"{response.status_code}")
+                return False
+            resp_json = response.json()
+            if resp_json.get("success"):
+                logger.info(f"Forgot {what} of client {email}.")
+                return True
+            logger.error(f"The panel refused to forget {what} of {email}: {resp_json.get('msg')}")
+        except Exception as e:
+            logger.error(f"Exception while forgetting {what} of {email}: {e}")
+        return False
 
     def get_last_online(self) -> dict or None:
         """
@@ -492,18 +823,42 @@ class XuiClient:
         candidate = (addr or str(remark)).strip().lower()
         return candidate if "@" in candidate else ""
 
-    def find_client_by_email(self, bare_email: str) -> dict or None:
+    def recently_failed(self) -> bool:
+        """
+        Whether the client list was asked for a moment ago and could not be
+        had. For a caller that would rather go without the answer than wait
+        ten seconds to be told the same thing — the help letter does.
+        """
+        return time.time() < self._hold_until
+
+    def find_client_by_email(self, bare_email: str, strict: bool = False) -> dict or None:
         """
         Finds a client by bare email, scanning the list of all clients.
         It matches on the email extracted from the remark through parseaddr, or
         on remark == email exactly (older records that carry no name).
+        :param strict: raise XuiUnavailable when the list could not be fetched,
+                       rather than answering None. The bot asks this way: what
+                       it does next — register, or say "you are not registered"
+                       — is wrong if the panel simply did not answer.
         :return: the full client object (an item of get_all_clients), or None.
         """
         if not bare_email:
             return None
         target = bare_email.strip().lower()
 
+        # Asked a moment ago and got nothing: the answer has not changed since,
+        # and asking again would cost each letter of this cycle a timeout.
+        #
+        # Only for a strict lookup. There "could not ask" is said as itself,
+        # and saying it a little too long costs a letter one more cycle. A
+        # plain lookup answers None for it — the same None as "no such
+        # client" — and the panel's pages act on that: held back, the page
+        # that had just created a client read it back as never created.
+        if strict and self.recently_failed():
+            raise self.unavailable()
         clients = self.get_all_clients()
+        if clients is None and strict:
+            raise self.unavailable()
         if not clients:
             return None
 
@@ -551,7 +906,8 @@ class XuiClient:
     def update_client(self, client_uuid: str, total_gb: int = None,
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
-                      client_obj: dict = None) -> bool:
+                      group: str = None, limit_hwid: int = None,
+                      renew: dict = None, client_obj: dict = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -561,6 +917,12 @@ class XuiClient:
         :param total_gb: new traffic limit in GB (None leaves it; 0 is unlimited)
         :param expire_days: new length in days from now (None leaves it; 0 never expires)
         :param enable: True/False to switch on or off (None leaves it)
+        :param group: the client group — this project's tariff name (None leaves it)
+        :param limit_hwid: how many devices may use the subscription (None leaves
+                           it; 0 lifts the limit)
+        :param renew: the auto-renewal (None leaves it; an empty mode switches
+                      it off). Left alone, it survives by itself: the row is
+                      sent back as the panel returned it, renewal and all.
         :param new_remark: a new value for the client's email field (None leaves it)
         :param new_comment: a new comment/name (None leaves it)
         :param client_obj: a client object already fetched — lets the caller avoid
@@ -603,6 +965,18 @@ class XuiClient:
                 payload["expiryTime"] = 0
         if enable is not None:
             payload["enable"] = bool(enable)
+        if group is not None:
+            # Moving a client to another tariff, or out of every group with "".
+            # Everything else about the group is the panel's own business: it
+            # makes one on first use and forgets an empty one on its own.
+            payload["group"] = group
+        if limit_hwid is not None:
+            payload["limitHwid"] = max(int(limit_hwid), 0)
+        if renew is not None:
+            # All four, noughts included: the three ways of saying when are
+            # one setting, and the panel refuses a weekly renewal that finds a
+            # period or a day of the month left over from the old one.
+            payload.update(renewal.panel_fields(renew, always=True))
 
         endpoint = f"/panel/api/clients/update/{quote(str(current_remark), safe='')}"
 

@@ -23,6 +23,7 @@ import os
 import threading
 
 import i18n
+import statefile
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,27 @@ LINE, TEXT = "line", "text"
 # installation, not a string that differs per language. It is described here
 # rather than on the settings page so that it sits beside the texts it governs,
 # which is where somebody editing the letter will look for it.
+#
+# A switch carries a fifth element: the fields it governs. The two are drawn as
+# one framed block, with the switch in its heading — a switch on a row of its
+# own reads as one more field in the column, and which of its neighbours it
+# belongs to is then anybody's guess. Nesting says it instead of explaining it.
 SWITCH = "switch"
+
+
+def walk(fields):
+    """
+    Every field of a group in order, the switched blocks flattened into it.
+
+    Each item is the plain four-tuple, so anything that does not care about the
+    nesting — the catalogue check, the per-group key sets — reads the structure
+    as the flat list it used to be.
+    """
+    for field in fields:
+        yield tuple(field[:4])
+        for inner in (field[4] if len(field) > 4 else ()):
+            yield tuple(inner[:4])
+
 
 # The captions and hints below are interface strings and go through the panel's
 # own catalogue; the letter texts themselves live in DEFAULTS_BY_LANG.
@@ -53,8 +74,26 @@ GROUPS = [
         "fields": [
             ("common.footer", "Letter footer", TEXT,
              "Substitution: {service}. Every line is a paragraph of its own."),
+            ("FOOTER_SUPPORT_ENABLED", "The support line in the footer", SWITCH,
+             "The line below the footer of every letter, telling the reader where to "
+             "write. The address itself is set on the General tab; with no address "
+             "there is no line, switch or no switch.",
+             [("common.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("common.unit_gb", "Gigabytes", LINE,
              "Substitution: {gb}. The unit beside a traffic figure."),
+            ("common.renew_days", "Renewal — every so many days", LINE,
+             "The value of the 'renewal' line in the registration and status letters, "
+             "for a subscription that 3x-ui renews by itself. Substitution: {days}"),
+            ("common.renew_monthday", "Renewal — on a day of the month", LINE,
+             "Substitution: {day}"),
+            ("common.renew_weekday", "Renewal — on a day of the week", LINE,
+             "Substitution: {weekday}, taken from the list below."),
+            ("common.weekdays", "The days of the week", LINE,
+             "Seven, separated by commas, Monday first, worded to fit the line above. "
+             "A list that is not seven long is ignored and the original one used."),
+            ("common.renew_left", "Renewal — when the number is limited", LINE,
+             "Stands in place of the value when only so many renewals are allowed. "
+             "Substitutions: {renewal} — the value itself, {left} — how many are left."),
         ],
     },
     {
@@ -67,23 +106,44 @@ GROUPS = [
             ("welcome.greeting", "Greeting", LINE, ""),
             ("welcome.intro_new", "Opening — a new subscription", TEXT, "Substitution: {service}"),
             ("welcome.intro_again", "Opening — sent again", TEXT, "Substitution: {service}"),
+            ("welcome.label_tariff", "The 'tariff' line", LINE,
+             "Beside the term and the limit. Shown when the client is on a tariff — "
+             "anybody registered before tariffs existed is on none, and then the line "
+             "is left out."),
             ("welcome.label_expire", "The 'expires' line", LINE, ""),
             ("welcome.label_limit", "The 'limit' line", LINE, ""),
             ("welcome.value_forever", "The 'never expires' value", LINE, ""),
             ("welcome.value_days", "The expiry value", LINE, "Substitution: {days}"),
             ("welcome.value_unlimited", "The 'unlimited' value", LINE, ""),
             ("welcome.value_gb", "The limit value", LINE, "Substitution: {gb}"),
+            ("welcome.label_devices", "The 'devices' line", LINE,
+             "Shown only when the client has a device limit; without one the line "
+             "is left out."),
+            ("welcome.value_devices", "The devices value", LINE, "Substitution: {count}"),
+            ("welcome.label_renewal", "The 'renewal' line", LINE,
+             "Shown only when the subscription renews by itself; the value beside "
+             "it is under General."),
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
-            ("WELCOME_QR_ENABLED", "Send the QR code", SWITCH,
+            ("WELCOME_QR_ENABLED", "The QR code", SWITCH,
              "The subscription link as a code, for the reader who opened the letter on a "
              "computer and would otherwise be carrying the link across to their phone by "
              "hand. It is drawn on the server and travels inside the letter, so nothing "
-             "is fetched from anywhere."),
-            ("welcome.qr_intro", "The line above the QR code", LINE,
-             "The code carries the same subscription link as the button above it."),
+             "is fetched from anywhere.",
+             [("welcome.qr_intro", "The line above the code", LINE,
+               "The code carries the same subscription link as the button above it.")]),
             ("welcome.manual_intro", "The line above the link", LINE, ""),
+            ("WELCOME_MANUAL_ENABLED", "The link to the instructions", SWITCH,
+             "The link under every way of connecting, leading to the page that explains "
+             "how to do it by hand. The address itself is set on the General tab; with "
+             "no address there is no link, switch or no switch.",
+             [("welcome.button_manual", "The text of the link", LINE, "")]),
+            ("WELCOME_SUPPORT_ENABLED", "The support line", SWITCH,
+             "The line of this letter's own, below the instructions, where somebody is "
+             "setting a connection up for the first time. The footer of every letter "
+             "carries the address as well, under General.",
+             [("welcome.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("welcome.commands_title", "The commands block heading", LINE, ""),
             ("welcome.commands_text", "The commands block text", TEXT, ""),
         ],
@@ -98,13 +158,53 @@ GROUPS = [
             ("status.label_status", "The 'status' line", LINE, ""),
             ("status.value_active", "The 'active' value", LINE, ""),
             ("status.value_inactive", "The 'inactive' value", LINE, ""),
+            ("status.label_tariff", "The 'tariff' line", LINE,
+             "Left out for a client who is on no tariff — anybody registered "
+             "before tariffs existed, or added by hand in 3x-ui."),
             ("status.label_expiry", "The 'valid until' line", LINE, ""),
             ("status.value_forever", "The 'never expires' value", LINE, ""),
+            ("status.label_renewal", "The 'renewal' line", LINE,
+             "Shown only while the subscription has a renewal still to come; the "
+             "value beside it is under General."),
             ("status.label_used", "The 'used' line", LINE, ""),
             ("status.used_of", "The value with a limit", LINE, "Substitutions: {used}, {total}"),
             ("status.used_nolimit", "The value without a limit", LINE, "Substitution: {used}"),
             ("status.meter_text", "The caption under the bar", LINE, "Substitution: {percent}"),
+            ("status.label_devices", "The 'devices' line", LINE,
+             "Shown only when the client has a device limit; without one the line "
+             "is left out."),
+            ("status.value_devices", "The devices value", LINE,
+             "Substitutions: {used}, {limit}"),
+            ("status.value_devices_limit", "The devices value when they cannot be counted", LINE,
+             "Used when 3x-ui states the limit but does not list the devices. "
+             "Substitution: {limit}"),
+            ("status.devices_list", "The list of devices", LINE,
+             "Under the figures, naming the devices that said what they are. "
+             "Substitution: {names}"),
+            ("status.devices_full", "Every device slot is taken", TEXT,
+             "Added when as many devices are registered as the limit allows. "
+             "Empty means nothing is added."),
             ("status.outro", "Closing", TEXT, ""),
+        ],
+    },
+    {
+        "id": "inactivity",
+        "title": "Inactivity reminder",
+        "hint": "Sent to a client who has not connected in a while, when the "
+                "reminders are switched on under «Settings» at the top of the menu.",
+        "fields": [
+            ("inactivity.subject", "Subject", LINE, "Substitution: {service}"),
+            ("inactivity.text", "Text", TEXT,
+             "Substitutions: {service}, {email}, {days}. Every line is a paragraph."),
+            ("inactivity.text_unused", "Text — for somebody who never set it up", TEXT,
+             "Goes instead of the text above to a client who registered and has never "
+             "fetched the subscription or connected: the app was never set up, so there "
+             "is nothing to check. Needs a 3x-ui that records when a subscription was "
+             "fetched; with one that does not, everybody gets the text above. "
+             "Substitutions: {service}, {email}, {days}. Every line is a paragraph."),
+            ("inactivity.support", "The support line", LINE,
+             "Substitution: {support}. Shown only when a support address is set on "
+             "the General tab."),
         ],
     },
     {
@@ -147,6 +247,10 @@ GROUPS = [
              "Substitution: {subject}. Every line is a paragraph."),
             ("notice.unknown_bullets", "Command not understood — list", TEXT,
              "Every line is an item of the list."),
+            ("notice.ambiguous_subject", "Several code words — subject", LINE, ""),
+            ("notice.ambiguous_text", "Several code words — text", TEXT,
+             "Sent when one letter carries the words of several tariffs, so that "
+             "nothing is guessed. Substitution: {words}. Every line is a paragraph."),
             ("notice.not_registered_subject", "No subscription — subject", LINE, ""),
             ("notice.not_registered_text", "No subscription — text", TEXT, "Substitution: {service}"),
             ("notice.status_error_subject", "Status error — subject", LINE, ""),
@@ -155,8 +259,16 @@ GROUPS = [
             ("notice.create_error_text", "Registration error — text", TEXT, ""),
             ("notice.broadcast_done_subject", "Broadcast report — subject", LINE, ""),
             ("notice.broadcast_done_text", "Broadcast report — text", TEXT, "Substitution: {count}"),
+            ("notice.broadcast_cut_subject", "Broadcast cut short — subject", LINE, ""),
+            ("notice.broadcast_cut_text", "Broadcast cut short — text", TEXT,
+             "Sent to the administrator when a broadcast asked for by mail breaks "
+             "off before the last letter. Substitutions: {count}, {total}"),
             ("notice.broadcast_empty_subject", "Empty broadcast — subject", LINE, ""),
             ("notice.broadcast_empty_text", "Empty broadcast — text", TEXT, ""),
+            ("notice.broadcast_unverified_subject", "Unverified broadcast — subject", LINE, ""),
+            ("notice.broadcast_unverified_text", "Unverified broadcast — text", TEXT,
+             "Sent to the administrator when a /broadcast arrives that the mail "
+             "server does not vouch for. Every line is a paragraph."),
             ("notice.broadcast_default_subject", "Broadcast without a subject — subject", LINE,
              "Used when the broadcast was sent with no subject of its own."),
         ],
@@ -170,7 +282,14 @@ DEFAULTS_BY_LANG = {
         "common.footer":
             "This is an automatic letter from {service}.\n"
             "If you did not ask for it, simply ignore it.",
+        "common.support": "Questions: {support}",
         "common.unit_gb": "{gb} GB",
+        "common.renew_days": "automatic, every {days} days",
+        "common.renew_monthday": "automatic, on day {day} of each month",
+        "common.renew_weekday": "automatic, {weekday}",
+        "common.weekdays": "on Mondays, on Tuesdays, on Wednesdays, on Thursdays, "
+                           "on Fridays, on Saturdays, on Sundays",
+        "common.renew_left": "{renewal} — renewals left: {left}",
 
         "welcome.subject_new": "Your {service} subscription is active",
         "welcome.subject_again": "Your {service} subscription",
@@ -181,16 +300,22 @@ DEFAULTS_BY_LANG = {
         "welcome.intro_again":
             "Here is the link to your {service} subscription once more. Below are the "
             "terms of your plan and the link to import into your client.",
+        "welcome.label_tariff": "Tariff",
         "welcome.label_expire": "Valid until",
         "welcome.label_limit": "Traffic limit",
         "welcome.value_forever": "No expiry",
         "welcome.value_days": "{days} days",
         "welcome.value_unlimited": "Unlimited",
         "welcome.value_gb": "{gb} GB",
+        "welcome.label_devices": "Devices",
+        "welcome.value_devices": "up to {count}",
+        "welcome.label_renewal": "Renewal",
         "welcome.button_main": "Get the settings",
         "welcome.apps_intro": "Or add the subscription straight to an app:",
         "welcome.button_app": "Add to {app}",
         "welcome.qr_intro": "Or scan the code in the app:",
+        "welcome.button_manual": "How to set it up",
+        "welcome.support": "Something not working? Write to us: **{support}**",
         "welcome.manual_intro": "If the button did not work, copy the subscription link by hand:",
         "welcome.commands_title": "Bot commands",
         "welcome.commands_text":
@@ -202,15 +327,38 @@ DEFAULTS_BY_LANG = {
         "status.label_status": "Status",
         "status.value_active": "Active",
         "status.value_inactive": "Blocked or expired",
+        "status.label_tariff": "Tariff",
         "status.label_expiry": "Valid until",
         "status.value_forever": "No expiry",
+        "status.label_renewal": "Renewal",
         "status.label_used": "Used",
         "status.used_of": "{used} of {total}",
         "status.used_nolimit": "{used} (no limit)",
         "status.meter_text": "{percent}% of the limit spent",
+        "status.label_devices": "Devices",
+        "status.value_devices": "{used} of {limit}",
+        "status.value_devices_limit": "up to {limit}",
+        "status.devices_list": "Registered devices: {names}",
+        "status.devices_full":
+            "**Every device slot is taken.** Another device will not be let in until one "
+            "of these is removed — ask the administrator to free a slot.",
         "status.outro":
             "To import the subscription again, send a letter with **/help** in it — "
             "we will reply with the link and the instructions.",
+
+        "inactivity.subject": "We haven't seen you in a while",
+        "inactivity.text":
+            "Hello!\n"
+            "You haven't connected to {service} in {days} days. If something is not "
+            "working, send **/status** to this address to check your subscription, "
+            "or **/help** for the setup instructions.",
+        "inactivity.text_unused":
+            "Hello!\n"
+            "You registered with {service} {days} days ago, but it looks as though the "
+            "app was never set up: the subscription has not been used once.\n"
+            "Send **/help** to this address and we will send the link and the setup "
+            "instructions again.",
+        "inactivity.support": "You can also just write to us: **{support}**.",
 
         "help.subject": "{service} help",
         "help.intro":
@@ -246,6 +394,11 @@ DEFAULTS_BY_LANG = {
             "the code word — to register a subscription\n"
             "/status — how much traffic is left and when it ends\n"
             "/help — the instructions for setting up an app",
+        "notice.ambiguous_subject": "Which subscription did you mean?",
+        "notice.ambiguous_text":
+            "Your letter carries more than one code word: {words}.\n"
+            "Each opens a different subscription, so we would rather ask than guess. "
+            "Write again with the one you want and nothing else.",
         "notice.not_registered_subject": "You are not registered yet",
         "notice.not_registered_text":
             "We could not find your subscription with {service}.\n"
@@ -260,17 +413,36 @@ DEFAULTS_BY_LANG = {
             "Try sending the code word again in a little while, or write to the administrator.",
         "notice.broadcast_done_subject": "The broadcast is finished",
         "notice.broadcast_done_text": "Letters sent: {count}.\nThe text of the broadcast:",
+        "notice.broadcast_cut_subject": "The broadcast broke off",
+        "notice.broadcast_cut_text":
+            "The broadcast stopped before it was finished. Letters sent: {count} of {total}.\n"
+            "The rest were not sent. The reason is in the log of the panel; the Broadcast "
+            "page shows who was not reached.\n"
+            "The text of the broadcast:",
         "notice.broadcast_empty_subject": "The broadcast was not sent",
         "notice.broadcast_empty_text":
             "The text of the broadcast is empty.\n"
             "Write your message after the /broadcast command — in the subject or in the body.",
+        "notice.broadcast_unverified_subject": "The broadcast was not sent",
+        "notice.broadcast_unverified_text":
+            "A /broadcast command arrived from this address, but the mail server could not "
+            "confirm that the letter really came from it, so **nothing was sent**.\n"
+            "If the letter was yours, send the broadcast from the panel instead.\n"
+            "If it was not, somebody tried to write to your clients in your name.",
         "notice.broadcast_default_subject": "An important notice from the VPN service",
     },
     "ru": {
         "common.footer":
             "Это автоматическое письмо от сервиса {service}.\n"
             "Если вы его не запрашивали, просто проигнорируйте.",
+        "common.support": "Вопросы: {support}",
         "common.unit_gb": "{gb} ГБ",
+        "common.renew_days": "автоматически, каждые {days} дней",
+        "common.renew_monthday": "автоматически, {day}-го числа каждого месяца",
+        "common.renew_weekday": "автоматически, {weekday}",
+        "common.weekdays": "по понедельникам, по вторникам, по средам, по четвергам, "
+                           "по пятницам, по субботам, по воскресеньям",
+        "common.renew_left": "{renewal} — осталось продлений: {left}",
 
         "welcome.subject_new": "Ваша подписка {service} активирована",
         "welcome.subject_again": "Ваша подписка {service}",
@@ -281,16 +453,22 @@ DEFAULTS_BY_LANG = {
         "welcome.intro_again":
             "Высылаем ссылку на вашу подписку в сервисе {service} ещё раз. "
             "Ниже — параметры тарифа и ссылка для импорта в клиент.",
+        "welcome.label_tariff": "Тариф",
         "welcome.label_expire": "Срок действия",
         "welcome.label_limit": "Лимит трафика",
         "welcome.value_forever": "Бессрочно",
         "welcome.value_days": "{days} дней",
         "welcome.value_unlimited": "Безлимит",
         "welcome.value_gb": "{gb} ГБ",
+        "welcome.label_devices": "Устройств",
+        "welcome.value_devices": "до {count}",
+        "welcome.label_renewal": "Продление",
         "welcome.button_main": "Получить настройки",
         "welcome.apps_intro": "Или добавьте подписку прямо в приложение:",
         "welcome.button_app": "Добавить в {app}",
         "welcome.qr_intro": "Или отсканируйте код в приложении:",
+        "welcome.button_manual": "Как настроить",
+        "welcome.support": "Что-то не работает? Напишите нам: **{support}**",
         "welcome.manual_intro": "Если кнопка не сработала, скопируйте ссылку подписки вручную:",
         "welcome.commands_title": "Команды бота",
         "welcome.commands_text":
@@ -302,15 +480,38 @@ DEFAULTS_BY_LANG = {
         "status.label_status": "Статус",
         "status.value_active": "Активна",
         "status.value_inactive": "Заблокирована или истекла",
+        "status.label_tariff": "Тариф",
         "status.label_expiry": "Действует до",
         "status.value_forever": "Бессрочно",
+        "status.label_renewal": "Продление",
         "status.label_used": "Использовано",
         "status.used_of": "{used} из {total}",
         "status.used_nolimit": "{used} (без лимита)",
         "status.meter_text": "Израсходовано {percent}% лимита",
+        "status.label_devices": "Устройства",
+        "status.value_devices": "{used} из {limit}",
+        "status.value_devices_limit": "до {limit}",
+        "status.devices_list": "Зарегистрированы: {names}",
+        "status.devices_full":
+            "**Все места заняты.** Новое устройство не подключится, пока не убрано одно "
+            "из этих, — попросите администратора освободить место.",
         "status.outro":
             "Чтобы импортировать подписку заново, отправьте письмо с текстом **/help** — "
             "пришлём ссылку и инструкцию.",
+
+        "inactivity.subject": "Давно вас не видели",
+        "inactivity.text":
+            "Здравствуйте!\n"
+            "Вы не подключались к {service} уже {days} дней. Если что-то не работает, "
+            "отправьте на этот адрес письмо с **/status** — проверить подписку, "
+            "или **/help** — получить инструкцию по настройке.",
+        "inactivity.text_unused":
+            "Здравствуйте!\n"
+            "Вы зарегистрировались в {service} {days} дней назад, но, похоже, так и не "
+            "настроили приложение: подпиской ни разу не воспользовались.\n"
+            "Отправьте на этот адрес письмо с **/help** — мы пришлём ссылку и инструкцию "
+            "по настройке ещё раз.",
+        "inactivity.support": "Также можно просто написать нам: **{support}**.",
 
         "help.subject": "Справка {service}",
         "help.intro":
@@ -346,6 +547,11 @@ DEFAULTS_BY_LANG = {
             "кодовое слово — чтобы зарегистрировать подписку\n"
             "/status — узнать остаток трафика и срок действия\n"
             "/help — получить инструкцию по настройке приложений",
+        "notice.ambiguous_subject": "Какая подписка нужна?",
+        "notice.ambiguous_text":
+            "В вашем письме несколько кодовых слов: {words}.\n"
+            "Каждое открывает свою подписку, поэтому мы лучше переспросим, чем угадаем. "
+            "Отправьте письмо ещё раз, оставив в нём только нужное слово.",
         "notice.not_registered_subject": "Вы ещё не зарегистрированы",
         "notice.not_registered_text":
             "Мы не нашли вашу подписку в сервисе {service}.\n"
@@ -360,16 +566,28 @@ DEFAULTS_BY_LANG = {
             "Попробуйте отправить кодовое слово ещё раз чуть позже или напишите администратору.",
         "notice.broadcast_done_subject": "Рассылка завершена",
         "notice.broadcast_done_text": "Отправлено писем: {count}.\nТекст рассылки:",
+        "notice.broadcast_cut_subject": "Рассылка оборвалась",
+        "notice.broadcast_cut_text":
+            "Рассылка остановилась, не дойдя до конца. Отправлено писем: {count} из {total}.\n"
+            "Остальные не отправлены. Причина — в логе панели; на странице «Рассылка» видно, "
+            "до кого письмо не дошло.\n"
+            "Текст рассылки:",
         "notice.broadcast_empty_subject": "Рассылка не отправлена",
         "notice.broadcast_empty_text":
             "Текст рассылки пуст.\n"
             "Напишите сообщение после команды /broadcast — в теме письма или в тексте.",
+        "notice.broadcast_unverified_subject": "Рассылка не отправлена",
+        "notice.broadcast_unverified_text":
+            "С этого адреса пришла команда /broadcast, но почтовый сервер не подтвердил, "
+            "что письмо действительно отправлено с него, поэтому **ничего не разослано**.\n"
+            "Если письмо ваше — отправьте рассылку из панели.\n"
+            "Если нет — кто-то пытался написать вашим клиентам от вашего имени.",
         "notice.broadcast_default_subject": "Важное уведомление от VPN-сервиса",
     },
 }
 
 # Flat lookups over the structure itself, language aside.
-FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in g["fields"]
+FIELD_KIND = {key: kind for g in GROUPS for key, _, kind, _ in walk(g["fields"])
               if kind != SWITCH}
 GROUP_BY_ID = {g["id"]: g for g in GROUPS}
 ALL_KEYS = frozenset(FIELD_KIND)
@@ -483,7 +701,7 @@ def reset(group_id: str = None, code: str = None):
         if group_id is None:
             merged[code] = {}
         else:
-            keys = {key for key, _, _, _ in GROUP_BY_ID[group_id]["fields"]}
+            keys = {key for key, _, _, _ in walk(GROUP_BY_ID[group_id]["fields"])}
             merged[code] = {k: v for k, v in merged.get(code, {}).items() if k not in keys}
         _write(merged)
         return dict(merged[code])
@@ -493,18 +711,14 @@ def _write(merged: dict):
     global _overrides
     # A language with nothing rewritten leaves no empty object behind.
     merged = {code: values for code, values in merged.items() if values}
-    tmp = TEXTS_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, TEXTS_PATH)
+    statefile.write_json(TEXTS_PATH, merged, sort_keys=True)
     _overrides = merged
     total = sum(len(v) for v in merged.values())
     logger.info(f"Letter texts saved. Strings changed: {total}.")
 
 
 def changed_count(group_id: str, code: str = None) -> int:
-    keys = {key for key, _, _, _ in GROUP_BY_ID[group_id]["fields"]}
+    keys = {key for key, _, _, _ in walk(GROUP_BY_ID[group_id]["fields"])}
     with _lock:
         edited = _overrides.get(lang(code), {})
         return sum(1 for k in edited if k in keys)

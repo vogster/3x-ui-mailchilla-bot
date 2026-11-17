@@ -25,6 +25,24 @@
                        placeholder="{{ t('Ivan Petrov') }}">
             </div>
             <div>
+                <label for="tariff_id">{{ t("Tariff") }} {{ fields.help(t("Picking one fills in the traffic, the term and the inbounds. They stay editable — this client is being made by hand, and the tariff is only a starting point.")) }}</label>
+                <select id="tariff_id" name="tariff_id">
+                    {% for tariff in tariffs %}
+                    <option value="{{ tariff.id }}"
+                            data-limit="{{ tariff.limit_gb }}"
+                            data-days="{{ tariff.expire_days }}"
+                            data-hwid="{{ tariff.limit_hwid or 0 }}"
+                            data-renew-mode="{{ tariff.renew.mode }}"
+                            data-renew-value="{{ tariff.renew.value }}"
+                            data-renew-max="{{ tariff.renew.max }}"
+                            data-inbounds="{{ tariff.inbound_ids|join(',') }}"
+                            {% if tariff.id == form.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
+                    {% else %}
+                    <option value="">{{ t("no tariffs yet") }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
                 <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
                 <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
                        value="{{ form.limit_gb }}">
@@ -34,6 +52,12 @@
                 <input type="number" id="expire_days" name="expire_days" min="0" step="1"
                        value="{{ form.expire_days }}">
             </div>
+            <div>
+                <label for="limit_hwid">{{ t("Device limit") }} {{ fields.help(t("How many devices may use the subscription, told apart by the hardware id the app sends. 0 means no limit. Needs a recent 3x-ui: an older one ignores it.")) }}</label>
+                <input type="number" id="limit_hwid" name="limit_hwid" min="0" step="1"
+                       value="{{ form.limit_hwid or 0 }}">
+            </div>
+            {% with renew = form.renew, rid = "" %}{% include "_renewal_fields.html" %}{% endwith %}
 
             <div>
                 <label for="xui_flow">flow {{ fields.help(t("The value from the settings. It applies only to inbounds whose transport supports flow (vless raw); in hysteria and XHTTP the panel zeroes it out itself.")) }}</label>
@@ -77,4 +101,29 @@
         </form>
     </div>
 </div>
+<script>
+    // Same as in the quick dialog: a tariff fills the fields in and leaves them
+    // editable.
+    (function () {
+        var picker = document.getElementById("tariff_id");
+        if (!picker) return;
+        picker.addEventListener("change", function () {
+            var option = picker.options[picker.selectedIndex];
+            if (!option || !option.value) return;
+            document.getElementById("limit_gb").value = option.dataset.limit;
+            document.getElementById("expire_days").value = option.dataset.days;
+            document.getElementById("limit_hwid").value = option.dataset.hwid || 0;
+            // The auto-renewal with the rest. Absent on a form that has no
+            // such fields, which is one drawn for a panel that knows none.
+            if (window.setRenewal) {
+                window.setRenewal(picker.form, option.dataset.renewMode,
+                                  option.dataset.renewValue, option.dataset.renewMax);
+            }
+            var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
+            document.querySelectorAll('input[name="inbound_ids"]').forEach(function (box) {
+                box.checked = wanted.indexOf(box.value) !== -1;
+            });
+        });
+    })();
+</script>
 {% endblock %}

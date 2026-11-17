@@ -82,6 +82,16 @@
                        placeholder="https://sub.example.com">
             </div>
             <div>
+                <label for="support_email">{{ t("Support address") }} {{ fields.help(t("Shown to clients in the letters: in the footer of every one, and on its own line in the registration letter. Nothing is sent from it or to it — it is an address for people to write to. An empty value leaves it out of the letters altogether.")) }}</label>
+                <input type="text" id="support_email" name="support_email"
+                       value="{{ state.SUPPORT_EMAIL.value }}" placeholder="support@example.com">
+            </div>
+            <div>
+                <label for="manual_url">{{ t("Link to the instructions") }} {{ fields.help(t("The page explaining how to connect. In the registration letter it becomes a link under every way of connecting, which the Letters tab can switch off. An empty value removes the link.")) }}</label>
+                <input type="text" id="manual_url" name="manual_url"
+                       value="{{ state.MANUAL_URL.value }}" placeholder="https://example.com/howto">
+            </div>
+            <div>
                 <label for="admin_email">{{ t("Administrator address") }} {{ fields.help(t("The /broadcast mail command works from this address, and the broadcast report comes back to it. An empty value switches the command off. It is also offered as the address for test letters on the Letters tab.")) }}</label>
                 <input type="text" id="admin_email" name="admin_email"
                        value="{{ state.ADMIN_EMAIL.value }}" placeholder="you@example.com">
@@ -92,6 +102,26 @@
                 <label for="update_check_enabled">{{ t("Check for new versions") }}
                     {{ fields.help(t("A few times a day the panel asks GitHub whether a newer version has been released, and shows a banner when one has. It is the only request the project makes on its own behalf, and it never updates anything by itself — updating is mailchilla update on the server.")) }}</label>
             </div>
+        </div>
+    </div>
+
+    {# A link, not fields: switching the second step on or off takes a code,
+       and a code has no business being posted with the rest of this form. #}
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Signing in") }}</h2>
+            {% if two_step %}<span class="badge on">{{ t("On [two-step]") }}</span>
+            {% else %}<span class="badge nodot">{{ t("Off [two-step]") }}</span>{% endif %}
+        </div>
+        <div style="padding: 24px;">
+            <p class="muted" style="margin: 0 0 16px 0; max-width: 540px;">
+                {% if two_step %}
+                {{ t("Two-step sign-in is on: besides the password, the panel asks for a six-digit code from an authenticator app.") }}
+                {% else %}
+                {{ t("The panel opens with the password alone. Two-step sign-in adds a six-digit code from an authenticator app (TOTP), so a leaked password is no longer enough.") }}
+                {% endif %}
+            </p>
+            <a href="/settings/totp" class="btn">{% if two_step %}{{ t("Manage two-step sign-in") }}{% else %}{{ t("Set up two-step sign-in") }}{% endif %}</a>
         </div>
     </div>
   </div>
@@ -162,6 +192,54 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("Proof of the sender") }}</h2>
+            <span class="muted">{{ t("for /broadcast by mail") }}</span>
+            {% if state.IMAP_USER.isset %}
+            <button type="button" class="btn small" id="authserv-scan" style="margin-left:auto;">
+                {{ t("Look in the mailbox") }}
+            </button>
+            {% endif %}
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="mail_auth_server">{{ t("Mail server's name in Authentication-Results") }} {{ fields.help(t("The /broadcast command by mail is carried out only when the mailbox's server vouches for the sender, in the Authentication-Results header it adds to every letter. With a name here, only the headers written under that name are believed — all of them, so a server that reports DKIM in one header and DMARC in another is read in full — and a header under any other name is ignored. Empty, only the top-most header is read, whoever wrote it: right for Gmail, Yandex and Mail.ru, and not enough for a mail server of your own.")) }}</label>
+                <input type="text" id="mail_auth_server" name="mail_auth_server"
+                       value="{{ state.MAIL_AUTH_SERVER.value }}" placeholder="mail.example.com"
+                       autocomplete="off" spellcheck="false">
+                <div class="hint">
+                    {{ t("This holds as long as the server removes incoming headers that already carry its name, which the standard requires of it. It is also worth publishing a DMARC record for the administrator's domain: then every letter gets a verdict, and a forged one gets a failing one.") }}
+                </div>
+                {# Filled in by the button above: the names found, to be clicked. #}
+                <div id="authserv-found" style="margin-top: 12px;" hidden></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Clearing out the mailbox") }}</h2>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="mail_cleanup_enabled" name="mail_cleanup_enabled"
+                       {% if state.MAIL_CLEANUP_ENABLED.value %}checked{% endif %}>
+                <label for="mail_cleanup_enabled">{{ t("Clear the mailbox out by itself") }}
+                    {{ fields.help(t("Read letters are moved to the Trash of the mailbox — the ones the bot has already answered. An unread letter is never touched: it is one the bot has not dealt with yet, which after a spell of the mailbox being unreachable may be a registration still waiting to happen. Nothing is deleted outright, so a mistake here can be undone from the mail client until the Trash empties itself.")) }}
+                </label>
+            </div>
+            <div>
+                <label for="mail_cleanup_days">{{ t("Cleanup interval, days") }} {{ fields.help(t("The mailbox is cleared this often, not the letters kept this long: every read letter goes at the next clear-out whenever it arrived. Switching it on clears the mailbox at the next poll, and after that the count starts from the last time it ran, restarts included.")) }}</label>
+                <input type="number" id="mail_cleanup_days" name="mail_cleanup_days"
+                       min="1" step="1" value="{{ state.MAIL_CLEANUP_DAYS.value }}">
+                {% if cleanup_last %}
+                <div class="hint">{{ t("Last cleared out: {when}", when=cleanup_last) }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("Check") }}</h2>
             <span class="muted">{{ t("on the values in the fields — saving is not required") }}</span>
             <button type="button" class="btn small" id="mail-check" style="margin-left:auto;">
@@ -194,75 +272,85 @@
         </div>
     </div>
     {% endif %}
-  </div>
 
-  <div class="tab-panel" data-panel="registration" hidden>
+    <hr style="margin: 32px 0 20px 0; border: none; border-top: 1px solid var(--line);">
+    <h2 style="margin: 0 0 4px 0;">{{ t("Support mailbox") }}</h2>
+    <p class="muted" style="margin: 0 0 20px 0;">
+        {{ t("A second mailbox, the one a person writes back from rather than the bot. Optional: leave it empty and the Mail page shows only the bot's mailbox, unchanged. Set both halves and a Support tab appears there too, with a reply form on every letter.") }}
+    </p>
     <div class="panel">
         <div class="panel-head">
-            <h2>{{ t("Inbounds for new clients") }} {{ fields.help(t("A new client is added to every ticked inbound. Clients already registered are unaffected.")) }}</h2>
-            <span class="muted">
-                {% if state.XUI_INBOUND_IDS.value %}{{ t("chosen:") }} {{ state.XUI_INBOUND_IDS.value|length }}{% else %}{{ t("none chosen") }}{% endif %}
-            </span>
+            <h2>{{ t("Incoming · IMAP") }}</h2>
+            <span class="muted">{{ t("the mailbox a person reads") }}</span>
         </div>
-        <div style="padding: 8px 20px 20px 20px;">
-            {% if inbounds %}
-            <input type="hidden" name="inbounds_present" value="1">
-            <div class="tscroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"></th>
-                            <th>{{ t("Name") }}</th>
-                            <th>{{ t("Protocol") }}</th>
-                            <th>{{ t("Port") }}</th>
-                            <th>{{ t("Clients [inbound table]") }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for ib in inbounds %}
-                        <tr>
-                            <td>
-                                <input type="checkbox" name="inbound_ids" value="{{ ib.id }}"
-                                       id="ib{{ ib.id }}" {% if ib.selected %}checked{% endif %}>
-                            </td>
-                            <td>
-                                <label for="ib{{ ib.id }}" style="cursor: pointer;">{{ ib.remark }}</label>
-                                {% if not ib.enable %}
-                                <span class="badge off" style="margin-left: 8px;">{{ t("off") }}</span>
-                                {% endif %}
-                                <div class="muted mono">id {{ ib.id }}</div>
-                            </td>
-                            <td class="mono">{{ ib.protocol }}</td>
-                            <td class="mono">{{ ib.port }}</td>
-                            <td class="mono">{{ ib.clients }}</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
+        <div style="padding: 24px;" class="form-grid">
+            <div>
+                <label for="support_imap_server">{{ t("Server") }}</label>
+                <input type="text" id="support_imap_server" name="support_imap_server"
+                       value="{{ state.SUPPORT_IMAP_SERVER.value }}" placeholder="imap.example.com">
             </div>
-            {% else %}
-            <p class="muted">{{ t("The list is empty — the 3x-ui panel is unreachable. The inbound selection stays as it is until the connection comes back.") }}</p>
-            {% endif %}
+            <div>
+                <label for="support_imap_port">{{ t("Port") }}</label>
+                <input type="number" id="support_imap_port" name="support_imap_port" min="1" max="65535" step="1"
+                       value="{{ state.SUPPORT_IMAP_PORT.value }}">
+            </div>
+            <div>
+                <label for="support_imap_user">{{ t("Login") }}</label>
+                <input type="text" id="support_imap_user" name="support_imap_user"
+                       value="{{ state.SUPPORT_IMAP_USER.value }}" placeholder="support@example.com">
+            </div>
+            {{ fields.secret_field("support_imap_password", "SUPPORT_IMAP_PASSWORD", t("Password"), state.SUPPORT_IMAP_PASSWORD,
+                            t("For Gmail, Yandex and Mail.ru you need an app password — the ordinary mailbox password will not do.")) }}
         </div>
     </div>
 
     <div class="panel" style="margin-top: 20px;">
-        <div class="panel-head"><h2>{{ t("Defaults for registration") }}</h2></div>
+        <div class="panel-head">
+            <h2>{{ t("Outgoing · SMTP") }}</h2>
+            <span class="muted">{{ t("replies leave from this address") }}</span>
+        </div>
         <div style="padding: 24px;" class="form-grid">
             <div>
-                <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
-                <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
-                       value="{{ state.LIMIT_GB.value }}">
+                <label for="support_smtp_server">{{ t("Server") }}</label>
+                <input type="text" id="support_smtp_server" name="support_smtp_server"
+                       value="{{ state.SUPPORT_SMTP_SERVER.value }}" placeholder="smtp.example.com">
             </div>
             <div>
-                <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
-                <input type="number" id="expire_days" name="expire_days" min="0" step="1"
-                       value="{{ state.EXPIRE_DAYS.value }}">
+                <label for="support_smtp_port">{{ t("Port") }} {{ fields.help(t("465 goes straight to SSL. On any other port the bot raises STARTTLS.")) }}</label>
+                <input type="number" id="support_smtp_port" name="support_smtp_port" min="1" max="65535" step="1"
+                       value="{{ state.SUPPORT_SMTP_PORT.value }}">
             </div>
             <div>
-                <label for="codeword">{{ t("Code word for registration") }} {{ fields.help(t("A letter with this word in the subject or the body registers a new client.")) }}</label>
-                <input type="text" id="codeword" name="codeword" value="{{ state.CODEWORD.value }}">
+                <label for="support_smtp_user">{{ t("Login") }} {{ fields.help(t("Also the From address on every reply sent from the Support tab.")) }}</label>
+                <input type="text" id="support_smtp_user" name="support_smtp_user"
+                       value="{{ state.SUPPORT_SMTP_USER.value }}" placeholder="support@example.com">
             </div>
+            {{ fields.secret_field("support_smtp_password", "SUPPORT_SMTP_PASSWORD", t("Password"), state.SUPPORT_SMTP_PASSWORD,
+                            t("Usually the same app password as for IMAP.")) }}
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>{{ t("Check") }}</h2>
+            <span class="muted">{{ t("on the values in the fields — saving is not required") }}</span>
+            <button type="button" class="btn small" id="support_mail-check" style="margin-left:auto;">
+                {{ t("Check the connection") }}
+            </button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div class="hint" id="support_mail-check-idle">
+                {{ t("The panel signs in to the mailbox over IMAP and to the SMTP server with whatever is in the fields above. If an administrator address is set on the General tab, a test letter goes there too.") }}
+            </div>
+            <ul class="check-list" id="support_mail-check-result" hidden></ul>
+        </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="registration" hidden>
+    <div class="panel">
+        <div class="panel-head"><h2>{{ t("How a client is created") }}</h2></div>
+        <div style="padding: 24px;" class="form-grid">
             <div>
                 <label for="xui_flow">flow {{ fields.help(t("Applied to new clients. An empty value is fine. The panel applies flow only to inbounds whose transport supports it (vless raw) and zeroes it out in hysteria and XHTTP, so a client without such inbounds keeps an empty field, and that is normal.")) }}</label>
                 <input type="text" id="xui_flow" name="xui_flow" list="flow-options"
@@ -277,8 +365,11 @@
                 <label for="remark_include_name">{{ t("Write the sender's name into the client's comment") }}</label>
             </div>
         </div>
+        <p class="muted" style="padding: 0 24px 22px 24px; margin: 0;">
+            {{ t("Traffic, term, inbounds and the code word belong to a tariff now.") }}
+            <a href="/tariffs">{{ t("Open the tariffs") }}</a>
+        </p>
     </div>
-
   </div>
 
   <div class="tab-panel" data-panel="apps" hidden>
@@ -332,18 +423,71 @@
 
     <div class="panel" style="margin-top: 20px;">
         <div class="panel-head">
+            <h2>{{ t("Letters to Support") }}</h2>
+            <span class="muted">{{ t("substitutions:") }} <span class="mono">{sender}</span>,
+                <span class="mono">{subject}</span>, <span class="mono">{service}</span></span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="support_notify_enabled" name="support_notify_enabled"
+                       {% if state.SUPPORT_NOTIFY_ENABLED.value %}checked{% endif %}>
+                <label for="support_notify_enabled">{{ t("Tell me when a letter arrives for Support") }}
+                    {{ fields.help(t("Nobody watches the Support mailbox the way the bot watches its own, so once a minute the bot looks at it and sends a notification about whatever has arrived since: who wrote, and about what. It only looks — no letter is marked read. Letters that were already there when this was switched on are not announced. Needs the Support mailbox on the Mail tab and the connection above.")) }}</label>
+            </div>
+            <div>
+                <label for="support_notify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {sender}, {name}, {from}, {subject}, {service}.")) }}</label>
+                <input type="text" id="support_notify_title" name="support_notify_title"
+                       value="{{ state.SUPPORT_NOTIFY_TITLE.value }}">
+            </div>
+            <div>
+                <label for="support_notify_message">{{ t("Text") }} {{ fields.help(t("One notification goes out for each letter. Substitutions: {sender}, {name}, {from}, {subject}, {service}. {sender} is the name with the address, or the address alone when the letter carries no name; {name} may be empty; {subject} says so when a letter has none. When more than five letters arrive at once, the newest five get a notification each and one more counts the rest.")) }}</label>
+                <textarea id="support_notify_message" name="support_notify_message"
+                          style="min-height:70px;">{{ state.SUPPORT_NOTIFY_MESSAGE.value }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
+            <h2>Xray</h2>
+            <span class="muted">{{ t("substitutions:") }} <span class="mono">{status}</span>,
+                <span class="mono">{state}</span>, <span class="mono">{error}</span>,
+                <span class="mono">{service}</span></span>
+        </div>
+        <div style="padding: 24px;" class="form-grid">
+            <div class="checkbox-row">
+                <input type="checkbox" class="switch" id="xray_notify_enabled" name="xray_notify_enabled"
+                       {% if state.XRAY_NOTIFY_ENABLED.value %}checked{% endif %}>
+                <label for="xray_notify_enabled">{{ t("Tell me when Xray stops, and when it is back") }}
+                    {{ fields.help(t("Xray not running is every client disconnected at once, and 3x-ui says so only on a page somebody has to open. Once a minute the bot asks the panel and sends a notification when the state has changed: stopped, failed, running again — never one a minute while it stays down. A stop is believed on the second look in a row, since 3x-ui restarts Xray whenever its configuration changes. If the panel itself stops answering, that is said separately, after three looks: it is not the same as Xray being down. Needs the connection above.")) }}</label>
+            </div>
+            <div>
+                <label for="xray_notify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {status}, {state}, {error}, {service}.")) }}</label>
+                <input type="text" id="xray_notify_title" name="xray_notify_title"
+                       value="{{ state.XRAY_NOTIFY_TITLE.value }}">
+            </div>
+            <div>
+                <label for="xray_notify_message">{{ t("Text") }} {{ fields.help(t("{status} is what happened, as a sentence in the panel's language, with the panel's own error text after it when there is one — so the text may be nothing else. {state} is the state as 3x-ui names it (running, stop, error; away when the panel does not answer), {error} the error text alone, {service} the service name.")) }}</label>
+                <textarea id="xray_notify_message" name="xray_notify_message"
+                          style="min-height:70px;">{{ state.XRAY_NOTIFY_MESSAGE.value }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <div class="panel-head">
             <h2>{{ t("The registration notification text") }}</h2>
             <span class="muted">{{ t("substitutions:") }} <span class="mono">{email}</span>,
                 <span class="mono">{name}</span>, <span class="mono">{service}</span></span>
         </div>
         <div style="padding: 24px;" class="form-grid">
             <div>
-                <label for="gotify_title">{{ t("Title") }}</label>
+                <label for="gotify_title">{{ t("Title") }} {{ fields.help(t("Substitutions: {email}, {name}, {service}, {tariff}.")) }}</label>
                 <input type="text" id="gotify_title" name="gotify_title"
                        value="{{ state.GOTIFY_TITLE.value }}">
             </div>
             <div>
-                <label for="gotify_message">{{ t("Text") }} {{ fields.help(t("The notification goes out when a client registers themselves, by letter with the code word. {name} is the name from the letter's header, and it may be empty.")) }}</label>
+                <label for="gotify_message">{{ t("Text") }} {{ fields.help(t("The notification goes out when a client registers themselves, by letter with a code word. Substitutions: {email}, {name}, {service}, {tariff}. {name} is the name from the letter's header and may be empty; {tariff} is the tariff the word opened.")) }}</label>
                 <textarea id="gotify_message" name="gotify_message"
                           style="min-height:90px;">{{ state.GOTIFY_MESSAGE.value }}</textarea>
             </div>
@@ -383,6 +527,13 @@
 
     <div class="mail-editor">
         <nav class="mail-menu">
+            {# A setting rather than a text — nothing here differs by language —
+               so it stands apart from the templates below it, above a divider,
+               rather than reading as one more of them. #}
+            <button type="button" data-mail="settings">
+                <span>{{ t("Settings") }}</span>
+            </button>
+            <div style="height: 1px; background: var(--line); margin: 10px 14px;"></div>
             {% for g in text_groups %}
             <button type="button" data-mail="{{ g.id }}" class="{% if loop.first %}on{% endif %}">
                 <span>{{ g.title }}</span>
@@ -392,6 +543,32 @@
         </nav>
 
         <div>
+            <div class="mail-pane panel" data-mail="settings" hidden>
+                <div class="panel-head">
+                    <h2>{{ t("Reminding inactive clients") }}</h2>
+                    <span class="muted">{{ t("Sends the «Inactivity reminder» letter to a client 3x-ui has not seen online in a while.") }}</span>
+                </div>
+                <div style="padding: 22px 20px;" class="form-grid">
+                    <div class="checkbox-row">
+                        <input type="hidden" name="switch:INACTIVITY_REMINDER_ENABLED" value="off">
+                        <input type="checkbox" class="switch" id="f-inactivity-enabled"
+                               name="switch:INACTIVITY_REMINDER_ENABLED" value="on"
+                               {% if state.INACTIVITY_REMINDER_ENABLED.value %}checked{% endif %}>
+                        <label for="f-inactivity-enabled">{{ t("Remind a client who has not connected in a while") }}
+                            {{ fields.help(t("A client 3x-ui has not seen online for longer than the period below gets the letter on the left, asking whether something is wrong. A client who registered and never connected at all counts from the registration date. The check runs again on its own schedule, and a client still gone next time is reminded again.")) }}
+                        </label>
+                    </div>
+                    <div>
+                        <label for="f-inactivity-days">{{ t("Considered inactive after, days") }} {{ fields.help(t("Switching it on checks at the next poll, and after that the count starts from the last time it ran, restarts included.")) }}</label>
+                        <input type="number" id="f-inactivity-days" name="setting:INACTIVITY_REMINDER_DAYS"
+                               min="1" step="1" value="{{ state.INACTIVITY_REMINDER_DAYS.value }}">
+                        {% if inactivity_last %}
+                        <div class="hint">{{ t("Last checked: {when}", when=inactivity_last) }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
             {% for g in text_groups %}
             <div class="mail-pane panel" data-mail="{{ g.id }}" {% if not loop.first %}hidden{% endif %}>
                 <div class="panel-head">
@@ -400,7 +577,8 @@
                     <div style="display:flex; gap:8px; margin-left:auto; align-items:center;">
                         {% if g.kinds %}
                         <div class="mail-kind" style="width: 190px;">
-                            {% with kinds = g.kinds, picker_name = "test_kind" %}
+                            {% with kinds = g.kinds, picker_name = "test_kind",
+                                    picker_value = g.kind_default %}
                                 {% include "_kind_picker.html" %}
                             {% endwith %}
                         </div>
@@ -420,26 +598,30 @@
                 <div style="padding: 22px 20px;">
                     {% for f in g.fields %}
                     {% if f.kind == "switch" %}
-                    {# A setting rather than a text, saved by the same button. The
-                       hidden "off" goes first: a browser sends nothing at all for
-                       an unticked box, and the later value wins when it is ticked. #}
-                    <div class="mail-field checkbox-row">
-                        <input type="hidden" name="switch:{{ f.key }}" value="off">
-                        <input type="checkbox" class="switch" id="f-{{ loop.index }}-{{ g.id }}"
-                               name="switch:{{ f.key }}" value="on" {% if f.value %}checked{% endif %}>
-                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
-                    </div>
-                    {% else %}
-                    <div class="mail-field{% if f.changed %} changed{% endif %}">
-                        <label for="f-{{ loop.index }}-{{ g.id }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
-                        {% if f.kind == "text" %}
-                        <textarea id="f-{{ loop.index }}-{{ g.id }}" name="text:{{ f.key }}"
-                                  rows="3">{{ f.value }}</textarea>
-                        {% else %}
-                        <input type="text" id="f-{{ loop.index }}-{{ g.id }}"
-                               name="text:{{ f.key }}" value="{{ f.value }}">
+                    {# A setting rather than a text, saved by the same button, and
+                       the texts it governs drawn inside it: a block that is sent
+                       or not sent, rather than a switch and some fields that
+                       happen to be neighbours. The hidden "off" goes first — a
+                       browser sends nothing at all for an unticked box, and the
+                       later value wins when it is ticked. #}
+                    <div class="mail-block{% if not f.value %} off{% endif %}">
+                        <div class="mail-block-head">
+                            <label for="f-{{ g.id }}-{{ f.key }}">{{ f.label }}</label>
+                            {% if f.hint %}{{ fields.help(f.hint) }}{% endif %}
+                            <input type="hidden" name="switch:{{ f.key }}" value="off">
+                            <input type="checkbox" class="switch" id="f-{{ g.id }}-{{ f.key }}"
+                                   name="switch:{{ f.key }}" value="on" {% if f.value %}checked{% endif %}>
+                        </div>
+                        {% if f.fields %}
+                        <div class="mail-block-body">
+                            {% for sub in f.fields %}
+                            {% with f = sub %}{% include "_mail_field.html" %}{% endwith %}
+                            {% endfor %}
+                        </div>
                         {% endif %}
                     </div>
+                    {% else %}
+                    {% include "_mail_field.html" %}
                     {% endif %}
                     {% endfor %}
                 </div>
@@ -564,14 +746,17 @@
         var state = document.getElementById("texts-state");
         var save = document.getElementById("texts-save");
         if (form && state) {
-            // Only the letter texts count. The kind picker beside the broadcast's
-            // test button sits in this form too, but it chooses what the sample
-            // letter should look like — it edits nothing, and lighting up
-            // "unsaved changes" over it would be a lie.
+            // The letter texts, the switches among them and the plain settings
+            // beside them (so far only the inactivity threshold) all count. The
+            // kind picker beside the broadcast's test button sits in this form
+            // too, but it chooses what the sample letter should look like — it
+            // edits nothing, and lighting up "unsaved changes" over it would be
+            // a lie.
             function signature() {
                 var parts = [];
                 new FormData(form).forEach(function (value, key) {
-                    if (key.indexOf("text:") === 0 || key.indexOf("switch:") === 0) {
+                    if (key.indexOf("text:") === 0 || key.indexOf("switch:") === 0 ||
+                        key.indexOf("setting:") === 0) {
                         parts.push(key + "=" + value);
                     }
                 });
@@ -587,6 +772,15 @@
             }
             form.addEventListener("input", refresh);
             refresh();
+
+            // The block greys out as it is switched off, before anything is
+            // saved: the page should look the way the letter will read.
+            form.addEventListener("change", function (e) {
+                var box = e.target;
+                if (!box.classList || !box.classList.contains("switch")) return;
+                var block = box.closest(".mail-block");
+                if (block) block.classList.toggle("off", !box.checked);
+            });
         }
 
         // Switching the language reloads the editor with that language's texts,
@@ -631,7 +825,7 @@
                 b.disabled = true;
                 var was = b.textContent;
                 b.textContent = {{ t("Sending…")|tojson }};
-                // the broadcast has a kind picker beside its button
+                // a letter that comes in more than one kind has a picker beside its button
                 var picker = b.parentNode.querySelector(".mail-kind input[type=hidden]");
                 var body = "group=" + encodeURIComponent(b.dataset.group) +
                            "&email=" + encodeURIComponent(to);
@@ -688,6 +882,83 @@
         <button type="button" class="btn primary" id="names-apply">{{ t("Update the chosen") }}</button>
     </div>
 </dialog>
+
+<script>
+    // The mail server's name: look at the newest letters and offer what heads
+    // them. Built node by node, with textContent: a name comes out of a
+    // letter's header, and a letter is something anybody can send.
+    (function () {
+        var scan = document.getElementById("authserv-scan");
+        var field = document.getElementById("mail_auth_server");
+        var box = document.getElementById("authserv-found");
+        if (!scan || !field || !box) return;
+
+        function line(text, cls) {
+            var el = document.createElement("div");
+            el.className = cls || "hint";
+            el.textContent = text;
+            box.appendChild(el);
+            return el;
+        }
+
+        function show(found) {
+            box.textContent = "";
+            box.hidden = false;
+            if (!found.letters) {
+                line({{ t("There are no letters in the mailbox to look at yet.")|tojson }});
+                return;
+            }
+            if (!found.names.length) {
+                line({{ t("None of the newest letters carries the header: the server adds none, and a /broadcast by mail cannot be proven on this mailbox.")|tojson }});
+                return;
+            }
+            line({{ t("At the top of the newest letters — click a name to put it in the field:")|tojson }});
+            // Always, not only when the names disagree: thirty letters from
+            // one stranger agree with each other perfectly.
+            line({{ t("Take a name only if you know it for your own mail server's host name. On a server that adds no header of its own, what heads the letters is whatever their senders wrote there.")|tojson }});
+            var row = document.createElement("div");
+            row.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; margin: 8px 0;";
+            found.names.forEach(function (entry) {
+                var chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "btn small";
+                chip.textContent = entry.name + " · " + entry.letters + " " + {{ t("of")|tojson }} + " " + found.letters;
+                chip.addEventListener("click", function () {
+                    field.value = entry.name;
+                    // The form watches for input to know it has unsaved changes.
+                    field.dispatchEvent(new Event("input", { bubbles: true }));
+                    field.focus();
+                });
+                row.appendChild(chip);
+            });
+            box.appendChild(row);
+            if (found.names.length > 1) {
+                line({{ t("More than one name: the one heading nearly every letter is your server's. If no name stands out, the server is not adding a header of its own, and the names are whatever each letter arrived with.")|tojson }});
+            }
+            if (found.without) {
+                line({{ t("Letters with no such header at all:")|tojson }} + " " + found.without + ". "
+                     + {{ t("If the server writes one only for some letters, a letter it wrote none for proves nothing — which is the safe way round.")|tojson }});
+            }
+        }
+
+        scan.addEventListener("click", function () {
+            var was = scan.textContent.trim();
+            scan.disabled = true;
+            scan.textContent = {{ t("Looking…")|tojson }};
+            fetch("/settings/mail/authserver/scan", { method: "POST", headers: { "X-Requested-With": "fetch" } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d || !d.ok) {
+                        window.showToast((d && d.error) || {{ t("It did not work")|tojson }}, "error");
+                        return;
+                    }
+                    show(d);
+                })
+                .catch(function () { window.showToast({{ t("The request failed")|tojson }}, "error"); })
+                .then(function () { scan.disabled = false; scan.textContent = was; });
+        });
+    })();
+</script>
 
 <script>
     // Name synchronisation: look through the mailbox, show what differs, write

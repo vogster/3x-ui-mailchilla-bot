@@ -6,7 +6,7 @@ load_dotenv()
 # The project's own name and version — not to be confused with SERVICE_NAME,
 # which names one particular installation and goes into the letters.
 APP_NAME = "Mailchilla"
-APP_VERSION = "0.1.5"
+APP_VERSION = "0.2.0"
 # Where the sidebar's GitHub link points.
 PROJECT_URL = "https://github.com/vogster/3x-ui-mailchilla-bot"
 
@@ -33,12 +33,61 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
+# A second, optional mailbox: the one a person answers from, as against the one
+# the bot polls for registrations. Empty by default — the Mail page then shows
+# only the bot's own mailbox, with no Support tab at all.
+SUPPORT_IMAP_SERVER = os.getenv("SUPPORT_IMAP_SERVER", "")
+SUPPORT_IMAP_PORT = int(os.getenv("SUPPORT_IMAP_PORT", "993"))
+SUPPORT_IMAP_USER = os.getenv("SUPPORT_IMAP_USER", "")
+SUPPORT_IMAP_PASSWORD = os.getenv("SUPPORT_IMAP_PASSWORD", "")
+
+SUPPORT_SMTP_SERVER = os.getenv("SUPPORT_SMTP_SERVER", "")
+SUPPORT_SMTP_PORT = int(os.getenv("SUPPORT_SMTP_PORT", "465"))
+SUPPORT_SMTP_USER = os.getenv("SUPPORT_SMTP_USER", "")
+SUPPORT_SMTP_PASSWORD = os.getenv("SUPPORT_SMTP_PASSWORD", "")
+
 # Set in the web panel (General tab); it survives in .env only as a fallback
 # for installations that run without the panel.
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
-CODEWORD = os.getenv("CODEWORD", "START_VPN").strip()
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "15"))
 
+# --- Clearing out the mailbox ---
+# The bot's mailbox is not read by anybody: every letter in it has been answered
+# already, and after a year of registrations it is thousands of them. The
+# cleanup moves the read ones to the Trash every so often.
+#
+# Off by default and never on by accident: throwing away somebody's mail is not
+# something an update should start doing on its own. Only read letters are
+# touched — an unread one is one the bot has not dealt with yet, which after an
+# IMAP outage may well be a registration still waiting to happen.
+MAIL_CLEANUP_ENABLED = False
+MAIL_CLEANUP_DAYS = 30
+# When it last ran, as a unix time. Written by the bot rather than by the panel,
+# so that a restart does not either lose the schedule or start the clock again.
+MAIL_CLEANUP_LAST_AT = 0.0
+
+# --- Reminding inactive clients ---
+# A client who has not connected in a while gets a letter asking whether
+# something is wrong. "Not connected" falls back to the registration date for
+# anybody 3x-ui has never seen online at all, so a client who registered and
+# never came back is not overlooked just for lacking a last-online entry.
+#
+# Off by default, the same as the mailbox cleanup: mailing people on a schedule
+# they did not ask for is not something an update should start doing by itself.
+INACTIVITY_REMINDER_ENABLED = False
+INACTIVITY_REMINDER_DAYS = 30
+# When the sweep last ran, as a unix time — written by the bot, not the panel.
+INACTIVITY_REMINDER_LAST_AT = 0.0
+
+# --- The seed of the first tariff ---
+# These three described what every new client got, back when there was one code
+# word and one set of limits. They belong to a tariff now (tariffs.json, the
+# Tariffs page), and nothing reads them after the first run: tariffs.load()
+# builds the opening tariff out of them when no tariffs.json exists yet, which
+# is how an installation from before tariffs keeps working without being
+# touched. They stay in settings.MANAGED_KEYS for the same reason — a copy
+# rolled back to 0.1.x finds them where it left them.
+CODEWORD = os.getenv("CODEWORD", "START_VPN").strip()
 LIMIT_GB = int(os.getenv("LIMIT_GB", "0"))
 EXPIRE_DAYS = int(os.getenv("EXPIRE_DAYS", "30"))
 SERVICE_NAME = os.getenv("SERVICE_NAME", APP_NAME).strip() or APP_NAME
@@ -55,6 +104,49 @@ try:
     GOTIFY_PRIORITY = int(os.getenv("GOTIFY_PRIORITY", "5"))
 except ValueError:
     GOTIFY_PRIORITY = 5
+# A push when a letter arrives for Support, whose mailbox nobody else is
+# watching. On by default, unlike the jobs that mail people: this one only
+# ever tells the administrator something, and does nothing at all until both
+# Gotify and the Support mailbox are set up.
+SUPPORT_NOTIFY_ENABLED = True
+# Its title and text, edited in the panel like the registration push's. One
+# notification goes out per letter, so both describe a single letter:
+# {sender} is the name with the address (or the address alone), {name} and
+# {from} are the two halves of it, {subject} the subject, {service} the
+# service name.
+SUPPORT_NOTIFY_TITLE = "A letter to {service} support"
+SUPPORT_NOTIFY_MESSAGE = "{sender}: {subject}"
+# Which letters have been announced: "<uidvalidity>:<highest uid>". Written by
+# the bot for itself, in settings.json alone; see support_watch.py.
+SUPPORT_NOTIFY_MARK = ""
+
+# A push when Xray stops and when it is back. On by default for the reason the
+# Support push is: it only ever tells the administrator something, and does
+# nothing until Gotify is set up.
+XRAY_NOTIFY_ENABLED = True
+# Its title and text. {status} is what happened, as a sentence in the panel's
+# language — "Xray has stopped: <what the panel says went wrong>", "Xray is
+# running again" — which is why the text needs no words of its own; {state} is
+# the state as 3x-ui names it, {error} its error text, {service} the service
+# name. The same in every language, so not among the translated defaults.
+XRAY_NOTIFY_TITLE = "Xray · {service}"
+XRAY_NOTIFY_MESSAGE = "{status}"
+
+# The name the mailbox's own server signs its Authentication-Results headers
+# with — its authserv-id, usually its host name. Empty leaves the proof of a
+# sender, which only /broadcast by mail asks for, to the top-most such header,
+# whoever wrote it; that is right for the large providers. A server of one's
+# own is named here: its headers are then read in full and nobody else's at
+# all. See inbox.sender_authenticated.
+MAIL_AUTH_SERVER = ""
+
+# The second step of signing in to the panel: the secret an authenticator app
+# was given, in base32. Empty means the password alone lets somebody in — there
+# is deliberately no switch beside it, since a switch and a secret would be two
+# fields able to disagree about one fact. Never read from .env: it is made on
+# the panel's own page, shown once as a QR code and kept in settings.json, and
+# `mailchilla totp-off` empties it for whoever has lost the phone.
+TOTP_SECRET = ""
 
 # App Urls Config
 # The two schemes are the same for every installation — they belong to the apps,
@@ -70,10 +162,32 @@ INCY_URL = os.getenv("INCY_URL", "incy://add")
 # a limited set of characters there and rejects spaces and angle brackets.
 REMARK_INCLUDE_NAME = os.getenv("REMARK_INCLUDE_NAME", "true").strip().lower() in ("1", "true", "yes", "on")
 
+# --- Where to write, and where to read ---
+# The address a client writes to when something does not work, and the page
+# that explains how to connect. Both are shown in the letters, both are empty
+# by default: an installation with nowhere to write and nothing to read should
+# not promise either.
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "").strip()
+MANUAL_URL = os.getenv("MANUAL_URL", "").strip()
+
+# The support line in the footer every letter carries. On by default and
+# harmless without an address: with SUPPORT_EMAIL empty there is no line.
+# Separate from the registration letter's own line below, because the two are
+# asked for in different places — the footer is a signature, the other is help
+# offered to somebody setting a connection up for the first time.
+FOOTER_SUPPORT_ENABLED = True
+
 # --- The welcome letter ---
 # The QR code of the subscription link. On by default: the reader who opened
 # their mail on a computer is exactly who the letter is for.
 WELCOME_QR_ENABLED = True
+
+# The link to the instructions, under every way of connecting. On by default
+# and harmless without a link: with MANUAL_URL empty there is nothing to draw.
+WELCOME_MANUAL_ENABLED = True
+
+# The support line of the registration letter's own, below the instructions.
+WELCOME_SUPPORT_ENABLED = True
 
 # --- Language ---
 # The interface language and the language letters go out in are separate:

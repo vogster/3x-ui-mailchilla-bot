@@ -1,0 +1,43 @@
+{# The broadcasts that are running and the recent ones. Drawn into the page by
+   the server and re-read from /broadcast/jobs by the page's script, so there
+   is one copy of this markup and not a second one in JavaScript. data-running
+   is how the script knows how soon to look again, and whether Send should ask
+   first. #}
+<div class="panel bc-jobs" data-running="{{ jobs_running }}">
+    <div class="panel-head">
+        <h2>{{ t("Broadcasts") }}</h2>
+        {% if jobs_running %}
+        <span class="badge on">{{ t("Sending now [broadcast]") }}</span>
+        {% else %}
+        <span class="muted">{{ t("none is being sent right now") }}</span>
+        {% endif %}
+    </div>
+    {% if not jobs %}
+    <div class="bc-none">
+        {{ t("No broadcast has been sent since the service started — from the panel or by mail.") }}
+    </div>
+    {% else %}
+    {% for job in jobs %}
+    <a class="bc-job" href="/broadcast/status/{{ job.id }}">
+        <span class="odot {% if not job.done %}on{% elif job.state == 'ok' %}done{% else %}off{% endif %}"></span>
+        <span class="what">
+            <span class="s">{{ job.subject }}</span>
+            <span class="m">{{ job.started }} · {% if job.source == "mail" %}{{ t("by mail, with /broadcast") }}{% else %}{{ t("from the panel") }}{% endif %}</span>
+        </span>
+        <span class="how">
+            {% if not job.done %}
+            <span class="bar"><span style="width: {{ job.percent }}%;"></span></span>
+            <span class="c">{{ job.processed }} {{ t("of") }} {{ job.total }}{% if job.failed %}, {{ t("failures") }} {{ job.failed }}{% endif %}</span>
+            {% elif job.state == "cut" %}
+            <span class="c bad">{{ t("Cut short [broadcast]") }}: {{ job.sent }} {{ t("of") }} {{ job.total }}</span>
+            {% elif job.state == "partial" %}
+            <span class="c warn">{{ t("Sent") }} {{ job.sent }} {{ t("of") }} {{ job.total }}, {{ t("not delivered") }} {{ job.failed }}</span>
+            {% else %}
+            <span class="c">{{ t("Sent") }} {{ job.sent }} {{ t("of") }} {{ job.total }}</span>
+            {% endif %}
+        </span>
+    </a>
+    {% endfor %}
+    <div class="bc-note">{{ t("The list is kept in memory: it starts empty after the service restarts.") }}</div>
+    {% endif %}
+</div>

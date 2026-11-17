@@ -9,8 +9,11 @@
         <td class="stat-value" align="right" style="padding: 11px 0; border-bottom: 1px solid #1d1d20; font-size: 15px; font-weight: 600;
                    color: {{ '#45b866' if is_active else '#ef5350' }};">{{ status_text }}</td>
     </tr>
+    {% if tariff %}{{ ui.stat(t("status.label_tariff"), tariff) }}{% endif %}
     {{ ui.stat(t("status.label_expiry"), expiry_text) }}
+    {% if renewal_text %}{{ ui.stat(t("status.label_renewal"), renewal_text) }}{% endif %}
     {{ ui.stat(t("status.label_used"), used_text) }}
+    {% if devices_text %}{{ ui.stat(t("status.label_devices"), devices_text) }}{% endif %}
 </table>
 
 {% if percent is not none %}
@@ -18,6 +21,13 @@
 {% if meter_text %}
 <p style="margin: 10px 0 0 0; color: #8a8a93; font-size: 15px;">{{ meter_text | emph }}</p>
 {% endif %}
+{% endif %}
+
+{% if device_names %}
+<p style="margin: 14px 0 0 0; color: #8a8a93; font-size: 15px;">{{ t("status.devices_list", names=device_names) | emph }}</p>
+{% endif %}
+{% if devices_full and t("status.devices_full") %}
+<p style="margin: 14px 0 0 0;">{{ t("status.devices_full") | emph }}</p>
 {% endif %}
 
 {% if t("status.outro") %}

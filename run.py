@@ -5,11 +5,16 @@ panel (uvicorn).
 With the panel switched off (ADMIN_PANEL_ENABLED=false) only the bot runs, which
 is equivalent to `python email_bot.py`.
 """
+import os
 import signal
 import threading
 import logging
 
 import config
+import inactivity
+import support_watch
+import xray_watch
+import tariffs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,13 +39,37 @@ def run_bot_loop():
         logger.error("Connection to 3x-ui: FAILED. The bot is running, but requests to the panel may fail.")
 
     logger.info(f"Bot started. Mail poll interval: {config.POLL_INTERVAL_SECONDS} seconds.")
-    logger.info(f"Code word for registration: {config.CODEWORD}")
+    known = tariffs.all_tariffs()
+    if known:
+        logger.info(f"Tariffs: {len(known)} — " + "; ".join(email_bot.describe_tariffs(known)))
+    else:
+        logger.error("No tariffs are set up; registration will be refused until one exists.")
 
     while not _stop_event.is_set():
         try:
             email_bot.check_mail()
         except Exception as e:
             logger.error(f"Error in the bot loop: {e}", exc_info=True)
+        try:
+            # Its own schedule, checked on every poll but rarely due: it needs
+            # 3x-ui and SMTP, never the IMAP connection the line above just
+            # used, so it does not belong on that call.
+            inactivity.run_if_due()
+        except Exception as e:
+            logger.error(f"Error in the inactivity sweep: {e}", exc_info=True)
+        try:
+            # A look at Support's mailbox, once a minute, for letters to tell
+            # the administrator about. A mailbox of its own and a connection
+            # of its own, and never anything but looking.
+            support_watch.run_if_due()
+        except Exception as e:
+            logger.error(f"Error while looking at the Support mailbox: {e}", exc_info=True)
+        try:
+            # And a question to 3x-ui, once a minute, about whether Xray is
+            # running: a push when that changes.
+            xray_watch.run_if_due()
+        except Exception as e:
+            logger.error(f"Error while asking about Xray: {e}", exc_info=True)
         # Wait in a way that can be cut short by a signal
         _stop_event.wait(config.POLL_INTERVAL_SECONDS)
 
@@ -48,11 +77,20 @@ def run_bot_loop():
 
 
 def main():
+    # Before anything is written. The unit install.sh generates sets the same
+    # mask, but a unit is written once, at installation, and an update never
+    # touches it — so an installation older than that line would go on making
+    # its log readable by every account on the server. statefile.py closes the
+    # json files by itself; this covers the log and whatever comes later.
+    os.umask(0o077)
+
     # settings.json is laid over config before the bot and the panel start
     import settings
     import email_texts
     settings.load()
     email_texts.load()
+    # After the settings, since a first run builds the opening tariff from them.
+    tariffs.load()
 
     # Log collection into the buffer and file starts before the bot, so that
     # nothing is lost

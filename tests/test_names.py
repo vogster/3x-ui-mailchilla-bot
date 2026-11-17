@@ -5,6 +5,8 @@ The reading of the mailbox is awkward to test; the judgement — what counts as 
 name, and what counts as a difference worth offering — is not, and that is the
 part that decides what somebody is asked to approve.
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import email_bot

@@ -231,21 +231,23 @@
     </div>
 
     <div class="panel" style="margin-top: 20px;">
-        <div class="panel-head"><h2>{{ t("The rules for new clients") }}</h2></div>
+        <div class="panel-head">
+            <h2>{{ t("The first tariff") }} {{ fields.help(t("A tariff is what a client gets: traffic, term and the inbounds above. The word opens it. More tariffs, each with its own word, can be added later on the Tariffs page.")) }}</h2>
+        </div>
         <div style="padding: 24px;" class="form-grid">
             <div>
                 <label for="codeword">{{ t("Code word") }} {{ fields.help(t("A letter with this word in the subject or the body registers a new client. Choose something no one would guess.")) }}</label>
-                <input type="text" id="codeword" name="codeword" value="{{ state.CODEWORD.value }}">
+                <input type="text" id="codeword" name="codeword" value="{{ tariff_word }}">
             </div>
             <div>
                 <label for="limit_gb">{{ t("Traffic limit, GB") }} {{ fields.help(t("0 means unlimited.")) }}</label>
                 <input type="number" id="limit_gb" name="limit_gb" min="0" step="1"
-                       value="{{ state.LIMIT_GB.value }}">
+                       value="{{ tariff.limit_gb }}">
             </div>
             <div>
                 <label for="expire_days">{{ t("Subscription length, days") }} {{ fields.help(t("0 means it never expires.")) }}</label>
                 <input type="number" id="expire_days" name="expire_days" min="0" step="1"
-                       value="{{ state.EXPIRE_DAYS.value }}">
+                       value="{{ tariff.expire_days }}">
             </div>
             <div>
                 <label for="xui_flow">{{ t("flow") }} {{ fields.help(t("The flow a new client is created with. Some inbounds need xtls-rprx-vision, others take nothing at all — leave it empty when in doubt, it can be changed later.")) }}</label>

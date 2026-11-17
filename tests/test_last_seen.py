@@ -7,11 +7,13 @@ row misread by a factor of a thousand lands in 1970 rather than showing an
 error. And the wording has to stay short enough for a table cell while a client
 nobody has ever seen must read as a dash, not as "just now".
 """
+import sandbox  # noqa: F401 — first: it moves the state files before anything loads them
+
 import unittest
 
 import config
 import i18n
-from admin.rows import DAY_MS, HOUR_MS, MINUTE_MS, _client_row, _fmt_last_seen
+from admin.rows import DAY_MS, HOUR_MS, MINUTE_MS, client_row, _fmt_last_seen
 from xui_client import epoch_ms
 
 NOW = 1_770_000_000_000
@@ -81,7 +83,7 @@ class RowLastSeen(unittest.TestCase):
 
     def row(self, online=None, last_online=None):
         client = {"email": "user@example.com", "id": 1, "enable": True}
-        return _client_row(client, online, last_online)
+        return client_row(client, online, last_online)
 
     def test_a_connected_client_is_seen_now(self):
         # The heartbeat map lags behind the connection, so somebody the panel

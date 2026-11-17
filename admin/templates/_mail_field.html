@@ -1,0 +1,12 @@
+{% import "_fields.html" as fields %}
+{# One editable letter text. Included from settings.html both at the top level
+   and inside a switched block, so the id is built from the group and the key
+   rather than from a loop counter - two loops would otherwise collide. #}
+<div class="mail-field{% if f.changed %} changed{% endif %}">
+    <label for="f-{{ g.id }}-{{ f.key }}">{{ f.label }}{% if f.hint %}{{ fields.help(f.hint) }}{% endif %}</label>
+    {% if f.kind == "text" %}
+    <textarea id="f-{{ g.id }}-{{ f.key }}" name="text:{{ f.key }}" rows="3">{{ f.value }}</textarea>
+    {% else %}
+    <input type="text" id="f-{{ g.id }}-{{ f.key }}" name="text:{{ f.key }}" value="{{ f.value }}">
+    {% endif %}
+</div>

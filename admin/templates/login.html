@@ -201,6 +201,15 @@
                 <label for="password">{{ t("Password") }}</label>
                 <input type="password" id="password" name="password" autocomplete="current-password">
             </div>
+            {% if two_step %}
+            {# one-time-code lets a phone offer the code from its own app, and
+               keeps a password manager from remembering thirty seconds' worth. #}
+            <div class="field">
+                <label for="code">{{ t("Code from the app") }}</label>
+                <input type="text" id="code" name="code" inputmode="numeric"
+                       autocomplete="one-time-code" maxlength="7" placeholder="000000">
+            </div>
+            {% endif %}
             <button type="submit">{{ t("Sign in") }}</button>
         </form>
 

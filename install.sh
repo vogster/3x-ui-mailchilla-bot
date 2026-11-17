@@ -42,7 +42,10 @@ SERVICE_USER="mailchilla"
 BIN_PATH="/usr/local/bin/mailchilla"
 UNIT_PATH="/etc/systemd/system/mailchilla.service"
 PY_MIN_MAJOR=3
-PY_MIN_MINOR=9
+PY_MIN_MINOR=10
+# The interpreter the virtual environment is made with: python3 where that is
+# new enough, otherwise a newer one installed beside it. See check_python.
+PYTHON_BIN="python3"
 
 UI_LANG=""
 REQ_TAG=""
@@ -99,10 +102,10 @@ declare -A MSG=(
 [ru.os_unsupported]="Неподдерживаемый дистрибутив: {0}. Поддерживаются: Debian, Ubuntu, CentOS, AlmaLinux, Rocky, Fedora."
 [en.py_missing]="python3 was not found and could not be installed."
 [ru.py_missing]="python3 не найден и не может быть установлен."
-[en.py_too_old]="Python {0} is too old. Mailchilla needs 3.9 or newer."
-[ru.py_too_old]="Python {0} слишком старый. Mailchilla нужен 3.9 или новее."
-[en.py_too_old_hint]="Ubuntu 20.04 ships Python 3.8. Upgrade the system, or install a newer Python yourself."
-[ru.py_too_old_hint]="В Ubuntu 20.04 идёт Python 3.8. Обновите систему или поставьте более новый Python вручную."
+[en.py_too_old]="Python {0} is too old. Mailchilla needs 3.10 or newer."
+[ru.py_too_old]="Python {0} слишком старый. Mailchilla нужен 3.10 или новее."
+[en.py_too_old_hint]="Debian 11 ships Python 3.9 and Ubuntu 20.04 ships 3.8. Upgrade the system, or install a newer Python beside it (python3.11, say) and run the installer again."
+[ru.py_too_old_hint]="В Debian 11 идёт Python 3.9, в Ubuntu 20.04 - 3.8. Обновите систему или поставьте рядом более новый Python (например, python3.11) и запустите установщик снова."
 
 [en.found_install]="Mailchilla is already installed in {0}."
 [ru.found_install]="Mailchilla уже установлена в {0}."
@@ -395,17 +398,47 @@ install_packages() {
     fi
 }
 
+# Whether an interpreter is new enough. The comparison is done by Python
+# itself: the version is a pair of numbers, and 3.10 is not less than 3.9
+# however a shell reads it.
+python_new_enough() {
+    "$1" -c "import sys; sys.exit(0 if sys.version_info >= ($PY_MIN_MAJOR, $PY_MIN_MINOR) else 1)" \
+        >/dev/null 2>&1
+}
+
+# Sets PYTHON_BIN to an interpreter that is new enough, or fails. The system's
+# python3 first: it is the one whose venv and pip packages were just installed.
+# Then the newer ones that distributions ship beside it under their own names.
+find_python() {
+    local candidate
+    for candidate in python3 python3.13 python3.12 python3.11 python3.10; do
+        command -v "$candidate" >/dev/null 2>&1 || continue
+        if python_new_enough "$candidate"; then
+            PYTHON_BIN="$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 check_python() {
     command -v python3 >/dev/null 2>&1 || die "$(t py_missing)"
-    local major minor
-    major="$(python3 -c 'import sys; print(sys.version_info[0])')"
-    minor="$(python3 -c 'import sys; print(sys.version_info[1])')"
-    if [ "$major" -lt "$PY_MIN_MAJOR" ] || { [ "$major" -eq "$PY_MIN_MAJOR" ] && [ "$minor" -lt "$PY_MIN_MINOR" ]; }; then
-        printf '\n  %s✗%s %s\n' "$RED" "$N" "$(t py_too_old "$major.$minor")" >&2
+    if ! find_python && [ "$PKG" != "apt" ]; then
+        # AlmaLinux and Rocky 9 keep python3 at 3.9 for the life of the release
+        # and ship a newer one beside it. Asked for quietly: where there is no
+        # such package this changes nothing, and the refusal below is the same.
+        # shellcheck disable=SC2086
+        "$PKG" install -y -q python3.11 python3.11-pip >/dev/null 2>&1 || true
+        find_python || true
+    fi
+    if ! python_new_enough "$PYTHON_BIN"; then
+        local found
+        found="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo '?')"
+        printf '\n  %s✗%s %s\n' "$RED" "$N" "$(t py_too_old "$found")" >&2
         printf '      %s%s%s\n\n' "$D" "$(t py_too_old_hint)" "$N" >&2
         exit 1
     fi
-    PY_VERSION="$major.$minor"
+    PY_VERSION="$("$PYTHON_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 }
 
 port_free() {
@@ -458,7 +491,7 @@ fetch_code() {
 
 _make_venv() {
     if [ ! -x "$INSTALL_DIR/venv/bin/python" ]; then
-        python3 -m venv "$INSTALL_DIR/venv"
+        "$PYTHON_BIN" -m venv "$INSTALL_DIR/venv"
     fi
     "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
     "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
@@ -535,6 +568,10 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/venv/bin/python run.py
 Restart=always
 RestartSec=10
+# What the service writes is its own: settings.json carries the mailbox
+# passwords and the log names everybody who wrote. The default of 022 left
+# all of it readable by every account on the server.
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

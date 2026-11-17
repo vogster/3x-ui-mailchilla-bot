@@ -1,14 +1,19 @@
 """
 Flattening a 3x-ui client into a single row for tables and lists.
 
-It lives apart because both the clients list and the broadcast recipients need
-it: each shows status, traffic and the registration date, and those had better
-be worked out the same way in both places.
+It lives apart because five pages need it — the client list, the broadcast
+recipients, both cards and the dashboard — and each shows status, traffic and
+the registration date, which had better be worked out the same way everywhere.
+
+`client_row` carries no underscore any more: it is the interface of this
+module, imported by four others, and a name that says "internal" while four
+modules rely on it tells the next reader the wrong thing.
 """
 import time
 from datetime import datetime
 
 import i18n
+import renewal
 from xui_client import XuiClient
 
 GB_FACTOR = 1024 * 1024 * 1024
@@ -87,7 +92,29 @@ def _fmt_expiry(expiry_time_ms):
         return "—"
 
 
-def _client_row(client_obj: dict, online: set = None, last_online: dict = None) -> dict:
+def _renewal_cells(client_obj: dict) -> dict:
+    """
+    What the card and the edit form say about auto-renewal.
+
+    `renew_known` is False for a panel whose clients carry no such fields, and
+    nothing is then drawn — as with the device limit. The note is the card's
+    second line, there for the two cases in which the setting alone misleads:
+    a cap that is being counted down, and a renewal that will never fire
+    because the subscription has no expiry for it to fire at.
+    """
+    renew = renewal.of_client(client_obj)
+    known = renew is not None
+    renew = renew or {**renewal.none(), "used": 0, "left": None, "active": False}
+    note = ""
+    if renew["mode"] and not int(client_obj.get("expiryTime") or 0):
+        note = i18n.t("does nothing while the subscription has no expiry")
+    elif renew["mode"] and renew["max"]:
+        note = i18n.t("renewed {used} of {max}", used=renew["used"], max=renew["max"])
+    return {"renew_known": known, "renew": renew,
+            "renew_text": renewal.describe(renew, cap=False), "renew_note": note}
+
+
+def client_row(client_obj: dict, online: set = None, last_online: dict = None) -> dict:
     """
     Turns a 3x-ui client object into a flat row for the table.
 
@@ -117,6 +144,19 @@ def _client_row(client_obj: dict, online: set = None, last_online: dict = None) 
         last_seen_ms = now_ms
     else:
         last_seen_ms = int((last_online or {}).get(remark) or 0)
+    sub_fetch_ms = XuiClient.last_sub_fetch(client_obj)
+    # Three answers, not two. "Never" is kept for somebody the panel has not
+    # seen connect either: 3x-ui began recording fetches at some version, and
+    # a client set up before it — online this minute, even — would otherwise
+    # be listed among the people who never got as far as setting the app up.
+    # For them there is simply no record. The same rule inactivity applies
+    # before it writes to anybody as "never set up".
+    if sub_fetch_ms:
+        sub_state = "1"
+    elif sub_fetch_ms == 0 and not (is_online or last_seen_ms):
+        sub_state = "0"
+    else:
+        sub_state = ""
     return {
         "uuid": XuiClient.client_key(client_obj),
         "remark": remark,
@@ -127,6 +167,11 @@ def _client_row(client_obj: dict, online: set = None, last_online: dict = None) 
         "created_ms": created_ms,
         "created": _fmt_date(created_ms),
         "comment": (client_obj.get("comment") or "").strip(),
+        # Which tariff the client is on, as 3x-ui itself holds it: the group is
+        # named after the tariff, and clients/list hands it back with the rest.
+        # Empty for anyone registered before tariffs existed, or added by hand
+        # in 3x-ui — which is a fact about them, not a gap to fill in.
+        "tariff": (client_obj.get("group") or "").strip(),
         "bare_email": bare_email,
         "enable": client_obj.get("enable") is True,
         "online": is_online,
@@ -136,6 +181,25 @@ def _client_row(client_obj: dict, online: set = None, last_online: dict = None) 
         "last_seen_ms": last_seen_ms,
         "last_seen": i18n.t("now [last seen]") if is_online else _fmt_last_seen(last_seen_ms, now_ms),
         "last_seen_full": _fmt_ts(last_seen_ms) if last_seen_ms else "",
+        # When the client's app last fetched the subscription. Being seen
+        # online says the app is connected; this says the app was set up at
+        # all — and somebody who has never fetched it has not got as far as
+        # that. `sub_fetch_known` is False for a panel that does not say:
+        # nothing is then drawn, rather than everybody shown as "never".
+        "sub_fetch_known": sub_fetch_ms is not None,
+        "sub_fetch_ms": sub_fetch_ms or 0,
+        # "1" fetched, "0" never and never seen either, "" for no record or a
+        # panel that does not say: what the list's filter matches against.
+        "sub_fetch_state": sub_state,
+        "sub_fetch": (_fmt_last_seen(sub_fetch_ms, now_ms) if sub_fetch_ms
+                      else i18n.t("never [subscription fetched]") if sub_state == "0"
+                      else i18n.t("no record [subscription fetched]")),
+        # The tooltip: the exact moment, or — for "no record" — why a client
+        # who has been connected has none, since the word alone reads as a fault.
+        "sub_fetch_full": (_fmt_ts(sub_fetch_ms) if sub_fetch_ms
+                           else i18n.t("Has been connected, but 3x-ui has no record of a fetch: "
+                                       "set up before the panel began recording them")
+                           if sub_fetch_ms == 0 and sub_state == "" else ""),
         "used_gb": _fmt_gb(used),
         # The number alone, plus a flag: templates decide how to word "no limit",
         # and the wording is translated rather than compared against.
@@ -144,4 +208,11 @@ def _client_row(client_obj: dict, online: set = None, last_online: dict = None) 
         "percent": percent,
         "expiry": _fmt_expiry(client_obj.get("expiryTime", 0)),
         "sub_id": client_obj.get("subId", ""),
+        # How many devices may use the subscription; 0 is no limit. The second
+        # says whether the panel knows such a thing at all: a 3x-ui from before
+        # HWID limits returns no field, and offering to set one there would be
+        # offering something that is not kept.
+        "limit_hwid": XuiClient.device_limit(client_obj) or 0,
+        "hwid_known": XuiClient.device_limit(client_obj) is not None,
+        **_renewal_cells(client_obj),
     }

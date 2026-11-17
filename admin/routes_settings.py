@@ -1,4 +1,11 @@
-"""The settings page: ticking inbounds and the defaults used on registration."""
+"""
+The settings page: the mailbox, the panel itself, notifications and the letters.
+
+What a new client gets — traffic, term, inbounds, the word that opens it — used
+to live here too. It belongs to a tariff now, on its own page; the keys stay in
+settings.MANAGED_KEYS so that an installation rolled back to 0.1.x finds them
+where it left them, but nothing reads them any more.
+"""
 import logging
 import smtplib
 import socket
@@ -13,7 +20,9 @@ import config
 import email_bot
 import email_texts
 import i18n
+import periodic
 import settings
+import tariffs
 import templates as mail_templates
 from admin.deps import templates, require_auth
 from xui_client import get_shared_client
@@ -24,7 +33,7 @@ router = APIRouter()
 
 # These letters have a test version worth sending; the "General" group is only
 # the footer, which shows up in any of them.
-TESTABLE = {"welcome", "status", "help", "broadcast", "notice"}
+TESTABLE = {"welcome", "status", "help", "broadcast", "notice", "inactivity"}
 
 # The placeholder addresses from .env.example look real, and must never prefill
 # the send field: the letter would go to a stranger.
@@ -50,47 +59,74 @@ def _text_groups():
     follow the panel's own language: someone running an English panel may well
     be writing the Russian letters.
     """
+    def build(entry):
+        key, label, kind, hint = entry[:4]
+        field = {"key": key, "label": i18n.t(label), "kind": kind,
+                 "hint": i18n.t(hint) if hint else ""}
+        if kind == email_texts.SWITCH:
+            # A settings key, not a text: its value comes from config and
+            # there is nothing per-language to have been "changed". The fields
+            # it governs travel inside it, and the page draws the lot as one
+            # block so that the switch is plainly about them.
+            field["value"] = bool(getattr(config, key, False))
+            field["changed"] = False
+            field["fields"] = [build(inner) for inner in
+                               (entry[4] if len(entry) > 4 else ())]
+        else:
+            field["value"] = email_texts.get(key)
+            field["changed"] = email_texts.is_changed(key)
+        return field
+
     groups = []
     for g in email_texts.GROUPS:
-        fields = []
-        for key, label, kind, hint in g["fields"]:
-            field = {"key": key, "label": i18n.t(label), "kind": kind,
-                     "hint": i18n.t(hint) if hint else ""}
-            if kind == email_texts.SWITCH:
-                # A settings key, not a text: its value comes from config and
-                # there is nothing per-language to have been "changed".
-                field["value"] = bool(getattr(config, key, False))
-                field["changed"] = False
-            else:
-                field["value"] = email_texts.get(key)
-                field["changed"] = email_texts.is_changed(key)
-            fields.append(field)
+        fields = [build(entry) for entry in g["fields"]]
         groups.append({
             "id": g["id"], "title": i18n.t(g["title"]), "hint": i18n.t(g["hint"]),
             "fields": fields,
             "changed": email_texts.changed_count(g["id"]),
             "can_test": g["id"] in TESTABLE,
             # the broadcast has a test letter in four kinds
-            "kinds": mail_templates.broadcast_kind_options() if g["id"] == "broadcast" else [],
+            "kinds": _sample_kinds(g["id"]),
+            # Which of them the picker opens on; absent, the picker chooses.
+            **({"kind_default": "quiet"} if g["id"] == "inactivity" else {}),
         })
     return groups
 
 
+def _sample_kinds(group_id: str) -> list:
+    """
+    The variants of a letter the "Test letter" button can send, for the picker
+    beside it; empty for a letter that has only the one.
+
+    The reminder has two texts, and the second goes only to somebody who never
+    set the app up — nobody the administrator can become for the sake of
+    looking at it. Without a way to ask for it, a text edited on this page
+    would first be read by the client it was sent to.
+    """
+    if group_id == "broadcast":
+        return mail_templates.broadcast_kind_options()
+    if group_id == "inactivity":
+        return [{"id": "quiet", "label": i18n.t("Has gone quiet [sample letter]"), "color": ""},
+                {"id": "unused", "label": i18n.t("Never set the app up [sample letter]"), "color": ""}]
+    return []
+
+
+def _demo_tariff_name() -> str:
+    """A tariff name for the sample letters: the first one there is, or none."""
+    rows = tariffs.all_tariffs()
+    return rows[0]["name"] if rows else ""
+
+
+def _last_run(key: str) -> str:
+    """When a scheduled job last ran, for the line under its field; empty for never."""
+    when = periodic.last_run(key)
+    if not when:
+        return ""
+    return datetime.fromtimestamp(when).strftime("%d.%m.%Y %H:%M")
+
+
 def _build_context(request: Request, error: str = "", saved: str = ""):
     state = settings.describe()
-    selected = list(state["XUI_INBOUND_IDS"]["value"])
-
-    inbounds = get_shared_client().get_inbounds()
-    known_ids = {ib["id"] for ib in inbounds}
-
-    for ib in inbounds:
-        ib["selected"] = ib["id"] in selected
-
-    # ids that are ticked but absent from the panel. This is exactly how
-    # registration used to break in silence: the panel adds the client down the
-    # list and stops at the first id that does not exist, never reaching the rest.
-    missing = [i for i in selected if i not in known_ids]
-
     return {
         "request": request,
         "service_name": config.SERVICE_NAME,
@@ -99,10 +135,10 @@ def _build_context(request: Request, error: str = "", saved: str = ""):
         "mail_lang": i18n.mail_lang(),
         "mail_lang_options": i18n.options(i18n.mail_lang()),
         "test_email": _default_test_email(),
-        "inbounds": inbounds,
-        "missing_inbounds": missing,
-        "panel_unavailable": not inbounds,
+        "cleanup_last": _last_run("MAIL_CLEANUP_LAST_AT"),
+        "inactivity_last": _last_run("INACTIVITY_REMINDER_LAST_AT"),
         "state": state,
+        "two_step": settings.two_step_on(),
         "error": error,
         "saved": saved,
     }
@@ -113,7 +149,7 @@ def settings_form(request: Request, error: str = "", saved: str = ""):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return templates.TemplateResponse("settings.html", _build_context(request, error, saved))
+    return templates.TemplateResponse(request, "settings.html", _build_context(request, error, saved))
 
 
 @router.post("/settings")
@@ -122,6 +158,8 @@ def settings_submit(
     panel_lang: str = Form(""),
     service_name: str = Form(""),
     admin_email: str = Form(""),
+    support_email: str = Form(""),
+    manual_url: str = Form(""),
     xui_subscription_base_url: str = Form(""),
     imap_server: str = Form(""),
     imap_port: str = Form("993"),
@@ -131,13 +169,25 @@ def settings_submit(
     smtp_port: str = Form("465"),
     smtp_user: str = Form(""),
     smtp_password: str = Form(""),
+    support_imap_server: str = Form(""),
+    support_imap_port: str = Form("993"),
+    support_imap_user: str = Form(""),
+    support_imap_password: str = Form(""),
+    support_smtp_server: str = Form(""),
+    support_smtp_port: str = Form("465"),
+    support_smtp_user: str = Form(""),
+    support_smtp_password: str = Form(""),
     poll_interval_seconds: str = Form("15"),
-    inbound_ids: list[int] = Form(default=[]),
-    inbounds_present: str = Form(""),
+    mail_auth_server: str = Form(""),
+    mail_cleanup_enabled: str = Form(""),
+    mail_cleanup_days: str = Form("30"),
     update_check_enabled: str = Form(""),
-    limit_gb: str = Form(""),
-    expire_days: str = Form(""),
-    codeword: str = Form(""),
+    support_notify_enabled: str = Form(""),
+    support_notify_title: str = Form(""),
+    support_notify_message: str = Form(""),
+    xray_notify_enabled: str = Form(""),
+    xray_notify_title: str = Form(""),
+    xray_notify_message: str = Form(""),
     xui_flow: str = Form(""),
     remark_include_name: str = Form(""),
     gotify_url: str = Form(""),
@@ -155,6 +205,8 @@ def settings_submit(
     values = {
         "SERVICE_NAME": service_name,
         "ADMIN_EMAIL": admin_email,
+        "SUPPORT_EMAIL": support_email,
+        "MANUAL_URL": manual_url,
         "XUI_SUBSCRIPTION_BASE_URL": xui_subscription_base_url,
         "IMAP_SERVER": imap_server,
         "IMAP_PORT": imap_port,
@@ -164,10 +216,18 @@ def settings_submit(
         "SMTP_PORT": smtp_port,
         "SMTP_USER": smtp_user,
         "SMTP_PASSWORD": smtp_password,
+        "SUPPORT_IMAP_SERVER": support_imap_server,
+        "SUPPORT_IMAP_PORT": support_imap_port,
+        "SUPPORT_IMAP_USER": support_imap_user,
+        "SUPPORT_IMAP_PASSWORD": support_imap_password,
+        "SUPPORT_SMTP_SERVER": support_smtp_server,
+        "SUPPORT_SMTP_PORT": support_smtp_port,
+        "SUPPORT_SMTP_USER": support_smtp_user,
+        "SUPPORT_SMTP_PASSWORD": support_smtp_password,
         "POLL_INTERVAL_SECONDS": poll_interval_seconds,
-        "LIMIT_GB": limit_gb,
-        "EXPIRE_DAYS": expire_days,
-        "CODEWORD": codeword,
+        "MAIL_AUTH_SERVER": mail_auth_server,
+        "MAIL_CLEANUP_ENABLED": mail_cleanup_enabled == "on",
+        "MAIL_CLEANUP_DAYS": mail_cleanup_days,
         "XUI_FLOW": xui_flow,
         "GOTIFY_URL": gotify_url,
         "GOTIFY_TOKEN": gotify_token,
@@ -178,28 +238,28 @@ def settings_submit(
         "INCY_URL": incy_url,
         "REMARK_INCLUDE_NAME": remark_include_name == "on",
         "UPDATE_CHECK_ENABLED": update_check_enabled == "on",
+        "SUPPORT_NOTIFY_ENABLED": support_notify_enabled == "on",
+        "SUPPORT_NOTIFY_TITLE": support_notify_title,
+        "SUPPORT_NOTIFY_MESSAGE": support_notify_message,
+        "XRAY_NOTIFY_ENABLED": xray_notify_enabled == "on",
+        "XRAY_NOTIFY_TITLE": xray_notify_title,
+        "XRAY_NOTIFY_MESSAGE": xray_notify_message,
     }
     # The picker is only drawn when more than one language is on offer.
     if panel_lang:
         values["PANEL_LANG"] = panel_lang
-    # The inbound checkboxes are drawn only when 3x-ui answered with a list. With
-    # the panel unreachable the form would arrive with an empty list and wipe the
-    # selection, so the key is touched only when the marker is present.
-    if inbounds_present:
-        values["XUI_INBOUND_IDS"] = inbound_ids
-
     try:
         settings.save(values)
     except (ValueError, TypeError) as e:
         return templates.TemplateResponse(
-            "settings.html",
+            request, "settings.html",
             _build_context(request, error=i18n.t("Could not save: {error}", error=e)),
             status_code=400,
         )
     except OSError as e:
         logger.error(f"Could not write settings.json: {e}")
         return templates.TemplateResponse(
-            "settings.html",
+            request, "settings.html",
             _build_context(request, error=i18n.t("Could not write the settings file: {error}", error=e)),
             status_code=500,
         )
@@ -252,37 +312,19 @@ def _clean(value) -> str:
     return text if len(text) <= 160 else text[:157] + "…"
 
 
-@router.post("/settings/mail/test")
-def settings_mail_test(
-    request: Request,
-    imap_server: str = Form(""),
-    imap_port: str = Form("993"),
-    imap_user: str = Form(""),
-    imap_password: str = Form(""),
-    smtp_server: str = Form(""),
-    smtp_port: str = Form("465"),
-    smtp_user: str = Form(""),
-    smtp_password: str = Form(""),
-    service_name: str = Form(""),
-):
+def _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                   smtp_server, smtp_port, smtp_user, smtp_password, service_name):
     """
-    Checks the mailbox login over IMAP and SMTP and, when an administrator
-    address is set, sends a letter to it.
+    Checks a mailbox login over IMAP and SMTP and, when an administrator
+    address is set, sends a letter to it. Shared by the bot's own connection
+    check and the Support one — the steps and the wording are the same
+    checklist either way, only the credentials differ.
 
-    It checks the values in the form fields rather than the saved ones:
-    otherwise the button could not confirm new settings before they were applied
-    to the whole bot. Nothing is saved along the way.
+    Checks the values passed in rather than anything saved: otherwise the
+    button could not confirm new settings before they were applied to the
+    whole bot. Nothing is saved along the way, and nothing is sent that was
+    not already going to be sent — this cannot fail a registration or a reply.
     """
-    auth_redirect = require_auth(request)
-    if auth_redirect:
-        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
-
-    # A field left untouched arrives as the marker — substitute the stored value.
-    if imap_password == settings.UNCHANGED:
-        imap_password = settings.secret("IMAP_PASSWORD")
-    if smtp_password == settings.UNCHANGED:
-        smtp_password = settings.secret("SMTP_PASSWORD")
-
     steps = []
 
     def step(name, ok, detail, skipped=False):
@@ -346,6 +388,62 @@ def settings_mail_test(
             step(i18n.t("Letter"), False, _short_error(e))
 
     ok = all(s["ok"] or s["skipped"] for s in steps)
+    return ok, steps
+
+
+@router.post("/settings/mail/test")
+def settings_mail_test(
+    request: Request,
+    imap_server: str = Form(""),
+    imap_port: str = Form("993"),
+    imap_user: str = Form(""),
+    imap_password: str = Form(""),
+    smtp_server: str = Form(""),
+    smtp_port: str = Form("465"),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    service_name: str = Form(""),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
+
+    # A field left untouched arrives as the marker — substitute the stored value.
+    if imap_password == settings.UNCHANGED:
+        imap_password = settings.secret("IMAP_PASSWORD")
+    if smtp_password == settings.UNCHANGED:
+        smtp_password = settings.secret("SMTP_PASSWORD")
+
+    ok, steps = _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                               smtp_server, smtp_port, smtp_user, smtp_password, service_name)
+    return JSONResponse({"ok": ok, "steps": steps})
+
+
+@router.post("/settings/support/test")
+def settings_support_test(
+    request: Request,
+    imap_server: str = Form(""),
+    imap_port: str = Form("993"),
+    imap_user: str = Form(""),
+    imap_password: str = Form(""),
+    smtp_server: str = Form(""),
+    smtp_port: str = Form("465"),
+    smtp_user: str = Form(""),
+    smtp_password: str = Form(""),
+    service_name: str = Form(""),
+):
+    """The same check as /settings/mail/test, against the Support mailbox's fields."""
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
+
+    if imap_password == settings.UNCHANGED:
+        imap_password = settings.secret("SUPPORT_IMAP_PASSWORD")
+    if smtp_password == settings.UNCHANGED:
+        smtp_password = settings.secret("SUPPORT_SMTP_PASSWORD")
+
+    ok, steps = _probe_mailbox(imap_server, imap_port, imap_user, imap_password,
+                               smtp_server, smtp_port, smtp_user, smtp_password, service_name)
     return JSONResponse({"ok": ok, "steps": steps})
 
 
@@ -382,6 +480,38 @@ def settings_names_scan(request: Request):
     rows = email_bot.name_mismatches(clients, found)
     logger.info(f"Panel: {len(found)} addresses in the mailbox, {len(rows)} names differ.")
     return JSONResponse({"ok": True, "rows": rows, "senders": len(found)})
+
+
+@router.post("/settings/mail/authserver/scan")
+def settings_authserver_scan(request: Request):
+    """
+    Says under which name the newest letters in the mailbox were vouched for,
+    so that the field beside the button need not be filled in from memory.
+
+    Changes nothing, in the mailbox or the settings: the letters are read
+    headers-only and with PEEK, and the name is only offered.
+    """
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return JSONResponse({"ok": False, "error": i18n.t("You need to sign in")}, status_code=401)
+
+    if not config.IMAP_USER or not config.IMAP_PASSWORD:
+        return JSONResponse({"ok": False, "error": i18n.t("The mailbox is not set up")},
+                            status_code=400)
+
+    logger.info("Panel: looking through the mailbox for the mail server's name.")
+    try:
+        found = email_bot.scan_auth_servers()
+    except Exception as e:
+        logger.error(f"Could not read the mailbox for the server's name: {e}", exc_info=True)
+        return JSONResponse({"ok": False, "error": i18n.t("Could not read the mailbox")},
+                            status_code=502)
+    return JSONResponse({
+        "ok": True,
+        "letters": found["letters"],
+        "without": found["without"],
+        "names": [{"name": name, "letters": count} for name, count in found["names"]],
+    })
 
 
 @router.post("/settings/mail/names/apply")
@@ -468,7 +598,9 @@ def settings_secret(request: Request, key: str = ""):
     if auth_redirect:
         return JSONResponse({"error": i18n.t("You need to sign in")}, status_code=401)
 
-    if key not in settings.SECRET_KEYS:
+    # NEVER_REVEALED: the secret behind the sign-in codes is shown once, while
+    # the app is being set up, and not to whoever holds a session afterwards.
+    if key not in settings.SECRET_KEYS or key in settings.NEVER_REVEALED:
         return JSONResponse({"error": i18n.t("Unknown key")}, status_code=400)
     logger.info(f"Panel: revealed the value of {key}.")
     return JSONResponse({"value": settings.secret(key)})
@@ -497,10 +629,15 @@ async def settings_texts_save(request: Request):
     # later entry wins, which is the ticked one when there is one.
     switches = {key[len("switch:"):]: value == "on"
                 for key, value in form.items() if key.startswith("switch:")}
+    # A setting that is not a yes/no — so far only the inactivity threshold,
+    # which sits beside the letter it governs rather than on the Mail tab.
+    plain_settings = {key[len("setting:"):]: value
+                      for key, value in form.items() if key.startswith("setting:")}
+    other_settings = {**switches, **plain_settings}
     try:
         email_texts.save(values)
-        if switches:
-            settings.save(switches)
+        if other_settings:
+            settings.save(other_settings)
     except OSError as e:
         logger.error(f"Could not write the letter texts: {e}")
         return RedirectResponse(url="/settings?error=" + quote(i18n.t("Could not save the texts")),
@@ -564,7 +701,10 @@ def settings_texts_test(request: Request, group: str = Form(...), email: str = F
             {"ok": False, "error": i18n.t("That is a placeholder address from .env.example; give a real one")},
             status_code=400)
 
-    if kind not in mail_templates.BROADCAST_KINDS:
+    # A kind the group does not have is the group's usual one: the value comes
+    # from the page, and the page is not to be trusted with what gets sent.
+    known = {option["id"] for option in _sample_kinds(group)}
+    if kind not in known:
         kind = "info"
     sample = _sample_email(group, kind)
     if sample is None:
@@ -573,11 +713,19 @@ def settings_texts_test(request: Request, group: str = Form(...), email: str = F
     subject, message = sample
     logger.info(f"Panel: test letter {group!r} to {address}.")
     try:
-        email_bot.send_email_reply(address, subject, message)
+        # keep_copy=False: this is a preview of the wording, not a letter to
+        # anybody — it must not turn up in the Mail panel's Sent folder beside
+        # real registrations and replies.
+        email_bot.send_email_reply(address, subject, message, keep_copy=False)
     except Exception as e:
         logger.error(f"The test letter {group!r} did not go out: {e}")
         return JSONResponse({"ok": False, "error": i18n.t("Could not send it")}, status_code=502)
     return JSONResponse({"ok": True})
+
+
+# A renewal for the sample letters, part of the way through its cap, so that
+# every text about it is in the sample: the line, the value and the count.
+_DEMO_RENEWAL = {"mode": "days", "value": 30, "max": 3, "used": 1, "left": 2, "active": True}
 
 
 def _sample_email(group: str, kind: str = "info"):
@@ -588,11 +736,22 @@ def _sample_email(group: str, kind: str = "info"):
 
     if group == "welcome":
         return (mail_templates.welcome_subject(False),
-                mail_templates.get_welcome_email(demo_sub, config.EXPIRE_DAYS, config.LIMIT_GB))
+                mail_templates.get_welcome_email(demo_sub, config.EXPIRE_DAYS, config.LIMIT_GB,
+                                                 tariff=_demo_tariff_name(),
+                                                 # A sample is where the texts are looked
+                                                 # at, the "devices" line among them — and
+                                                 # it is drawn only when there is a limit.
+                                                 limit_hwid=2,
+                                                 renew=_DEMO_RENEWAL))
     if group == "status":
         return (mail_templates.text("status.subject"),
                 mail_templates.get_status_email(demo_mail, True, 8 * 1024**3, 34 * 1024**3,
-                                                100 * 1024**3, now_ms + 21 * 86400 * 1000))
+                                                100 * 1024**3, now_ms + 21 * 86400 * 1000,
+                                                # With every slot taken, so that the sample
+                                                # shows all the device texts being edited.
+                                                device_limit=2,
+                                                devices=["Pixel 9", "iPhone 15"],
+                                                renew=_DEMO_RENEWAL))
     if group == "help":
         return (mail_templates.text("help.subject"),
                 mail_templates.get_help_email(demo_mail, demo_sub))
@@ -606,4 +765,9 @@ def _sample_email(group: str, kind: str = "info"):
     if group == "notice":
         return (mail_templates.notice_subject("unknown"),
                 mail_templates.get_notice("unknown", subject=i18n.t("Hello")))
+    if group == "inactivity":
+        days = periodic.period_days("INACTIVITY_REMINDER_DAYS")
+        return (mail_templates.text("inactivity.subject"),
+                mail_templates.get_inactivity_email(demo_mail, days,
+                                                    never_set_up=(kind == "unused")))
     return None

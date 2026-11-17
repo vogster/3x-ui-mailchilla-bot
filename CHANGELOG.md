@@ -8,6 +8,390 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [0.2.0] - 2026-11-17
+
+**This version needs Python 3.10 or newer; 0.1.x ran on 3.9.** Check before
+you say yes: `/opt/mailchilla/venv/bin/python --version`. On 3.9 the update
+stops while installing dependencies and the service is left on the version it
+had — the README, under Updating, has the three commands that move an
+installation to a newer Python. Debian 12, Ubuntu 22.04 and newer already
+have one.
+
+### Added
+
+- **Auto-renewal in a tariff.** A tariff can now say that 3x-ui renews the
+  client by itself: when the term runs out the panel moves the expiry on and
+  starts the traffic count again, instead of cutting the client off — so
+  "100 GB a month" is a limit of 100, a term of 30 days and a renewal every
+  30. Each renewal ends so many days later, or on the next such day of the
+  month or of the week, and a cap on their number makes a subscription that
+  ends by itself. The client's card shows it and how many renewals have been
+  used; the forms that create and edit a client carry the same fields; the
+  registration letter and `/status` say that the subscription renews and how
+  many renewals are left, in texts that are on the Letters tab under General.
+  It needs a term — the forms will not set a renewal for a subscription that
+  never expires — and a 3x-ui that knows auto-renewal: an older one takes the
+  client without it, the page and the log say so, and the letter promises
+  nothing. Tariffs you already have are unchanged and renew nothing.
+
+- **Who registered and never set the app up.** 3x-ui records when a client's
+  app last fetched its subscription, and the panel now shows it: on the
+  client's card, beside "Last online", and as a filter on the client list —
+  fetched, or never set up. The reminder for clients who have gone quiet tells
+  the two apart as well: somebody who never fetched the subscription and never
+  connected gets a letter of their own, offering the setup instructions again
+  rather than advice to check a subscription they have never used. Its text
+  is on the Letters tab beside the usual one, and the test letter there sends
+  either. A client who has been connected but has no fetch on record — set up
+  before 3x-ui began recording them — reads "no record" and is on neither side
+  of the filter. With a 3x-ui that does not record this, nothing changes and
+  nothing new is shown.
+
+- **A notification when Xray stops, and another when it is back.** Xray not
+  running is every client disconnected at once, and until now it was said
+  only on the dashboard, to whoever had it open. Once a minute the bot asks
+  3x-ui and tells Gotify when the answer has changed — stopped, failed with
+  the panel's own error text, running again — never one a minute while it
+  stays down. A stop is believed on the second look in a row, because 3x-ui
+  restarts Xray whenever its configuration changes; and the panel itself not
+  answering is said separately, since that is not the same thing. The switch
+  and the wording are on the Gotify tab. On as soon as Gotify is set up.
+
+- **The Broadcast page says what is being sent.** Until now a running
+  broadcast was visible on one page only — the one the browser was sent to
+  after Send — and once that tab was closed nothing in the panel said whether
+  letters were still going out. A broadcast started by mail, with
+  `/broadcast`, was never shown at all. The page now opens with a list: what
+  is being sent right now, with its progress, and what went out before it —
+  how many letters left and how many did not arrive. Each row opens the
+  broadcast's own page, which now names the addresses a letter did not reach.
+  A dot on the menu's Broadcast link breathes while letters are going out,
+  and pressing Send while a broadcast is still running asks first. The list
+  lives in memory and starts empty after a restart.
+
+- **A Support mailbox, with replies.** The Mail page can now hold a second
+  account, set up on its own tab in Settings — a mailbox a person answers
+  from, as against the bot's own. Once both its halves (IMAP and SMTP) are
+  filled in, a Support tab appears beside the bot's on the Mail page, and every
+  letter there carries a plain-text reply box the bot's own mailbox does not
+  offer. A reply threads itself under the letter it answers (In-Reply-To,
+  References), quotes the original underneath what was typed, and is filed
+  into Support's own Sent folder the same way every other letter this project
+  sends is. Once it has gone, the letter it answers is marked read and
+  answered, so the list tells what has been dealt with from what nobody has
+  got to — the one thing these pages ever change in a mailbox, and never in
+  the bot's own. Left empty, nothing changes: the Mail page shows only the
+  bot's mailbox, exactly as before.
+
+- **The mailbox in the panel.** A new Mail page shows the bot's Inbox, Sent
+  and Trash, with search and pages, and opens any letter in them. Beside the
+  letter stands the client who wrote it — status, tariff, traffic, expiry, the
+  word they came in through — or a plain "not a client", and in the list a
+  client's letters carry their tariff. It only looks: opening a letter does not
+  mark it read, so the bot still answers it. HTML letters are drawn in a sealed
+  frame with nothing in them running, and pictures from other servers stay
+  hidden until you press the button — each one tells the sender the letter was
+  opened. Attachments are downloaded rather than opened.
+
+- **Sent letters are kept in the Sent folder.** SMTP keeps no copy of what it
+  sends, so the bot now puts one there itself, a few seconds after each letter
+  goes out and without holding the letter up. A provider that files its own
+  copy, as Gmail does, is noticed by the letter's Message-ID and not doubled.
+  Letters sent before this version are not there, and a mailbox with no Sent
+  folder the bot can find simply keeps none, and the log says so.
+
+- **The registration letter names the tariff**, beside the term and the traffic
+  limit it gave. It answers the question the numbers do not — somebody who would
+  otherwise write back asking which one they are on was told in the first
+  letter. It is the tariff the client is actually on rather than the one the
+  word they wrote would have given them, so somebody already registered who
+  writes another word is told what they still have. A client with no tariff —
+  anybody from before tariffs existed — gets no line at all, and the text is
+  editable like every other.
+
+- **Clearing the mailbox out by itself.** The bot's mailbox is not read by
+  anybody — every letter in it has been answered already — and after a year of
+  registrations it is thousands of them. The Mail tab can now move the read
+  letters to the Trash every so many days, on the connection the bot is polling
+  with anyway. Only the read ones: an unread letter is one the bot has not dealt
+  with yet, which after a spell of the mailbox being unreachable may be a
+  registration still waiting to happen. Nothing is deleted outright, so a
+  schedule set too eagerly can be undone from the mail client until the Trash
+  empties itself. Off until you switch it on.
+
+- **A push when a letter arrives for Support.** The bot's own mailbox is read
+  every few seconds; Support's is read by nobody until you look. With Gotify
+  set up, the bot now looks at it once a minute and tells you what has arrived:
+  who wrote and about what, one notification per letter, with a title and a
+  text you can rewrite on the Gotify tab like the registration push's. When
+  more than five come at once the newest five are announced and one more
+  notification counts the rest. It only looks — no letter is marked read. Letters already in the mailbox are not
+  announced, a restart does not repeat itself, and a letter that came while
+  the bot was down is announced when it is back. On as soon as both Gotify and
+  the Support mailbox are set up; the switch is on the Gotify tab.
+
+- **Reminding a client who has not connected in a while.** The Letters tab has
+  a menu item of its own for it, set apart from the templates: switched on, the
+  bot checks, on the same schedule as the mailbox cleanup, who 3x-ui has not
+  seen online for longer than the period you set, and sends them the letter
+  beside it asking whether something is wrong. A client who registered and
+  never connected at all counts from the registration date rather than being
+  skipped for having no online record. The check looks again on its own
+  schedule, so a client still gone next time is reminded again. Off until you
+  switch it on.
+
+- **A support address and a link to the instructions**, both set on the General
+  tab. The address goes into the footer of every letter and, in its own words,
+  into the registration letter — where somebody is setting a connection up for
+  the first time. The link to the instructions sits below every way of
+  connecting, after the buttons, the QR code and the link to copy: try it first,
+  read about it if it did not work. All three blocks have a switch of their own
+  on the Letters tab: the switch and the text it governs are drawn as one
+  framed block that greys out when it is off, so what a letter carries can be
+  read down the page. The QR code is one of those blocks now too. Both addresses are empty by default: a letter should not invite
+  anybody to write to a blank address. The support address is a link in both
+  places, so a reader presses it and their mail client opens a new letter. Every
+  letter text can use `{support}` and `{manual}`, the way it already uses
+  `{service}`.
+
+- **Tariffs.** What a new client gets — traffic, term, inbounds — is a tariff
+  now, and each tariff has its own code word. There can be as many as you like:
+  a generous one for the family, a small one for a trial, a closed one with no
+  word at all. The Tariffs page creates and edits them, and the create-client
+  dialog offers them in a list — pick one and the fields fill themselves in,
+  still editable.
+- A tariff is read once, when a client is created. Editing one therefore
+  changes nothing for anybody already registered, and the page says so rather
+  than leaving you to wonder.
+- The list of who came in through a code no longer grows without end. The
+  count stays exact; the last two hundred addresses are kept, and the page says
+  so when there were more. A word handed out openly could otherwise make every
+  registration a little more expensive than the last, since the file is
+  rewritten whole each time.
+- A code can be given a **date it works until** — the last day, counted to its
+  end. A word handed out for a weekend then stops on its own instead of waiting
+  to be remembered on Monday. Empty means it never runs out by itself.
+- **Code words are their own thing**, on a tab of their own beside the tariffs.
+  A code is a word, the tariff it opens, how many activations are left in it,
+  a note and a switch. Leave the activations empty and it is the word you hand
+  out openly; put 1 there and it is a personal invitation, spent by whoever
+  uses it. There is no second kind of object and no second form: the number is
+  the whole difference.
+- A tariff can therefore have several words — a seasonal one beside the
+  permanent one — and any of them can be switched off on its own the moment it
+  leaks, without touching the tariff or the others.
+- Switching a code off keeps the record of who came in through it; removing it
+  throws that away, and the confirmation says so.
+- **A card for every tariff and every code.** A tariff's card shows who is on
+  it, read from 3x-ui, plus its codes and what it hands out. A code's card
+  shows everybody who came in through that word, each a click away from their
+  own card; somebody deleted from 3x-ui since is still listed by address,
+  because it happened.
+- **Which tariff a client is on is kept in 3x-ui**, in the client's own group,
+  named after the tariff. Nothing of ours has to be kept in step with it: the
+  panel shows it, `clients/list` hands it back with everything else, and a
+  group changed in 3x-ui by hand is simply the truth. The client list shows it
+  beside the name and filters by it — including "without one", which is what
+  anybody registered before tariffs existed will be.
+- Renaming a tariff renames its group, carrying every client across. Deleting
+  one leaves its clients exactly as they are — the label they carry in 3x-ui
+  outlives the tariff, the client list marks it, and the tariffs page counts
+  such groups under "Groups without a tariff" rather than letting them lurk.
+- Two tariffs may no longer share a name, since the name is the group.
+- The dashboard counts the tariffs: how many people are on each and what they
+  have spent, worked out from the client list it already had rather than from
+  another request.
+- The broadcast's recipient picker filters by tariff, including "without one",
+  so "everybody on Trial whose traffic is running out" is two clicks.
+- `/status` names the client's tariff, unless they are on none.
+- A client's card says which code word they came in through, linking to that
+  code. It is how they arrived rather than what they have now: moving them to
+  another tariff, or switching the code off, leaves it as it was.
+- A client's card can move them to a tariff: pick one and the limit, the term
+  (counted from today) and the inbounds fill themselves in, still editable, and
+  nothing is saved until you press Save.
+
+- `mailchilla check` no longer stops at "3x-ui answers". It also says when
+  there is no tariff at all, when every code word is switched off or used up,
+  when a tariff has no inbounds ticked, and when one names an inbound the panel
+  does not have — the four ways registration stops working without a line in
+  the log.
+
+- **A tariff can limit how many devices use one subscription.** 3x-ui tells
+  devices apart by the hardware id the app sends and now holds a limit on the
+  client; the tariff has a field for it, beside the traffic and the term, and a
+  new client is created with it. The registration letter states the limit when
+  there is one, and `/status` answers with how many devices are registered out
+  of how many, names them, and says what to do once every slot is taken — the
+  new phone that will not connect is exactly when somebody asks for their
+  status. A device stays registered until somebody takes it off, so the
+  client's card lists the devices — model, system, app, when first and last
+  seen — with a button to forget one or all of them: that is what somebody with
+  a new phone will be writing to you about. The limit can also be set by hand
+  when creating or editing a client. **It needs a recent 3x-ui.** An older one
+  takes the client and ignores the limit; the bot notices and says so in the
+  log rather than letting the tariff promise something nothing enforces, and
+  the letter then leaves the line out.
+
+### Changed
+
+- Dates are picked in a calendar of the panel's own making rather than the
+  browser's. The native one paints itself, cannot be themed, and shows the date
+  in the reader's locale — `mm/dd/yyyy` in a Russian interface, which is how a
+  date gets read wrong. Ours speaks `дд.мм.гггг`, starts the week on Monday,
+  and can be typed into as well as clicked.
+
+- The inbound table has left the dashboard. It is 3x-ui's own list, and which
+  inbounds a client gets is a property of their tariff now — the tariff's card
+  says it where it matters. What stayed is the fault the table carried: a
+  tariff naming an inbound the panel does not have breaks registration at that
+  id in silence, and the dashboard names such a tariff.
+- The single `CODEWORD` is gone from the settings, along with the traffic
+  limit, the term and the inbound list. On the first start after the update
+  they become a tariff called "Basic" with the same word, so nothing changes
+  for anybody already registered and nobody has to do anything. The old keys
+  are left in `settings.json` untouched, so a rollback to 0.1.x finds them.
+- A code word is now matched as a whole word, and only in the part of a letter
+  its sender actually typed. A reply quoting the welcome letter used to count
+  as a fresh registration, and a word could be found inside a longer one —
+  harmless with one word, a wrong subscription with several.
+- A letter carrying the words of two different tariffs is no longer guessed at:
+  the bot writes back asking which one is meant.
+- The first-run wizard asks for the first tariff instead of "the rules for new
+  clients".
+
+### Security
+
+- **Newer versions of the libraries underneath, and Python 3.10 with them.**
+  `requests` 2.34.2, `jinja2` 3.1.6, `fastapi` 0.162.5, `starlette` 1.7.0,
+  `python-multipart` 0.0.32 and `python-dotenv` 1.2.4 — none with a known
+  vulnerability, where the versions shipped before had nineteen between
+  them. The ones that mattered most were in what reads the panel's
+  forms, the sign-in form among them: requests built to keep the panel busy.
+  Their fixes exist only in releases that need Python 3.10, which is why the
+  minimum moved; 3.9 has had no security fixes of its own since October 2025.
+
+- **Two-step sign-in for the panel.** Settings → General → *Signing in* adds a
+  six-digit code from an authenticator app (TOTP — Google Authenticator,
+  Aegis, 2FAS, a password manager) to the password. The panel can read every
+  mailbox password and delete every client, and until now one password was
+  all that stood in front of it. Setting it up is a QR code and one code typed
+  back; nothing is switched on until that code is right, so an entry that
+  never scanned cannot lock you out. A code works once, five wrong ones close
+  the door for five minutes, and switching the second step off takes a code
+  too. *Set up again* moves it to a new phone without a gap: the old entry
+  keeps working until the new one has produced a right code. It is off until
+  you switch it on, and nothing changes for an
+  installation that does not. If the phone is lost, `mailchilla totp-off` on
+  the server takes the second step off.
+
+- **`/broadcast` by mail now needs proof of who sent it.** The bot used to take
+  the From header at its word, and a From header is whatever its author types:
+  a letter claiming to be from the administrator's address got any text at all
+  sent to every client, from the service's own address. Now the mailbox's server
+  has to vouch for the address — the `Authentication-Results` header it adds
+  after checking SPF, DKIM and DMARC. Without that the broadcast is not sent,
+  and the administrator gets a letter saying so, which is also how you find out
+  that somebody tried. **If your mail server adds no such header, `/broadcast`
+  by mail stops working after this update** — send broadcasts from the panel,
+  which never depended on it.
+- **A mail server of your own can be named, and should be.** The proof above
+  is read from the top-most `Authentication-Results` header, which is right
+  for Gmail, Yandex and Mail.ru. A server put together from separate filters
+  may add no header at all to a letter with no signature — leaving one the
+  sender wrote on top, to be believed — and may give its verdict in pieces,
+  DKIM in one header and DMARC in another, of which only the first was read,
+  so a genuine broadcast could be refused. Settings → Mail → *Proof of the
+  sender* now takes the name your server signs those headers with: its headers
+  are then read in full and nobody else's at all. *Look in the mailbox* reads
+  the name off your newest letters. Leave it empty on the large providers.
+- **The bot no longer answers machines, and marks its own letters as written by
+  one.** It replied to everything: bounces, vacation autoresponders,
+  newsletters. An autoresponder that answered back got "the command was not
+  understood" again, for as long as both were plugged in. Letters marked as
+  automatic are now read and left alone, every letter the bot sends carries the
+  mark other programs look for, and no address gets more than ten answers an
+  hour whatever it sends.
+- **`settings.json`, `tariffs.json` and the log are readable by the service
+  alone.** They hold the mailbox passwords, the code words and the address of
+  everybody who wrote, and were readable by every account on the server — the
+  installer closed `.env` and the panel wrote the same secrets next door.
+  `mailchilla update` closes the files that already exist.
+- **The sign-in form stops answering after ten wrong passwords in a minute**,
+  for the rest of that minute. It matters once the panel is behind a reverse
+  proxy rather than a tunnel.
+- The code words are no longer written into the log when the bot starts.
+
+### Fixed
+
+- **Editing a client no longer moves their expiry unless you change it.** The
+  term on the edit form is "days from now", and every save sent it back — so
+  saving a new name shifted the expiry to the current hour of the day, by up
+  to half a day's rounding. Worse, for a client whose subscription had run
+  out the field opened on 0, which on that form means "never expires": any
+  save at all gave them a subscription for good. The term is now sent only
+  when the number was changed, and the field is empty for a subscription that
+  has ended.
+
+- **With 3x-ui away the bot goes on answering whoever it can.** One letter that
+  needed the panel used to stop the whole mailbox: nobody was even told their
+  command was not understood until the panel came back. Now registrations and
+  `/status` wait, unread, and `/help` and everything else are answered at
+  once. The log says how many letters are waiting and why, and says it again
+  every quarter of an hour for as long as they do.
+- **An update whose dependencies will not install no longer stops half way.**
+  `mailchilla update` used to end on that step without a word: the new code
+  in place, the old packages under it, the service not restarted. It now says
+  what failed, puts the previous version back and leaves the service as it
+  was. The installer looks for a newer Python beside the system's, and on
+  AlmaLinux and Rocky 9 installs one.
+- **A token or password 3x-ui refuses is said to be exactly that.** It used to
+  look the same as a panel that was switched off, and after the first warning
+  scrolled away it looked like a quiet mailbox. It is an error now, on the
+  dashboard and in the log, naming the setting to check.
+- **A broadcast sent by mail no longer stops the bot reading its mailbox.** It
+  ran in the same loop that reads letters, so for the minutes it took nobody
+  who wrote was answered. It runs beside it now, and the report comes back
+  when it has finished, as before — or, if it broke off half way, says that it
+  did and how many letters had gone.
+- **A broadcast by mail sent while 3x-ui was away went to nobody and was
+  reported as done.** The letter now waits until the panel is back and the
+  broadcast goes out then.
+- **A broadcast signs in to the mail server once, not once a recipient.** Every
+  letter used to open a connection of its own, which is slow and which some
+  mail servers count against the account. If the connection drops half way
+  through, it is opened again and the broadcast carries on from the letter it
+  was sending. If the mail server is down or refuses the password, the
+  broadcast ends quickly with everybody listed as not reached, instead of
+  trying the same thing once for each of them.
+- **A code word that begins another no longer makes a letter ambiguous.** With
+  `AURORA` and `AURORA-FAMILY` both in use, a letter carrying the longer word
+  was read as carrying both, and its sender was asked which subscription they
+  meant instead of being registered.
+- **Deleting a tariff and removing a code ask before doing it.** Both buttons
+  were meant to and neither did: the question was written in a way the browser
+  could not read, so the form simply went through.
+- **A client with `login` in their address could not be managed.** The panel
+  took any 3x-ui address containing those letters for its sign-in page, and the
+  client's address is part of the address — so for `loginov@…` every request
+  read as an expired session. With an API token that meant no status letter, no
+  editing and no deleting; with a password, a fresh sign-in on every request.
+- **A letter the bot could not deal with really does stay unread now.** 0.1.4 moved
+  the read mark to after the handling, but the letter was fetched in the way that
+  makes the mail server mark it read by itself — so a registration that failed on
+  the first try was still never tried again. It is fetched without that now.
+- **3x-ui being away no longer costs the letters that arrive meanwhile.** A
+  panel that did not answer read as a panel that knew no such client: somebody
+  registered who asked for their status was told they had never registered, and
+  a registration got "could not create the subscription" and was dropped. Such
+  letters now wait unread and are handled when 3x-ui is back, and the dashboard
+  says that they are waiting.
+- **A Trash folder named in Cyrillic is found.** Folder names travel in IMAP's
+  own encoding, and the list of names to fall back on was compared against that
+  encoded form — so «Корзина» could never match, and a server that does not mark
+  its Trash with the standard attribute left the cleanup with nowhere to move
+  letters. The names are decoded before they are compared now.
+
 ## [0.1.5] - 2026-09-15
 
 ### Added

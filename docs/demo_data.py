@@ -106,6 +106,19 @@ SERVER = {
 }
 
 
+def _last_fetch(ident: str) -> int:
+    """
+    When this client's app last fetched the subscription. An app refreshes it
+    while it is in use, so the moment sits a little before the client was last
+    seen — not hours ago for somebody gone two months. Whoever has never been
+    seen has never fetched it either, which is the "never" the card shows.
+    """
+    if ident in ONLINE:
+        return NOW - 40 * 60000
+    minutes = LAST_SEEN_MINUTES.get(ident)
+    return 0 if minutes is None else NOW - (minutes + 90) * 60000
+
+
 def clients():
     """The list the way 3x-ui hands it over."""
     out = []
@@ -120,10 +133,20 @@ def clients():
             "expiryTime": 0 if expires is None else NOW + expires * DAY,
             "createdAt": NOW - ago * DAY,
             "subId": f"sub{i:02d}aurora",
-            "traffic": {"up": used // 4, "down": used - used // 4},
+            # When the app last fetched the subscription, kept by 3x-ui with
+            # the counters. Whoever has used any traffic set the app up at some
+            # point; whoever has used none never fetched it at all — which is
+            # what the client card and the list's filter have to tell apart.
+            "traffic": {"up": used // 4, "down": used - used // 4,
+                        "lastSubFetch": _last_fetch(ident)},
             # Everyone is on the REALITY inbound; every third one also on
             # Shadowsocks, so the client card has more than a single chip to
             # show and the leftover-link branch gets exercised too.
             "inboundIds": [1, 2] if i % 3 == 1 else [1],
+            # The client group, which Mailchilla names after the tariff. A
+            # couple of clients carry none: somebody registered before tariffs
+            # existed, or added by hand in 3x-ui, and the panel says so rather
+            # than inventing one.
+            "group": "" if i % 7 == 0 else ("Family" if i % 3 == 0 else "Standard"),
         })
     return out
