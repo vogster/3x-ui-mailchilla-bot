@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from email.utils import parseaddr
 from urllib.parse import quote, unquote, urlsplit
 import config
+import renewal
 
 logger = logging.getLogger(__name__)
 
@@ -229,9 +230,15 @@ class XuiClient:
 
     def add_client(self, email: str, client_uuid: str = None, limit_gb: int = None, expire_days: int = None,
                    inbound_ids: list = None, comment: str = "", flow: str = None,
-                   group: str = "", limit_hwid: int = 0):
+                   group: str = "", limit_hwid: int = 0, renew: dict = None):
         """
         Adds a new client to every inbound listed.
+        :param renew: the auto-renewal, as renewal.clean() hands it over — a
+                      mode, a value and a cap; None or an empty mode is none.
+                      Like the device limit, a panel too old to know it takes
+                      the client and drops it in silence — see renewal.of_client().
+                      It does nothing for a client with no expiry, and saying
+                      so is the caller's business: the request is sent as asked.
         :param email: the client's unique email/identifier (a limited character
                       set: the panel refuses angle brackets and spaces)
         :param comment: a free-form comment — the sender's name goes here
@@ -309,7 +316,12 @@ class XuiClient:
         # is never handed a key it has not heard of for the sake of a zero.
         if limit_hwid and int(limit_hwid) > 0:
             payload["client"]["limitHwid"] = int(limit_hwid)
-        
+        # The same rule for a renewal: its four keys go only when there is
+        # one. The documented body of clients/add lists none of them, and the
+        # panel takes them all the same — as it does `group`.
+        renew_fields = renewal.panel_fields(renew)
+        payload["client"].update(renew_fields)
+
         try:
             response = self._request("POST", "/panel/api/clients/add", json=payload)
             
@@ -318,7 +330,8 @@ class XuiClient:
                 if resp_json.get("success"):
                     logger.info(f"Client {email} added to inbounds {inbound_ids} with UUID {client_uuid}"
                                 + (f", group {group!r}" if group else "")
-                                + (f", devices {int(limit_hwid)}" if limit_hwid else ""))
+                                + (f", devices {int(limit_hwid)}" if limit_hwid else "")
+                                + (f", renewal {renew_fields}" if renew_fields else ""))
                     return client_uuid, inbound_ids
                 else:
                     logger.error(f"Could not add client {email}: {resp_json.get('msg')}")
@@ -894,7 +907,7 @@ class XuiClient:
                       expire_days: int = None, enable: bool = None,
                       new_remark: str = None, new_comment: str = None,
                       group: str = None, limit_hwid: int = None,
-                      client_obj: dict = None) -> bool:
+                      renew: dict = None, client_obj: dict = None) -> bool:
         """
         Updates an existing client.
         It goes GET, then merge, then POST, so that Go zero values do not wipe
@@ -907,6 +920,9 @@ class XuiClient:
         :param group: the client group — this project's tariff name (None leaves it)
         :param limit_hwid: how many devices may use the subscription (None leaves
                            it; 0 lifts the limit)
+        :param renew: the auto-renewal (None leaves it; an empty mode switches
+                      it off). Left alone, it survives by itself: the row is
+                      sent back as the panel returned it, renewal and all.
         :param new_remark: a new value for the client's email field (None leaves it)
         :param new_comment: a new comment/name (None leaves it)
         :param client_obj: a client object already fetched — lets the caller avoid
@@ -956,6 +972,11 @@ class XuiClient:
             payload["group"] = group
         if limit_hwid is not None:
             payload["limitHwid"] = max(int(limit_hwid), 0)
+        if renew is not None:
+            # All four, noughts included: the three ways of saying when are
+            # one setting, and the panel refuses a weekly renewal that finds a
+            # period or a day of the month left over from the old one.
+            payload.update(renewal.panel_fields(renew, always=True))
 
         endpoint = f"/panel/api/clients/update/{quote(str(current_remark), safe='')}"
 

@@ -1,0 +1,63 @@
+{#
+  The auto-renewal fields: a mode, the one value that mode takes, and a cap.
+  Shared by the tariff form and the forms that create and edit a client: a
+  renewal is one more thing a tariff hands a client, and the client then keeps.
+
+  Expects: renew (a dict with mode, value and max; may be empty) and rid, a
+  prefix that keeps the ids apart where two forms share a page.
+
+  Every part is drawn and none is hidden here. The script in base_admin.html
+  hides the ones the chosen mode does not use, so a page without JavaScript
+  shows them all — and still posts the right thing, because the server takes
+  the value from the field the mode names (renewal.from_form) and ignores the
+  rest. One field per mode, rather than one field whose meaning changes, is
+  what makes that so.
+
+  renew_present says that these fields were on the form at all. The mode
+  cannot say it for itself: "off" is an empty value, and FastAPI reads an
+  empty form field as one that was never sent — so, without the marker,
+  switching a renewal off looked exactly like a form that had no such fields,
+  which is the one drawn for a panel that knows no renewal and must change
+  nothing.
+
+  The period and the cap carry no upper bound of the browser's. The server
+  has one for a value being set; a client whose renewal was set in 3x-ui
+  itself may be past it, the form opens on that value, and a browser that
+  refused it would refuse to save anything else about that client.
+#}
+{% import "_fields.html" as fields %}
+{% set r = renew or {} %}
+{% set mode = r.mode or "" %}
+<div>
+    <input type="hidden" name="renew_present" value="1">
+    <label for="{{ rid }}renew_mode">{{ t("Auto-renewal") }} {{ fields.help(t("When the term runs out, 3x-ui moves it on by itself and starts the traffic count again, instead of cutting the client off. The first period is the term above; this sets when each one after it ends. Needs a term, and a recent 3x-ui: an older one ignores it.")) }}</label>
+    <select id="{{ rid }}renew_mode" name="renew_mode" data-renewal-mode>
+        <option value="" {% if not mode %}selected{% endif %}>{{ t("off [renewal]") }}</option>
+        <option value="days" {% if mode == "days" %}selected{% endif %}>{{ t("every so many days") }}</option>
+        <option value="monthday" {% if mode == "monthday" %}selected{% endif %}>{{ t("on a day of each month") }}</option>
+        <option value="weekday" {% if mode == "weekday" %}selected{% endif %}>{{ t("on a day of each week") }}</option>
+    </select>
+</div>
+<div data-renewal-part="days">
+    <label for="{{ rid }}renew_days">{{ t("Renew every, days") }} {{ fields.help(t("Each renewal moves the expiry on by this many days. It need not be the term above: a month on trial and a year after it is two different numbers.")) }}</label>
+    <input type="number" id="{{ rid }}renew_days" name="renew_days" min="1" step="1"
+           placeholder="30" value="{{ r.value if mode == "days" else "" }}">
+</div>
+<div data-renewal-part="monthday">
+    <label for="{{ rid }}renew_monthday">{{ t("Day of the month") }} {{ fields.help(t("From 1 to 31. Each renewal runs to the next such day, by the clock of the 3x-ui server.")) }}</label>
+    <input type="number" id="{{ rid }}renew_monthday" name="renew_monthday" min="1" max="31" step="1"
+           placeholder="1" value="{{ r.value if mode == "monthday" else "" }}">
+</div>
+<div data-renewal-part="weekday">
+    <label for="{{ rid }}renew_weekday">{{ t("Day of the week") }} {{ fields.help(t("Each renewal runs to the next such day, by the clock of the 3x-ui server.")) }}</label>
+    <select id="{{ rid }}renew_weekday" name="renew_weekday">
+        {% for number, words in renew_weekdays() %}
+        <option value="{{ number }}" {% if mode == "weekday" and r.value|int(0) == number %}selected{% endif %}>{{ words }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div data-renewal-part="max">
+    <label for="{{ rid }}renew_max">{{ t("Renewals at most") }} {{ fields.help(t("How many times the subscription renews before it simply ends with its term. 0 means no limit.")) }}</label>
+    <input type="number" id="{{ rid }}renew_max" name="renew_max" min="0" step="1"
+           value="{{ r.max or 0 }}">
+</div>

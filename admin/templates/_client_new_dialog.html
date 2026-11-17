@@ -25,6 +25,9 @@
                                 data-limit="{{ tariff.limit_gb }}"
                                 data-days="{{ tariff.expire_days }}"
                                 data-hwid="{{ tariff.limit_hwid or 0 }}"
+                                data-renew-mode="{{ tariff.renew.mode }}"
+                                data-renew-value="{{ tariff.renew.value }}"
+                                data-renew-max="{{ tariff.renew.max }}"
                                 data-inbounds="{{ tariff.inbound_ids|join(',') }}"
                                 {% if tariff.id == new_defaults.tariff_id %}selected{% endif %}>{{ tariff.name }}</option>
                         {% else %}
@@ -47,6 +50,7 @@
                     <input type="number" id="nc-hwid" name="limit_hwid" min="0" step="1"
                            value="{{ new_defaults.limit_hwid or 0 }}">
                 </div>
+                {% with renew = new_defaults.renew, rid = "nc-" %}{% include "_renewal_fields.html" %}{% endwith %}
             </div>
 
             <div>
@@ -100,6 +104,12 @@
             document.getElementById("nc-limit").value = option.dataset.limit;
             document.getElementById("nc-days").value = option.dataset.days;
             document.getElementById("nc-hwid").value = option.dataset.hwid || 0;
+            // The auto-renewal with the rest. Absent on a form that has no
+            // such fields, which is one drawn for a panel that knows none.
+            if (window.setRenewal) {
+                window.setRenewal(picker.form, option.dataset.renewMode,
+                                  option.dataset.renewValue, option.dataset.renewMax);
+            }
             var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
             document.querySelectorAll(".nc-inbound").forEach(function (box) {
                 box.checked = wanted.indexOf(box.value) !== -1;

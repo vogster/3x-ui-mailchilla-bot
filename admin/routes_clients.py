@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 import config
 import email_bot
 import i18n
+import renewal
 import templates as mail_templates
 import tariffs
 from admin.deps import templates, require_auth, is_authenticated
@@ -181,6 +182,7 @@ def tariff_choices() -> list:
             "limit_gb": t["limit_gb"],
             "expire_days": t["expire_days"],
             "limit_hwid": t.get("limit_hwid", 0),
+            "renew": t.get("renew") or renewal.none(),
             "inbound_ids": t["inbound_ids"],
         }
         for t in tariffs.all_tariffs()
@@ -197,7 +199,7 @@ def default_tariff() -> dict:
     choices = tariff_choices()
     return choices[0] if choices else {"id": "", "name": "", "limit_gb": 0,
                                        "expire_days": 0, "limit_hwid": 0,
-                                       "inbound_ids": []}
+                                       "renew": renewal.none(), "inbound_ids": []}
 
 
 def new_dialog_context():
@@ -219,6 +221,7 @@ def new_dialog_context():
             "limit_gb": first["limit_gb"],
             "expire_days": first["expire_days"],
             "limit_hwid": first["limit_hwid"],
+            "renew": first["renew"],
             "flow": config.XUI_FLOW,
         },
     }
@@ -249,6 +252,7 @@ def _new_client_context(request: Request, form: dict = None, error: str = ""):
             "limit_gb": form.get("limit_gb", first["limit_gb"]),
             "expire_days": form.get("expire_days", first["expire_days"]),
             "limit_hwid": form.get("limit_hwid", first["limit_hwid"]),
+            "renew": form.get("renew", first["renew"]),
             "xui_flow": form.get("xui_flow", config.XUI_FLOW),
             "send_email": form.get("send_email", True),
         },
@@ -309,6 +313,11 @@ def client_new_submit(
     limit_gb: str = Form(""),
     expire_days: str = Form(""),
     limit_hwid: str = Form(""),
+    renew_mode: str = Form(""),
+    renew_days: str = Form(""),
+    renew_monthday: str = Form(""),
+    renew_weekday: str = Form(""),
+    renew_max: str = Form(""),
     send_email: str = Form(""),
     xui_flow: str = Form(""),
     tariff_id: str = Form(""),
@@ -325,6 +334,11 @@ def client_new_submit(
         "expire_days": (expire_days or "").strip(),
         # An empty field is no limit, here as on the tariff.
         "limit_hwid": (limit_hwid or "").strip() or "0",
+        # As posted: checked below, beside the term it depends on.
+        "renew": renewal.from_form({
+            "renew_mode": renew_mode, "renew_days": renew_days,
+            "renew_monthday": renew_monthday, "renew_weekday": renew_weekday,
+            "renew_max": renew_max}),
         "inbound_ids": inbound_ids,
         "xui_flow": (xui_flow or "").strip(),
         "tariff_id": (tariff_id or "").strip(),
@@ -364,6 +378,10 @@ def client_new_submit(
         total_gb = parse_int(raw["limit_gb"], i18n.t("Limit, GB"))
         days = parse_int(raw["expire_days"], i18n.t("Term, days"))
         devices = parse_int(raw["limit_hwid"], i18n.t("Device limit"))
+        # Against the term typed on this form, not the tariff's: 3x-ui renews
+        # at the moment of expiry, so a client made with no term and a renewal
+        # would be created, and then never renewed.
+        renew = renewal.clean(raw["renew"], days)
     except ValueError as e:
         return fail(str(e))
 
@@ -389,6 +407,7 @@ def client_new_submit(
         flow=raw["xui_flow"],
         group=chosen["name"] if chosen else "",
         limit_hwid=devices,
+        renew=renew,
     )
 
     client_obj = xui.find_client_by_email(client_email)
@@ -401,25 +420,35 @@ def client_new_submit(
     # What the panel actually kept, with a warning in the log when it is not
     # what was asked for: an older 3x-ui drops the field without a word.
     kept_devices = email_bot.kept_device_limit(client_obj, devices, f"Client {client_email}")
+    kept_renew = email_bot.kept_renewal(client_obj, renew, f"Client {client_email}")
 
     key = XuiClient.client_key(client_obj)
     if raw["send_email"]:
         sub_url = f"{config.XUI_SUBSCRIPTION_BASE_URL}/{client_obj.get('subId')}"
         background_tasks.add_task(_send_welcome, client_email, sub_url, days, total_gb,
-                                  False, chosen["name"] if chosen else "", kept_devices)
+                                  False, chosen["name"] if chosen else "", kept_devices,
+                                  kept_renew)
 
     target = f"/clients/{key}?created=1"
+    # The form cannot know beforehand whether this 3x-ui keeps a renewal, so
+    # it offers one regardless. When it was not kept the card says so: the
+    # card draws no renewal for such a panel, and a warning in the log is not
+    # where somebody who has just pressed Create is looking.
+    if renew["mode"] and not renewal.same(kept_renew, renew):
+        target += "&lost=renewal"
     if wants_json:
         return JSONResponse({"ok": True, "redirect": target})
     return RedirectResponse(url=target, status_code=303)
 
 
 def _send_welcome(email_addr: str, sub_url: str, expire_days: int, limit_gb: int,
-                  renewed: bool = False, tariff: str = "", limit_hwid: int = 0):
+                  renewed: bool = False, tariff: str = "", limit_hwid: int = 0,
+                  renew: dict = None):
     """The letter leaves after the response: sending takes seconds and has no reason to sit inside the request."""
     try:
         email_bot.send_welcome_email(email_addr, sub_url, expire_days, limit_gb,
-                                     renewed=renewed, tariff=tariff, limit_hwid=limit_hwid)
+                                     renewed=renewed, tariff=tariff, limit_hwid=limit_hwid,
+                                     renew=renew)
         logger.info(f"Welcome letter sent to {email_addr}.")
     except Exception as e:
         logger.error(f"Could not send the welcome letter to {email_addr}: {e}")
@@ -437,7 +466,8 @@ def _came_by(client_obj: dict):
 
 
 @router.get("/clients/{client_uuid}", response_class=HTMLResponse)
-def client_detail(request: Request, client_uuid: str, created: str = "", sent: str = "", error: str = ""):
+def client_detail(request: Request, client_uuid: str, created: str = "", sent: str = "",
+                  error: str = "", lost: str = ""):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
@@ -473,6 +503,8 @@ def client_detail(request: Request, client_uuid: str, created: str = "", sent: s
             "devices": _devices(xui, client_obj),
             "kinds": mail_templates.broadcast_kind_options(),
             "created": created == "1",
+            # Asked for when the client was made, and not what the panel holds.
+            "renewal_lost": lost == "renewal",
             "sent": sent,
             "error": error,
         },
@@ -617,6 +649,7 @@ def client_resend_welcome(request: Request, client_uuid: str, background_tasks: 
         # tariff left behind: the letter reports, it does not decide.
         client_obj.get("group") or "",
         XuiClient.device_limit(client_obj) or 0,
+        renewal.of_client(client_obj),
     )
     return RedirectResponse(url=f"/clients/{client_uuid}?sent=welcome", status_code=303)
 
@@ -705,6 +738,12 @@ def client_edit_form(request: Request, client_uuid: str, error: str = ""):
     expiry_ms = int(client_obj.get("expiryTime", 0) or 0)
     if expiry_ms > 0:
         days_left = max(round((expiry_ms / 1000 - datetime.now().timestamp()) / 86400), 0)
+        # Run out, or within hours of it: the field is left empty, which is
+        # "leave it". A nought there would be this form's word for "never
+        # expires", prefilled — and saving a new comment for somebody whose
+        # subscription had ended used to hand them one that never does.
+        if not days_left:
+            days_left = ""
     else:
         days_left = 0
 
@@ -730,6 +769,19 @@ def client_edit_submit(
     limit_gb: str = Form(""),
     expire_days: str = Form(""),
     limit_hwid: str = Form(""),
+    # What the term field was prefilled with, so that one nobody touched can
+    # be told from one somebody typed.
+    expire_days_was: str = Form(""),
+    # The fields are drawn only for a panel that knows renewal, and a form
+    # without them says nothing — which is not "switch it off". The marker
+    # tells the two apart; the mode cannot, since "off" is an empty value and
+    # an empty form field arrives here as one that was never sent.
+    renew_present: str = Form(""),
+    renew_mode: str = Form(""),
+    renew_days: str = Form(""),
+    renew_monthday: str = Form(""),
+    renew_weekday: str = Form(""),
+    renew_max: str = Form(""),
     enable: str = Form(""),
     comment: str = Form(""),
     keep_comment: str = Form(""),
@@ -761,6 +813,15 @@ def client_edit_submit(
 
     total_gb = parse_int(limit_gb, i18n.t("Limit, GB"))
     days = parse_int(expire_days, i18n.t("Term, days"))
+    # The term is "days from now", so sending it back moves the expiry — to
+    # this hour of the day, and by up to half a day's rounding. Left as the
+    # form showed it, it is therefore not sent at all. It used to be, on every
+    # save; with a renewal that became a fault rather than an untidiness: the
+    # panel renews at the expiry, a renewal by the calendar runs from midnight
+    # to midnight, and an expiry nudged to mid-afternoon the day before fires
+    # a day early and spends one of a capped plan's renewals on a single day.
+    if expire_days_was.strip() and (expire_days or "").strip() == expire_days_was.strip():
+        days = None
     # Sent only when it has changed. The update replaces the whole row from
     # what the panel returned, so an untouched limit survives by itself — and a
     # panel from before device limits, whose form has no such field, is not
@@ -768,6 +829,35 @@ def client_edit_submit(
     devices = parse_int(limit_hwid, i18n.t("Device limit"))
     if devices is not None and devices == (XuiClient.device_limit(client_obj) or 0):
         devices = None
+
+    # The renewal, on the same terms: read only when the form carried it, and
+    # sent only when it differs from what the client has.
+    renew = None
+    if renew_present:
+        # The term the client will have once this is saved: the days typed,
+        # or — the field left empty — whatever expiry they keep.
+        term = days if days is not None else (1 if int(client_obj.get("expiryTime") or 0) else 0)
+        posted = renewal.from_form({
+            "renew_mode": renew_mode, "renew_days": renew_days,
+            "renew_monthday": renew_monthday, "renew_weekday": renew_weekday,
+            "renew_max": renew_max})
+        try:
+            # Compared before it is checked: whether it is the one the client
+            # already has is a question about the fields alone.
+            untouched = renewal.same(posted, renewal.of_client(client_obj))
+        except (TypeError, ValueError):
+            untouched = False
+        try:
+            # Untouched, it is not this form's business — the term included,
+            # and the ranges too. The form opens with the renewal the client
+            # has, and one set in 3x-ui itself may be outside what this form
+            # offers: refusing to save a new comment over a field nobody
+            # changed would lock such a client out of being edited at all.
+            # The card says when a renewal has nothing to act on.
+            renew = None if untouched else renewal.clean(posted, term)
+        except ValueError as e:
+            return RedirectResponse(
+                url=f"/clients/{client_uuid}/edit?error=" + quote(str(e)), status_code=303)
 
     # enable arrives from the checkbox
     new_enable = enable == "on"
@@ -787,6 +877,7 @@ def client_edit_submit(
         f"Panel: editing client {client_obj.get('email')!r} — limit={total_gb}, "
         f"days={days}, enabled={new_enable}, name={new_comment!r}"
         + (f", devices={devices}" if devices is not None else "")
+        + (f", renewal={renewal.panel_fields(renew, always=True)}" if renew is not None else "")
         + (f", moved to the {moved['name']!r} tariff." if moved else ".")
     )
     ok = xui.update_client(
@@ -797,6 +888,7 @@ def client_edit_submit(
         new_comment=new_comment,
         group=moved["name"] if moved else None,
         limit_hwid=devices,
+        renew=renew,
         client_obj=client_obj,
     )
     if not ok:

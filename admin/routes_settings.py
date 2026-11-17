@@ -723,6 +723,11 @@ def settings_texts_test(request: Request, group: str = Form(...), email: str = F
     return JSONResponse({"ok": True})
 
 
+# A renewal for the sample letters, part of the way through its cap, so that
+# every text about it is in the sample: the line, the value and the count.
+_DEMO_RENEWAL = {"mode": "days", "value": 30, "max": 3, "used": 1, "left": 2, "active": True}
+
+
 def _sample_email(group: str, kind: str = "info"):
     """A sample letter on invented data — no real client is touched."""
     demo_sub = f"{config.XUI_SUBSCRIPTION_BASE_URL}/demoSubscriptionToken"
@@ -736,7 +741,8 @@ def _sample_email(group: str, kind: str = "info"):
                                                  # A sample is where the texts are looked
                                                  # at, the "devices" line among them — and
                                                  # it is drawn only when there is a limit.
-                                                 limit_hwid=2))
+                                                 limit_hwid=2,
+                                                 renew=_DEMO_RENEWAL))
     if group == "status":
         return (mail_templates.text("status.subject"),
                 mail_templates.get_status_email(demo_mail, True, 8 * 1024**3, 34 * 1024**3,
@@ -744,7 +750,8 @@ def _sample_email(group: str, kind: str = "info"):
                                                 # With every slot taken, so that the sample
                                                 # shows all the device texts being edited.
                                                 device_limit=2,
-                                                devices=["Pixel 9", "iPhone 15"]))
+                                                devices=["Pixel 9", "iPhone 15"],
+                                                renew=_DEMO_RENEWAL))
     if group == "help":
         return (mail_templates.text("help.subject"),
                 mail_templates.get_help_email(demo_mail, demo_sub))

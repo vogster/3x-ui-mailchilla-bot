@@ -40,6 +40,9 @@
 {% if error %}
 <div class="flash error" style="margin-top: 14px;">{{ error }}</div>
 {% endif %}
+{% if renewal_lost %}
+<div class="flash error" style="margin-top: 14px;">{{ t("The client was created without the auto-renewal asked for: 3x-ui did not keep it, so the subscription will end with its term. An older 3x-ui does not know auto-renewal; the log says which it was.") }}</div>
+{% endif %}
 
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin: 14px 0 24px 0;">
     <div>
@@ -139,6 +142,19 @@
     <div class="card">
         <div class="label">{{ t("Devices") }}</div>
         <div class="value">{% if devices is not none %}{{ devices|length }} / {% endif %}{{ client.limit_hwid }}</div>
+    </div>
+    {% endif %}
+    {# Beside "Valid until", which with a renewal is not the end. Greyed once
+       it will not fire again: the cap is spent, or there is no expiry. #}
+    {% if client.renew_known and client.renew.mode %}
+    <div class="card">
+        <div class="label">{{ t("Auto-renewal") }}</div>
+        <div class="value" style="font-size: 18px;">
+            <span {% if not client.renew.active %}class="muted"{% endif %}>{{ client.renew_text }}</span>
+        </div>
+        {% if client.renew_note %}
+        <div class="muted" style="font-size: 12.5px; margin-top: 4px;">{{ client.renew_note }}</div>
+        {% endif %}
     </div>
     {% endif %}
     <div class="card">

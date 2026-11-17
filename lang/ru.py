@@ -96,7 +96,7 @@ TEXTS = {
     "The values come from the tariff; they can be changed for this client": "Значения взяты из тарифа, для этого клиента их можно изменить",
     "Move to a tariff": "Перевести на тариф",
     "leave as it is": "оставить как есть",
-    "Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.": "Подставляет в поля ниже значения тарифа: лимит трафика, новый срок от сегодняшнего дня, лимит устройств и его inbound'ы. Ничего не сохраняется, пока вы не нажмёте «Сохранить», и нигде не запоминается, какой это был тариф: тариф — шаблон, а дальше это просто собственные значения клиента.",
+    "Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit, the auto-renewal and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.": "Подставляет в поля ниже значения тарифа: лимит трафика, новый срок от сегодняшнего дня, лимит устройств, автопродление и его inbound'ы. Ничего не сохраняется, пока вы не нажмёте «Сохранить», и нигде не запоминается, какой это был тариф: тариф — шаблон, а дальше это просто собственные значения клиента.",
     # Codes: the words that open a tariff. One object — a word with a number of
     # activations — so the vocabulary talks about codes, not about two kinds.
     "Code words": "Кодовые слова",
@@ -278,7 +278,12 @@ TEXTS = {
     "Editing a client": "Изменение клиента",
     "0 means unlimited. The current value is prefilled; leave it as it is to change nothing.": "0 = безлимит. Текущее значение предзаполнено. Оставьте поле как есть, чтобы не менять.",
     "Validity, days from now": "Срок действия, дней (от текущего момента)",
-    "0 means it never expires. Sets a new expiry of today plus N days.": "0 = бессрочно. Устанавливает новую дату истечения = сегодня + N дней.",
+    "0 means it never expires. A changed number sets a new expiry of today plus that many days. Left as it is — or empty, as it is for a subscription that has run out — it does not move the expiry.":
+        "0 — бессрочно. Изменённое число задаёт новую дату истечения: сегодня плюс столько дней. "
+        "Оставленное как есть — или пустое, как у закончившейся подписки, — срок не трогает.",
+    "The client was created without the auto-renewal asked for: 3x-ui did not keep it, so the subscription will end with its term. An older 3x-ui does not know auto-renewal; the log says which it was.":
+        "Клиент создан без запрошенного автопродления: 3x-ui его не сохранила, и подписка "
+        "закончится вместе со сроком. Старая 3x-ui автопродления не знает; что именно произошло — в логе.",
     "Subscription is active": "Подписка активна",
     "Client identifier in the panel": "Идентификатор клиента в панели",
     "The email field in 3x-ui. It is not editable here: it is the key requests to the panel are made by, and the panel accepts only a limited character set in it.": "Поле email в 3x-ui. Здесь не меняется: это ключ, по которому идут запросы к панели, и она принимает в нём только ограниченный набор символов.",
@@ -1041,6 +1046,75 @@ TEXTS = {
     "set up before the panel began recording them":
         "Подключался, но записи о запросе подписки в 3x-ui нет: "
         "настроен до того, как панель начала их записывать",
+    # --- auto-renewal ---
+    "Auto-renewal": "Автопродление",
+    "When the term runs out, 3x-ui moves it on by itself and starts the traffic count again, instead of cutting the client off. The first period is the term above; this sets when each one after it ends. Needs a term, and a recent 3x-ui: an older one ignores it.":
+        "Когда срок заканчивается, 3x-ui сам сдвигает его и начинает счёт трафика заново, "
+        "а не отключает клиента. Первый период — срок выше; здесь задаётся, когда "
+        "заканчивается каждый следующий. Нужен срок и свежий 3x-ui: старый это поле игнорирует.",
+    "off [renewal]": "выключено",
+    "every so many days": "каждые N дней",
+    "on a day of each month": "в день месяца",
+    "on a day of each week": "в день недели",
+    "Renew every, days": "Продлевать каждые, дней",
+    "Each renewal moves the expiry on by this many days. It need not be the term above: a month on trial and a year after it is two different numbers.":
+        "Каждое продление сдвигает срок на столько дней. Это не обязательно срок выше: "
+        "месяц на пробу и год после него — два разных числа.",
+    "Day of the month": "День месяца",
+    "From 1 to 31. Each renewal runs to the next such day, by the clock of the 3x-ui server.":
+        "От 1 до 31. Каждое продление действует до следующего такого дня по часам сервера 3x-ui.",
+    "Day of the week": "День недели",
+    "Each renewal runs to the next such day, by the clock of the 3x-ui server.":
+        "Каждое продление действует до следующего такого дня по часам сервера 3x-ui.",
+    "Renewals at most": "Продлений не более",
+    "How many times the subscription renews before it simply ends with its term. 0 means no limit.":
+        "Сколько раз подписка продлится, прежде чем просто закончится вместе со сроком. "
+        "0 — без ограничения.",
+    "on Mondays": "по понедельникам",
+    "on Tuesdays": "по вторникам",
+    "on Wednesdays": "по средам",
+    "on Thursdays": "по четвергам",
+    "on Fridays": "по пятницам",
+    "on Saturdays": "по субботам",
+    "on Sundays": "по воскресеньям",
+    "every {days} d": "раз в {days} дн.",
+    "monthly, on day {day}": "ежемесячно, {day}-го числа",
+    "weekly, {weekday}": "еженедельно, {weekday}",
+    "renewals: up to {count}": "продлений: до {count}",
+    "does nothing while the subscription has no expiry": "не сработает, пока у подписки нет срока",
+    "renewed {used} of {max}": "продлено {used} из {max}",
+    "the auto-renewal mode is not one of those offered": "режим автопродления не из предложенных",
+    "the auto-renewal fields hold something that is not a whole number":
+        "в полях автопродления стоит не целое число",
+    "the renewal period is a number of days from 1 to 3650": "период продления — число дней от 1 до 3650",
+    "the day of the month is a number from 1 to 31": "день месяца — число от 1 до 31",
+    "the day of the week is not one of the seven": "день недели не из семи",
+    "the number of renewals is from 0 to 1000, and 0 is no limit":
+        "число продлений — от 0 до 1000, 0 — без ограничения",
+    "auto-renewal needs a term: a subscription that never expires is never renewed":
+        "автопродлению нужен срок: бессрочная подписка не продлевается никогда",
+    "Renewal — every so many days": "Продление — каждые N дней",
+    "The value of the 'renewal' line in the registration and status letters, for a subscription that 3x-ui renews by itself. Substitution: {days}":
+        "Значение строки «продление» в письмах о регистрации и о статусе — для подписки, "
+        "которую 3x-ui продлевает сам. Подстановка: {days}",
+    "Renewal — on a day of the month": "Продление — в день месяца",
+    "Substitution: {day}": "Подстановка: {day}",
+    "Renewal — on a day of the week": "Продление — в день недели",
+    "Substitution: {weekday}, taken from the list below.": "Подстановка: {weekday}, берётся из списка ниже.",
+    "The days of the week": "Дни недели",
+    "Seven, separated by commas, Monday first, worded to fit the line above. A list that is not seven long is ignored and the original one used.":
+        "Семь, через запятую, с понедельника, в той форме, что подходит к строке выше. "
+        "Список не из семи игнорируется, и берётся исходный.",
+    "Renewal — when the number is limited": "Продление — когда число ограничено",
+    "Stands in place of the value when only so many renewals are allowed. Substitutions: {renewal} — the value itself, {left} — how many are left.":
+        "Стоит вместо значения, когда продлений разрешено только столько-то. "
+        "Подстановки: {renewal} — само значение, {left} — сколько осталось.",
+    "The 'renewal' line": "Строка «продление»",
+    "Shown only when the subscription renews by itself; the value beside it is under General.":
+        "Показывается, только когда подписка продлевается сама; значение рядом — в разделе «Общее».",
+    "Shown only while the subscription has a renewal still to come; the value beside it is under General.":
+        "Показывается, только пока у подписки ещё есть продление впереди; значение рядом — "
+        "в разделе «Общее».",
     "Has gone quiet [sample letter]": "Давно не появлялся",
     "Never set the app up [sample letter]": "Так и не настроил",
     "Text — for somebody who never set it up": "Текст — для того, кто так и не настроил",

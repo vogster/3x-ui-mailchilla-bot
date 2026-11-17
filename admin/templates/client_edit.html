@@ -18,7 +18,7 @@
         <form method="post" action="/clients/{{ client.uuid }}/edit" class="form-grid">
             {% if tariffs %}
             <div>
-                <label for="apply_tariff">{{ t("Move to a tariff") }} {{ fields.help(t("Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.")) }}</label>
+                <label for="apply_tariff">{{ t("Move to a tariff") }} {{ fields.help(t("Fills the fields below with the tariff's values — the traffic limit, a fresh term counted from today, the device limit, the auto-renewal and its inbounds. Nothing is saved until you press Save, and no record is kept of which tariff that was: a tariff is a template, and from here on these are simply this client's own values.")) }}</label>
                 <select id="apply_tariff" name="tariff_id">
                     <option value="">{{ t("leave as it is") }}</option>
                     {% for tariff in tariffs %}
@@ -26,6 +26,9 @@
                             data-limit="{{ tariff.limit_gb }}"
                             data-days="{{ tariff.expire_days }}"
                             data-hwid="{{ tariff.limit_hwid or 0 }}"
+                            data-renew-mode="{{ tariff.renew.mode }}"
+                            data-renew-value="{{ tariff.renew.value }}"
+                            data-renew-max="{{ tariff.renew.max }}"
                             data-inbounds="{{ tariff.inbound_ids|join(',') }}">{{ tariff.name }}</option>
                     {% endfor %}
                 </select>
@@ -36,8 +39,11 @@
                 <input type="number" id="limit_gb" name="limit_gb" min="0" step="1" value="{{ limit_gb }}">
             </div>
             <div>
-                <label for="expire_days">{{ t("Validity, days from now") }} {{ fields.help(t("0 means it never expires. Sets a new expiry of today plus N days.")) }}</label>
+                <label for="expire_days">{{ t("Validity, days from now") }} {{ fields.help(t("0 means it never expires. A changed number sets a new expiry of today plus that many days. Left as it is — or empty, as it is for a subscription that has run out — it does not move the expiry.")) }}</label>
                 <input type="number" id="expire_days" name="expire_days" min="0" step="1" value="{{ days_left }}">
+                {# What the field opened with: the server sends a term back to
+                   the panel only when it differs from this. #}
+                <input type="hidden" name="expire_days_was" value="{{ days_left }}">
             </div>
             {# Offered only when the panel knows such a limit: a 3x-ui from
                before it returns clients without the field, and a box here
@@ -47,6 +53,11 @@
                 <label for="limit_hwid">{{ t("Device limit") }} {{ fields.help(t("How many devices may use the subscription. 0 means no limit. Devices already registered are listed on the client's card, where they can be forgotten.")) }}</label>
                 <input type="number" id="limit_hwid" name="limit_hwid" min="0" step="1" value="{{ client.limit_hwid }}">
             </div>
+            {% endif %}
+            {# On the same terms as the device limit: only for a panel whose
+               clients carry the fields at all. #}
+            {% if client.renew_known %}
+            {% with renew = client.renew, rid = "" %}{% include "_renewal_fields.html" %}{% endwith %}
             {% endif %}
             <div class="checkbox-row">
                 <input type="checkbox" id="enable" name="enable" {% if client.enable %}checked{% endif %}>
@@ -127,6 +138,12 @@
             // Absent on a panel that knows no device limits.
             var devices = document.getElementById("limit_hwid");
             if (devices) devices.value = option.dataset.hwid || 0;
+            // The auto-renewal with the rest. Absent on a form that has no
+            // such fields, which is one drawn for a panel that knows none.
+            if (window.setRenewal) {
+                window.setRenewal(picker.form, option.dataset.renewMode,
+                                  option.dataset.renewValue, option.dataset.renewMax);
+            }
             var wanted = (option.dataset.inbounds || "").split(",").filter(Boolean);
             document.querySelectorAll('input[name="inbound_ids"]').forEach(function (box) {
                 box.checked = wanted.indexOf(box.value) !== -1;

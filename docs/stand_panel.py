@@ -24,6 +24,7 @@ import html as html_escape
 
 import demo_data as demo
 import mailer
+import renewal
 from xui_client import XuiClient
 
 GB = 1024 ** 3
@@ -32,6 +33,11 @@ DAY_MS = 86400000
 # Which demo groups carry a device limit, so that the stand has clients of
 # both kinds: Family is limited, Standard is not.
 DEVICE_LIMITS = {"Family": 3}
+
+# And which renew by themselves, the same as the tariffs docs/stand.py seeds:
+# one by period with no cap, one by the calendar with a cap being counted down.
+RENEWALS = {"Standard": {"mode": "days", "value": 90, "max": 0},
+            "Family": {"mode": "monthday", "value": 1, "max": 12}}
 
 # What a registered device looks like when 3x-ui lists it. A phone names its
 # model; the desktop app sends only the system it runs on.
@@ -51,6 +57,12 @@ class Panel:
         now = int(time.time() * 1000)
         limited = 0
         for client in self.clients:
+            # Every row carries the four renewal fields, noughts for a client
+            # with none: that is how a panel that knows renewal answers, and
+            # what makes the card and the edit form offer it.
+            renew = RENEWALS.get(client["group"])
+            client.update(renewal.panel_fields(renew, always=True))
+            client["traffic"]["resetCount"] = client["id"] % 4 if renew and renew["max"] else 0
             client["limitHwid"] = DEVICE_LIMITS.get(client["group"], 0)
             if not client["limitHwid"]:
                 continue
@@ -72,7 +84,7 @@ class Panel:
                      if c["uuid"] == key or str(c["id"]) == key or c["email"] == key), None)
 
     def add_client(self, email, client_uuid=None, limit_gb=0, expire_days=0, inbound_ids=None,
-                   comment="", flow=None, group="", limit_hwid=0):
+                   comment="", flow=None, group="", limit_hwid=0, renew=None):
         if self.find(email) or not inbound_ids:
             # As the real panel does: a duplicate identifier is refused, and so
             # is a client with nowhere to go.
@@ -87,7 +99,8 @@ class Panel:
             "createdAt": now, "subId": f"sub{number:02d}aurora",
             # A panel that records fetches says so for a new client as well:
             # nought, which is "never", and not the same as saying nothing.
-            "traffic": {"up": 0, "down": 0, "lastSubFetch": 0},
+            "traffic": {"up": 0, "down": 0, "lastSubFetch": 0, "resetCount": 0},
+            **renewal.panel_fields(renew, always=True),
             "inboundIds": [int(i) for i in inbound_ids],
             "group": group or "", "flow": flow or "",
             "limitHwid": max(int(limit_hwid or 0), 0)})
@@ -95,7 +108,7 @@ class Panel:
 
     def update_client(self, client_uuid, total_gb=None, expire_days=None, enable=None,
                       new_remark=None, new_comment=None, group=None, limit_hwid=None,
-                      client_obj=None):
+                      renew=None, client_obj=None):
         client = self.find(client_uuid)
         if not client:
             return False
@@ -115,6 +128,8 @@ class Panel:
             client["group"] = group
         if limit_hwid is not None:
             client["limitHwid"] = max(int(limit_hwid), 0)
+        if renew is not None:
+            client.update(renewal.panel_fields(renew, always=True))
         return True
 
     def delete_client(self, client_uuid, keep_traffic=False, client_obj=None):

@@ -32,6 +32,7 @@ import uuid
 
 import config
 import i18n
+import renewal
 import statefile
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,10 @@ def _clean_tariff(raw: dict) -> dict:
         "limit_gb": limit_gb,
         "expire_days": expire_days,
         "limit_hwid": limit_hwid,
+        # Whether 3x-ui renews the client by itself when the term runs out,
+        # and how. A tariff written before the field existed has none, and
+        # one with no term cannot have one: the renewal happens at expiry.
+        "renew": renewal.clean(raw.get("renew"), expire_days),
         "inbound_ids": inbound_ids,
         "created_at": int(raw.get("created_at") or _now_ms()),
     }

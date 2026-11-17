@@ -1577,6 +1577,46 @@
     })();
 </script>
     <script>
+        // The auto-renewal fields (_renewal_fields.html): one mode, and of the
+        // value fields only the one that mode takes. Every part arrives
+        // visible, so that a page without this script still shows them all;
+        // which of them the server reads is decided by the mode alone.
+        (function () {
+            function show(select) {
+                var mode = select.value;
+                select.form.querySelectorAll("[data-renewal-part]").forEach(function (part) {
+                    var of = part.dataset.renewalPart;
+                    part.hidden = of === "max" ? !mode : of !== mode;
+                    // And out of the form while it is out of sight. A hidden
+                    // field still holding a nought, typed before the mode was
+                    // changed, fails the browser's own check — which then
+                    // refuses to submit and can point at nothing, so that Save
+                    // appears to do nothing at all. The server reads only the
+                    // field the mode names, so nothing is lost.
+                    part.querySelectorAll("input, select").forEach(function (field) {
+                        field.disabled = part.hidden;
+                    });
+                });
+            }
+            document.querySelectorAll("select[data-renewal-mode]").forEach(function (select) {
+                select.addEventListener("change", function () { show(select); });
+                show(select);
+            });
+            // For a tariff picker: stamps that tariff's renewal onto the form.
+            // Does nothing on a form without the fields.
+            window.setRenewal = function (form, mode, value, max) {
+                var select = form && form.querySelector("select[data-renewal-mode]");
+                if (!select) return;
+                select.value = mode || "";
+                var field = mode && form.querySelector('[name="renew_' + mode + '"]');
+                if (field) field.value = value;
+                var cap = form.querySelector('[name="renew_max"]');
+                if (cap) cap.value = max || 0;
+                show(select);
+            };
+        })();
+    </script>
+    <script>
         // The date field: a text box that speaks ДД.ММ.ГГГГ and a calendar of
         // our own drawing.
         //

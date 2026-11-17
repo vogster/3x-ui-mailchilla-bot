@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import config
 import i18n
+import renewal
 import tariffs
 from admin.deps import templates, require_auth
 from admin.rows import client_row
@@ -182,7 +183,7 @@ def _form_context(request: Request, tariff: dict = None, error: str = ""):
         "service_name": config.SERVICE_NAME,
         "tariff": tariff or {"id": "", "name": "", "limit_gb": config.LIMIT_GB,
                              "expire_days": config.EXPIRE_DAYS, "limit_hwid": 0,
-                             "inbound_ids": []},
+                             "renew": renewal.none(), "inbound_ids": []},
         "inbounds": _inbound_picker((tariff or {}).get("inbound_ids")),
         "error": error,
     }
@@ -229,6 +230,9 @@ async def tariff_save(request: Request,
         # no instruction to lift a limit.
         "limit_hwid": (form.get("limit_hwid") or 0) if "limit_hwid" in form
                       else known.get("limit_hwid", 0),
+        # On the same terms: a form from before the field says nothing about
+        # a renewal, and that is no instruction to switch one off.
+        "renew": renewal.from_form(form) if "renew_present" in form else known.get("renew"),
         # The checkboxes are absent when 3x-ui did not answer with a list; an
         # edit made while the panel is unreachable then keeps what it had
         # rather than quietly emptying the tariff.

@@ -81,6 +81,19 @@ GROUPS = [
              [("common.support", "The line itself", LINE, "Substitution: {support}.")]),
             ("common.unit_gb", "Gigabytes", LINE,
              "Substitution: {gb}. The unit beside a traffic figure."),
+            ("common.renew_days", "Renewal — every so many days", LINE,
+             "The value of the 'renewal' line in the registration and status letters, "
+             "for a subscription that 3x-ui renews by itself. Substitution: {days}"),
+            ("common.renew_monthday", "Renewal — on a day of the month", LINE,
+             "Substitution: {day}"),
+            ("common.renew_weekday", "Renewal — on a day of the week", LINE,
+             "Substitution: {weekday}, taken from the list below."),
+            ("common.weekdays", "The days of the week", LINE,
+             "Seven, separated by commas, Monday first, worded to fit the line above. "
+             "A list that is not seven long is ignored and the original one used."),
+            ("common.renew_left", "Renewal — when the number is limited", LINE,
+             "Stands in place of the value when only so many renewals are allowed. "
+             "Substitutions: {renewal} — the value itself, {left} — how many are left."),
         ],
     },
     {
@@ -107,6 +120,9 @@ GROUPS = [
              "Shown only when the client has a device limit; without one the line "
              "is left out."),
             ("welcome.value_devices", "The devices value", LINE, "Substitution: {count}"),
+            ("welcome.label_renewal", "The 'renewal' line", LINE,
+             "Shown only when the subscription renews by itself; the value beside "
+             "it is under General."),
             ("welcome.button_main", "The main button", LINE, ""),
             ("welcome.apps_intro", "The line above the app buttons", LINE, ""),
             ("welcome.button_app", "An app button", LINE, "Substitution: {app}"),
@@ -147,6 +163,9 @@ GROUPS = [
              "before tariffs existed, or added by hand in 3x-ui."),
             ("status.label_expiry", "The 'valid until' line", LINE, ""),
             ("status.value_forever", "The 'never expires' value", LINE, ""),
+            ("status.label_renewal", "The 'renewal' line", LINE,
+             "Shown only while the subscription has a renewal still to come; the "
+             "value beside it is under General."),
             ("status.label_used", "The 'used' line", LINE, ""),
             ("status.used_of", "The value with a limit", LINE, "Substitutions: {used}, {total}"),
             ("status.used_nolimit", "The value without a limit", LINE, "Substitution: {used}"),
@@ -265,6 +284,12 @@ DEFAULTS_BY_LANG = {
             "If you did not ask for it, simply ignore it.",
         "common.support": "Questions: {support}",
         "common.unit_gb": "{gb} GB",
+        "common.renew_days": "automatic, every {days} days",
+        "common.renew_monthday": "automatic, on day {day} of each month",
+        "common.renew_weekday": "automatic, {weekday}",
+        "common.weekdays": "on Mondays, on Tuesdays, on Wednesdays, on Thursdays, "
+                           "on Fridays, on Saturdays, on Sundays",
+        "common.renew_left": "{renewal} — renewals left: {left}",
 
         "welcome.subject_new": "Your {service} subscription is active",
         "welcome.subject_again": "Your {service} subscription",
@@ -284,6 +309,7 @@ DEFAULTS_BY_LANG = {
         "welcome.value_gb": "{gb} GB",
         "welcome.label_devices": "Devices",
         "welcome.value_devices": "up to {count}",
+        "welcome.label_renewal": "Renewal",
         "welcome.button_main": "Get the settings",
         "welcome.apps_intro": "Or add the subscription straight to an app:",
         "welcome.button_app": "Add to {app}",
@@ -304,6 +330,7 @@ DEFAULTS_BY_LANG = {
         "status.label_tariff": "Tariff",
         "status.label_expiry": "Valid until",
         "status.value_forever": "No expiry",
+        "status.label_renewal": "Renewal",
         "status.label_used": "Used",
         "status.used_of": "{used} of {total}",
         "status.used_nolimit": "{used} (no limit)",
@@ -410,6 +437,12 @@ DEFAULTS_BY_LANG = {
             "Если вы его не запрашивали, просто проигнорируйте.",
         "common.support": "Вопросы: {support}",
         "common.unit_gb": "{gb} ГБ",
+        "common.renew_days": "автоматически, каждые {days} дней",
+        "common.renew_monthday": "автоматически, {day}-го числа каждого месяца",
+        "common.renew_weekday": "автоматически, {weekday}",
+        "common.weekdays": "по понедельникам, по вторникам, по средам, по четвергам, "
+                           "по пятницам, по субботам, по воскресеньям",
+        "common.renew_left": "{renewal} — осталось продлений: {left}",
 
         "welcome.subject_new": "Ваша подписка {service} активирована",
         "welcome.subject_again": "Ваша подписка {service}",
@@ -429,6 +462,7 @@ DEFAULTS_BY_LANG = {
         "welcome.value_gb": "{gb} ГБ",
         "welcome.label_devices": "Устройств",
         "welcome.value_devices": "до {count}",
+        "welcome.label_renewal": "Продление",
         "welcome.button_main": "Получить настройки",
         "welcome.apps_intro": "Или добавьте подписку прямо в приложение:",
         "welcome.button_app": "Добавить в {app}",
@@ -449,6 +483,7 @@ DEFAULTS_BY_LANG = {
         "status.label_tariff": "Тариф",
         "status.label_expiry": "Действует до",
         "status.value_forever": "Бессрочно",
+        "status.label_renewal": "Продление",
         "status.label_used": "Использовано",
         "status.used_of": "{used} из {total}",
         "status.used_nolimit": "{used} (без лимита)",

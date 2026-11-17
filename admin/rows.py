@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 
 import i18n
+import renewal
 from xui_client import XuiClient
 
 GB_FACTOR = 1024 * 1024 * 1024
@@ -89,6 +90,28 @@ def _fmt_expiry(expiry_time_ms):
         return datetime.fromtimestamp(int(expiry_time_ms) / 1000).strftime("%Y-%m-%d %H:%M")
     except Exception:
         return "—"
+
+
+def _renewal_cells(client_obj: dict) -> dict:
+    """
+    What the card and the edit form say about auto-renewal.
+
+    `renew_known` is False for a panel whose clients carry no such fields, and
+    nothing is then drawn — as with the device limit. The note is the card's
+    second line, there for the two cases in which the setting alone misleads:
+    a cap that is being counted down, and a renewal that will never fire
+    because the subscription has no expiry for it to fire at.
+    """
+    renew = renewal.of_client(client_obj)
+    known = renew is not None
+    renew = renew or {**renewal.none(), "used": 0, "left": None, "active": False}
+    note = ""
+    if renew["mode"] and not int(client_obj.get("expiryTime") or 0):
+        note = i18n.t("does nothing while the subscription has no expiry")
+    elif renew["mode"] and renew["max"]:
+        note = i18n.t("renewed {used} of {max}", used=renew["used"], max=renew["max"])
+    return {"renew_known": known, "renew": renew,
+            "renew_text": renewal.describe(renew, cap=False), "renew_note": note}
 
 
 def client_row(client_obj: dict, online: set = None, last_online: dict = None) -> dict:
@@ -191,4 +214,5 @@ def client_row(client_obj: dict, online: set = None, last_online: dict = None) -
         # offering something that is not kept.
         "limit_hwid": XuiClient.device_limit(client_obj) or 0,
         "hwid_known": XuiClient.device_limit(client_obj) is not None,
+        **_renewal_cells(client_obj),
     }

@@ -19,6 +19,21 @@ have one.
 
 ### Added
 
+- **Auto-renewal in a tariff.** A tariff can now say that 3x-ui renews the
+  client by itself: when the term runs out the panel moves the expiry on and
+  starts the traffic count again, instead of cutting the client off — so
+  "100 GB a month" is a limit of 100, a term of 30 days and a renewal every
+  30. Each renewal ends so many days later, or on the next such day of the
+  month or of the week, and a cap on their number makes a subscription that
+  ends by itself. The client's card shows it and how many renewals have been
+  used; the forms that create and edit a client carry the same fields; the
+  registration letter and `/status` say that the subscription renews and how
+  many renewals are left, in texts that are on the Letters tab under General.
+  It needs a term — the forms will not set a renewal for a subscription that
+  never expires — and a 3x-ui that knows auto-renewal: an older one takes the
+  client without it, the page and the log say so, and the letter promises
+  nothing. Tariffs you already have are unchanged and renew nothing.
+
 - **Who registered and never set the app up.** 3x-ui records when a client's
   app last fetched its subscription, and the panel now shows it: on the
   client's card, beside "Last online", and as a filter on the client list —
@@ -308,6 +323,15 @@ have one.
 - The code words are no longer written into the log when the bot starts.
 
 ### Fixed
+
+- **Editing a client no longer moves their expiry unless you change it.** The
+  term on the edit form is "days from now", and every save sent it back — so
+  saving a new name shifted the expiry to the current hour of the day, by up
+  to half a day's rounding. Worse, for a client whose subscription had run
+  out the field opened on 0, which on that form means "never expires": any
+  save at all gave them a subscription for good. The term is now sent only
+  when the number was changed, and the field is empty for a subscription that
+  has ended.
 
 - **With 3x-ui away the bot goes on answering whoever it can.** One letter that
   needed the panel used to stop the whole mailbox: nobody was even told their

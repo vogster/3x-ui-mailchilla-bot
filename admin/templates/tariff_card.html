@@ -31,6 +31,14 @@
         <div class="label">{{ t("Devices") }}</div>
         <div class="value">{% if tariff.limit_hwid %}{{ tariff.limit_hwid }}{% else %}∞{% endif %}</div>
     </div>
+    {# Only when there is one, like the line on the list: a card saying "off"
+       on every tariff is a card nobody reads. #}
+    {% if tariff.renew and tariff.renew.mode %}
+    <div class="card">
+        <div class="label">{{ t("Auto-renewal") }}</div>
+        <div class="value" style="font-size: 18px;">{{ renew_text(tariff.renew) }}</div>
+    </div>
+    {% endif %}
     <div class="card">
         <div class="label">{{ t("Clients on it") }}</div>
         <div class="value">{{ clients|length }}</div>

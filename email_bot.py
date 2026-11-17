@@ -20,6 +20,7 @@ from email.utils import parseaddr
 
 import broadcasts
 import config
+import renewal
 import tariffs
 import templates
 from xui_client import XuiClient, XuiUnavailable, get_shared_client
@@ -128,9 +129,47 @@ def kept_device_limit(client_obj: dict, wanted: int, who: str) -> int:
     return kept or 0
 
 
+def kept_renewal(client_obj: dict, wanted: dict, who: str):
+    """
+    The auto-renewal a client actually has — what renewal.of_client() reads
+    off it, None for a panel that does not say — with a warning when it is
+    not the one that was asked for.
+
+    The same trap as the device limit, with a costlier end. A panel that
+    drops the fields creates the client all the same; the letter would promise
+    a subscription that renews, and the first sign otherwise is somebody cut
+    off on the day the term ends. So whoever creates a client reads it back
+    through this, and the letter states what the panel holds.
+    """
+    kept = renewal.of_client(client_obj)
+    if not (wanted or {}).get("mode"):
+        return kept
+    asked = renewal.panel_fields(wanted)
+    if kept is None:
+        logger.warning(
+            f"{who} was meant to renew automatically ({asked}), but this 3x-ui "
+            f"does not know auto-renewal at all — the client was created without "
+            f"it, and the subscription will simply end with its term. Auto-renewal "
+            f"needs a recent 3x-ui; until the panel is updated the tariff's renewal "
+            f"does nothing.")
+    elif not renewal.same(kept, wanted):
+        # A panel that knows the fields and holds something else: what a
+        # creation that failed part of the way looks like.
+        logger.warning(
+            f"{who} was meant to renew automatically ({asked}), but 3x-ui holds "
+            f"{renewal.panel_fields(kept, always=True)}. The creation most likely "
+            f"failed on one of the inbounds — check the client, then set the "
+            f"renewal from its edit form.")
+    elif not kept["active"]:
+        logger.warning(
+            f"{who} has auto-renewal set and no expiry for it to act on, so "
+            f"3x-ui will never renew the subscription.")
+    return kept
+
+
 def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
                        limit_gb: int = None, renewed: bool = False, tariff: str = "",
-                       limit_hwid: int = 0):
+                       limit_hwid: int = 0, renew: dict = None):
     """
     The welcome letter carrying the subscription link.
 
@@ -145,6 +184,10 @@ def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
     `limit_hwid` is how many devices the client may use, and follows the same
     rule: what the client has in 3x-ui, not what a tariff says. 0 leaves the
     line out.
+
+    `renew` is the auto-renewal, and the rule holds for it most of all: it is
+    what renewal.of_client() read off the client, never the tariff's own
+    setting, since a line saying the subscription renews is a promise.
     """
     if expire_days is None:
         expire_days = config.EXPIRE_DAYS
@@ -154,7 +197,7 @@ def send_welcome_email(email_addr: str, sub_url: str, expire_days: int = None,
     send_email_reply(email_addr, templates.welcome_subject(renewed),
                      templates.get_welcome_email(sub_url, expire_days, limit_gb,
                                                  renewed=renewed, tariff=tariff,
-                                                 limit_hwid=limit_hwid))
+                                                 limit_hwid=limit_hwid, renew=renew))
 
 
 def send_personal_email(email_addr: str, subject: str, message_body: str, kind="plain"):
@@ -199,7 +242,8 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         # what they have, and the letter has to say the same thing.
         send_welcome_email(email_addr, sub_url, renewed=True,
                            tariff=client_info.get("group") or "",
-                           limit_hwid=XuiClient.device_limit(client_info) or 0)
+                           limit_hwid=XuiClient.device_limit(client_info) or 0,
+                           renew=renewal.of_client(client_info))
         logger.info(f"Client {email_addr} is already registered; the link was sent again. "
                     f"The {tariff['name']!r} tariff was not applied — an existing client keeps what it has.")
         return
@@ -222,6 +266,7 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         # not in a file of ours that could disagree with it.
         group=tariff["name"],
         limit_hwid=tariff.get("limit_hwid", 0),
+        renew=tariff.get("renew"),
     )
     if not success_uuid:
         logger.error(f"The panel refused to create a client for {email_addr}.")
@@ -242,7 +287,9 @@ def handle_registration(email_addr: str, sender_name: str = "", tariff: dict = N
         send_welcome_email(email_addr, sub_url, tariff["expire_days"], tariff["limit_gb"],
                            tariff=tariff["name"],
                            limit_hwid=kept_device_limit(client_info, tariff.get("limit_hwid", 0),
-                                                        f"Client {email_addr}"))
+                                                        f"Client {email_addr}"),
+                           renew=kept_renewal(client_info, tariff.get("renew"),
+                                              f"Client {email_addr}"))
         logger.info(f"Client {email_addr} registered successfully on {tariff['name']!r}.")
         # The code is spent only now. Burning it before the client exists would
         # lose an invitation to a 3x-ui that happened to be unreachable.
@@ -303,7 +350,10 @@ def handle_status(email_addr: str):
                                                     expiry_time,
                                                     tariff=(client_info.get("group") or "").strip(),
                                                     device_limit=device_limit,
-                                                    devices=devices))
+                                                    devices=devices,
+                                                    # Off the row already in
+                                                    # hand: the list carries it.
+                                                    renew=renewal.of_client(client_info)))
     else:
         send_email_reply(email_addr, templates.notice_subject("status_error"),
                          templates.get_notice("status_error"))

@@ -6,7 +6,8 @@
 
 {% if tariff %}{{ t("welcome.label_tariff") | plain }}: {{ tariff | plain }}
 {% endif %}{{ t("welcome.label_expire") | plain }}: {{ expire_text | plain }}
-{{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
+{% if renewal_text %}{{ t("welcome.label_renewal") | plain }}: {{ renewal_text | plain }}
+{% endif %}{{ t("welcome.label_limit") | plain }}: {{ limit_text | plain }}
 {% if devices_text %}{{ t("welcome.label_devices") | plain }}: {{ devices_text | plain }}
 {% endif %}
 

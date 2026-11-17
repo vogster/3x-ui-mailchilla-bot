@@ -127,6 +127,9 @@
             {% if tariff.limit_hwid %}
             <span>{{ t("Devices") }}: <span class="mono">{{ tariff.limit_hwid }}</span></span>
             {% endif %}
+            {% if tariff.renew and tariff.renew.mode %}
+            <span>{{ t("Auto-renewal") }}: <span class="mono">{{ renew_text(tariff.renew) }}</span></span>
+            {% endif %}
             <span>{{ t("Came in through it") }}: <span class="mono">{{ tariff.arrived }}</span></span>
         </div>
         <div class="chips">

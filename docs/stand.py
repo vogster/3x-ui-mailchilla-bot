@@ -88,16 +88,21 @@ def seed_tariffs(tariffs):
         return
     tariffs._state = {"tariffs": [], "codes": []}
 
-    def make(name, limit, days, inbounds, devices, word, uses=None, note=""):
+    def make(name, limit, days, inbounds, devices, word, uses=None, note="", renew=None):
         made = tariffs.save_tariff({"name": name, "limit_gb": limit, "expire_days": days,
-                                    "inbound_ids": inbounds, "limit_hwid": devices})
+                                    "inbound_ids": inbounds, "limit_hwid": devices,
+                                    "renew": renew})
         tariffs.save_code({"word": word, "tariff_id": made["id"], "uses_left": uses,
                            "note": note, "enabled": True})
 
     # Named after the groups the demo clients carry, so the client list and the
     # tariffs agree: Family is the one with a device limit.
-    make("Standard", 100, 90, [1, 2], 0, "AURORA")
-    make("Family", 500, 365, [1], 3, "AURORA-FAMILY")
+    # The renewals are the ones the demo clients of each group carry in the
+    # stand's panel (stand_panel.RENEWALS): one of each kind worth looking at.
+    make("Standard", 100, 90, [1, 2], 0, "AURORA",
+         renew={"mode": "days", "value": 90, "max": 0})
+    make("Family", 500, 365, [1], 3, "AURORA-FAMILY",
+         renew={"mode": "monthday", "value": 1, "max": 12})
     make("Trial", 10, 7, [1], 1, "K78QYYDNSZ", uses=1, note="A personal invitation")
 
 

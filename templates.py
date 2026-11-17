@@ -24,6 +24,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
 import email_texts
+import renewal
 
 logger = logging.getLogger(__name__)
 
@@ -222,12 +223,60 @@ def _fmt_gb(value_bytes) -> str:
     return text("common.unit_gb", gb=round(value_bytes / GB, 2))
 
 
+def _weekday_words(day: int) -> str:
+    """
+    The words for a day of the week, 1 for Monday, out of the one editable
+    list of seven.
+
+    One text rather than seven fields, since they are only ever edited as a
+    set. A list somebody left six or eight long cannot be counted into, and
+    the shipped one is used instead: a letter naming the wrong day is worse
+    than one in the original wording.
+    """
+    def seven(raw):
+        return [part.strip() for part in str(raw or "").split(",") if part.strip()]
+
+    words = seven(email_texts.get("common.weekdays"))
+    if len(words) != 7:
+        words = seven(email_texts.default("common.weekdays"))
+    return words[day - 1] if len(words) == 7 and 1 <= day <= 7 else ""
+
+
+def _renewal_text(renew) -> str:
+    """
+    What a letter says about auto-renewal; empty when it should say nothing.
+
+    `renew` is what renewal.of_client() read off the client. Nothing is said
+    for a panel that does not say, for a client with no renewal — and for one
+    whose renewal will not fire again: the cap is spent, or there is no expiry
+    for it to act on. A line about renewal is a promise that the subscription
+    carries on, and the client plans by it.
+    """
+    if not renew or not renew.get("mode") or renew.get("active") is False:
+        return ""
+    mode, value = renew["mode"], int(renew.get("value") or 0)
+    if mode == renewal.DAYS:
+        words = text("common.renew_days", days=value)
+    elif mode == renewal.MONTHDAY:
+        words = text("common.renew_monthday", day=value)
+    elif mode == renewal.WEEKDAY and _weekday_words(value):
+        words = text("common.renew_weekday", weekday=_weekday_words(value))
+    else:
+        return ""
+    # How many are still to come, when there is a cap. A setting that never
+    # went through of_client carries no count, and its cap is then all of them.
+    left = renew["left"] if "left" in renew else (int(renew.get("max") or 0) or None)
+    if left is not None:
+        words = text("common.renew_left", renewal=words, left=left)
+    return words
+
+
 def welcome_subject(renewed=False) -> str:
     return text("welcome.subject_again" if renewed else "welcome.subject_new")
 
 
 def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="",
-                      limit_hwid=0) -> Email:
+                      limit_hwid=0, renew=None) -> Email:
     """The letter carrying the subscription link, on registration or resent."""
     # Somebody reading their mail on a computer has the link on the wrong
     # machine, and carrying it across to the phone by hand is exactly the sort
@@ -263,11 +312,15 @@ def get_welcome_email(sub_url, expire_days, limit_gb, renewed=False, tariff="",
         # client hears of it.
         devices_text=(text("welcome.value_devices", count=int(limit_hwid))
                       if limit_hwid and int(limit_hwid) > 0 else ""),
+        # Whether the subscription renews by itself when the term is up. Left
+        # out when it does not: the term above already says when it ends.
+        renewal_text=_renewal_text(renew),
     )
 
 
 def get_status_email(email, is_active, up, down, total, expiry_time_ms,
-                     tariff: str = "", device_limit: int = 0, devices=None) -> Email:
+                     tariff: str = "", device_limit: int = 0, devices=None,
+                     renew=None) -> Email:
     """
     The letter with the subscription status and traffic spent.
 
@@ -304,6 +357,9 @@ def get_status_email(email, is_active, up, down, total, expiry_time_ms,
         # tariff. Empty for anybody registered before tariffs existed, and the
         # line is then left out rather than showing a blank.
         tariff=tariff or "",
+        # Beside "valid until": with a renewal that date is not the end, and
+        # somebody watching it come closer should be told so.
+        renewal_text=_renewal_text(renew),
         **_status_devices(device_limit, devices),
     )
 

@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 import broadcasts
 import config
 import i18n
+import renewal
 import settings
 import tariffs
 import updater
@@ -76,6 +77,10 @@ templates.env.globals["update_status"] = updater.status
 # Whether letters are going out right now, for the dot on the menu's Broadcast
 # link — a count read from memory, like the two above.
 templates.env.globals["broadcasts_running"] = broadcasts.running
+# An auto-renewal in a few words, and the seven days for the form's picker:
+# the tariff pages and the client pages both want them.
+templates.env.globals["renew_text"] = renewal.describe
+templates.env.globals["renew_weekdays"] = renewal.weekday_options
 
 
 def check_panel_configured():

@@ -599,6 +599,7 @@ def dashboard(request: Request):
                 "limit_gb": first["limit_gb"],
                 "expire_days": first["expire_days"],
                 "limit_hwid": first["limit_hwid"],
+                "renew": first["renew"],
                 "flow": config.XUI_FLOW,
             },
         },

@@ -11,6 +11,7 @@
     </tr>
     {% if tariff %}{{ ui.stat(t("status.label_tariff"), tariff) }}{% endif %}
     {{ ui.stat(t("status.label_expiry"), expiry_text) }}
+    {% if renewal_text %}{{ ui.stat(t("status.label_renewal"), renewal_text) }}{% endif %}
     {{ ui.stat(t("status.label_used"), used_text) }}
     {% if devices_text %}{{ ui.stat(t("status.label_devices"), devices_text) }}{% endif %}
 </table>
