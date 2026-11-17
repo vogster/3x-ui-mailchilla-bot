@@ -62,15 +62,15 @@ The sender's name lands in the client's comment - the list then shows people rat
 
 ![Client list](docs/screenshots/clients.png)
 
-- Tariffs: traffic, term and inbounds, each with its own code word. As many as you like, and a client made by hand can be stamped from one
+- Tariffs: traffic, term, a device limit, automatic renewal and inbounds, each with code words of its own. As many as you like, and a client made by hand can be stamped from one
 - A client list with live search, sorting and filters (status, mail, connection, period, traffic)
 - Who is connected right now shows as a dot beside the address - green breathes, red sits still - on the list, on a client's own page and in the broadcast's recipient list. It refreshes itself every twenty seconds without disturbing anything you are in the middle of
 - **Last online**, as its own column and as a line on the card: minutes and hours while it is fresh, a date once it is past a week, a dash for somebody who has never connected. The exact moment is in the tooltip, and the column sorts, so the people who have stopped using the thing are two clicks away
 - **Subscription fetched**, on the card and as a filter on the list: when the client's app last asked for the subscription, or that it never has. Last online says whether the app is connected; this says whether it was ever set up, so the people who registered and got no further are one filter away. "Never" is said only of somebody the panel has not seen connect either: a client set up before 3x-ui began recording fetches reads "no record" and is not counted among them. Shown when the 3x-ui panel records it, and not at all when it does not
 - The dashboard opens with the machine itself: processor, memory, disk, uptime, xray's state and how many clients are connected right now. It can refresh itself every few seconds, or on the button. Beside it, how the mail loop is doing - a bot that has quietly stopped reading the mailbox otherwise looks exactly like a mailbox nobody writes to - and how many people are on each tariff, with what they have spent
-- A client's card: traffic, expiry, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
+- A client's card: traffic, expiry, the auto-renewal, the devices registered against the limit, subscription link and the inbounds they belong to - including ones switched off or gone from the panel
 - Each inbound also carries its own ready-made connection URL, the same string 3x-ui's copy button hands out. One click copies it
-- Creating a client by hand, changing the limit, the expiry or the set of inbounds, disabling an account
+- Creating a client by hand, changing the limit, the expiry, the device limit, the renewal or the set of inbounds, disabling an account
 - Resending the invitation and writing a personal letter, straight from the card
 
 ![Client card](docs/screenshots/client.png)
@@ -87,13 +87,15 @@ And something completely unserious: the **Roulette** button rolls the visible re
 
 **📮 The mailbox**
 
+![The mailbox](docs/screenshots/mail.png)
+
 The bot's own mailbox, from the panel: Inbox, Sent and Trash, with search by address, name or subject. Beside an open letter stands the client who wrote it - status, tariff, traffic, expiry and the word they came in through, a click away from their card - or a plain "not a client". In the list itself a client's letters carry their tariff, so the people you already serve stand out from the rest at a glance.
 
 It only looks. Opening a letter does not mark it read, because an unread letter is how the bot knows it still owes somebody an answer. An HTML letter is drawn in a sealed frame where nothing in it runs, and pictures from other servers stay hidden until you ask for them - each one tells the sender the letter was opened. Attachments are downloaded, never opened in the panel.
 
 SMTP keeps no copy of what it sends, so the bot now puts one of every letter into the Sent folder itself - unless the provider has already filed it, as Gmail does. Letters sent before the update are not there.
 
-A second mailbox can join it: Support, set up on its own tab in Settings. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Once the reply has gone, the letter it answers is marked read and answered, so the list tells what has been dealt with from what nobody has got to. That mark is the only thing these pages ever change in a mailbox, and never in the bot's own.
+A second mailbox can join it: Support, set up on the Mail tab in Settings, below the bot's own. Once it has both an IMAP and an SMTP half, a Support tab appears beside the bot's, and every letter there carries a reply box the bot's own mailbox does not offer - plain text, threaded under the letter it answers and quoting it underneath, filed into Support's own Sent folder the same way. Once the reply has gone, the letter it answers is marked read and answered, so the list tells what has been dealt with from what nobody has got to. That mark is the only thing these pages ever change in a mailbox, and never in the bot's own.
 
 Nobody watches Support's mailbox the way the bot watches its own, so with Gotify set up the bot looks at it once a minute and pushes a notification about whatever has arrived since: who wrote, and about what - one push for each letter, in a title and a text you write yourself, and when more than five come at once, the newest five and one push more that counts the rest. It only looks; no letter is marked read. Letters already there when it first looks are not announced, a restart does not repeat what was said, and a letter that arrived while the bot was down is announced when it comes back. The switch and the wording are on the Gotify tab, beside the registration push's. Left unset, nothing about the Mail page changes.
 
@@ -193,7 +195,7 @@ The wizard goes step by step: service, mail, inbounds and the first tariff, then
 
 ## 🎟️ Tariffs
 
-A tariff is what a client gets: traffic, term and the inbounds they are added to. Each has its own code word, and a letter carrying that word registers the sender on that tariff. There can be as many tariffs as you like - a generous one for the family, a small one for a trial, one with no word at all that can only be reached another way.
+A tariff is what a client gets: traffic, term and the inbounds they are added to - and, if you like, a limit on devices and a renewal that happens by itself. Each has its own code word, and a letter carrying that word registers the sender on that tariff. There can be as many tariffs as you like - a generous one for the family, a small one for a trial, one with no word at all that can only be reached another way.
 
 ![Tariffs](docs/screenshots/tariffs.png)
 
@@ -252,7 +254,7 @@ Everything that changes during normal use is set in the panel and applies on the
 | Tab | What is inside |
 |---|---|
 | **General** | interface language, service name, subscription base address, administrator address, support address, link to the instructions, two-step sign-in |
-| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, the mail server's name for the proof of a sender, clearing the mailbox out, connection check |
+| **Mail** | IMAP and SMTP: servers, ports, logins, passwords, polling interval, the mail server's name for the proof of a sender, clearing the mailbox out, connection check; below it, the Support mailbox |
 | **Registration** | flow, and whether the sender's name is written into the client's comment. Traffic, term, inbounds and the code word belong to a tariff |
 | **Apps** | the schemes behind the "Add to Happ / Incy" buttons in the letter |
 | **Gotify** | server address, token, priority, the text of the registration push; the switch and the text of the push about letters to Support, and of the one about Xray stopping |
@@ -398,6 +400,10 @@ There is no database of its own. The source of truth is the 3x-ui panel, and cli
 | `settings.py` | settings layered over `.env` |
 | `totp.py` | the codes of two-step sign-in (TOTP, RFC 6238) |
 | `tariffs.py` | the tariffs and the code words that open them |
+| `renewal.py` | auto-renewal: what a tariff may ask for, and what 3x-ui holds for a client |
+| `inactivity.py` | reminding a client who has gone quiet |
+| `updater.py` | noticing that a newer version has been released |
+| `statefile.py` | writing the state files: atomically, and readable by their owner alone |
 | `config.py` | environment variables |
 | `applog.py` | log collection into a buffer and a file |
 | `admin/` | the FastAPI web panel |
@@ -417,6 +423,8 @@ python -m unittest discover -s tests   # what CI runs
 Most of the tests are pure — the settings coercion, the code-word matching, the letter texts. `tests/test_panel_routes.py` is the other kind: it drives the panel through `fastapi.testclient` with 3x-ui stubbed out, and exists for one failure in particular — a template reading a context key the route never sent. Jinja resolves that to Undefined in silence, the page still renders, and the missing part is found by somebody clicking a week later. A new page or a new context key wants a line in that file.
 
 A test run leaves the project directory as it found it: every test module starts with `import sandbox`, which moves `settings.json`, `email_texts.json` and `tariffs.json` to a temporary directory and switches the log file off before anything is loaded. A new test file needs that line too, and `tests/test_sandbox.py` fails for one without it.
+
+To look at a change rather than test it, there is a stand: `python docs/stand.py --lang en` copies the tree to a temporary directory and starts the panel there on stand-ins - a 3x-ui kept in memory with invented clients, two mailboxes, and an outbox that is a folder, so nothing is ever sent. Its `/stand` page takes a letter "to the bot" and shows what was answered. The screenshots in this file are taken from the same stand-ins by `python docs/shots.py`.
 
 ```bash
 git checkout -b feature/my-feature

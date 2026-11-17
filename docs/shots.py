@@ -11,8 +11,12 @@ itself. settings.SETTINGS_PATH is built from the module's own __file__, so a
 panel started here would otherwise write the demo settings straight over a real
 installation's — which is a mistake this project has made before.
 
-3x-ui is not contacted at all: XuiClient is stubbed with docs/demo_data.py, so
-the shots are reproducible and carry nobody's real address.
+3x-ui is not contacted at all, and neither is a mailbox: the panel runs on the
+test stand's stand-ins (docs/stand_panel.py, docs/stand_mail.py), filled from
+docs/demo_data.py, so the shots are reproducible and carry nobody's real
+address. This script used to keep a set of stubs of its own, which answered
+less than the panel had learned to ask: no devices, no renewal, no mailbox —
+and the pictures quietly showed a panel without them.
 """
 import os
 import shutil
@@ -43,33 +47,27 @@ config.ADMIN_PANEL_SECRET = "0" * 32
 config.PANEL_LANG = {lang!r}
 config.MAIL_LANG = {lang!r}
 
-import demo_data as demo
-from xui_client import XuiClient
+# The one request the project makes on its own behalf; a screenshot has no
+# business asking GitHub anything, nor showing an "update available" banner.
+config.UPDATE_CHECK_ENABLED = False
 
-XuiClient.get_all_clients = lambda self: demo.clients()
-XuiClient.get_online_emails = lambda self: list(demo.ONLINE)
-XuiClient.get_last_online = lambda self: demo.last_online()
-XuiClient.get_inbounds = lambda self: [dict(i) for i in demo.INBOUNDS]
-XuiClient.get_server_status = lambda self: dict(demo.SERVER)
-# The real method parses the panel's raw URLs into these dicts; _attach_links
-# ties a link to an inbound by port, so the ports have to match INBOUNDS.
-XuiClient.get_client_links = lambda self, email: [
-    {{"url": "vless://c0ffee@aurora.example.com:443?security=reality&type=tcp"
-             "#VLESS-REALITY-443",
-      "protocol": "vless", "label": "VLESS-REALITY-443", "port": 443}},
-    {{"url": "ss://Y2hhY2hhMjA@aurora.example.com:8388#Shadowsocks-8388",
-      "protocol": "ss", "label": "Shadowsocks-8388", "port": 8388}},
-]
-XuiClient.find_client_by_uuid = lambda self, u: next(
-    (c for c in demo.clients() if c["uuid"] == u or str(c["id"]) == str(u)), None)
-XuiClient.login = lambda self: True
+import demo_data as demo
+import stand_mail
+import stand_panel
+
+# The stand's panel and mailboxes: every request the pages make is answered in
+# memory, and one that is not raises rather than reaching a real 3x-ui.
+stand_panel.install(stand_panel.Panel())
+stand_mail.install(stand_mail.Mailboxes())
 
 import admin.app as appmod
 import settings as app_settings, email_bot, inbox, tariffs
 
 config.SERVICE_NAME = demo.SERVICE_NAME
-config.IMAP_SERVER, config.IMAP_USER, config.IMAP_PASSWORD = "imap.example.com", "bot@example.com", "x"
-config.SMTP_SERVER, config.SMTP_USER, config.SMTP_PASSWORD = "smtp.example.com", "bot@example.com", "x"
+# Once more now that the panel has been imported, as on the stand: loading the
+# settings laid the defaults back over what stand_mail.install had set.
+for _key, _value in stand_mail.SETTINGS.items():
+    setattr(config, _key, _value)
 config.ADMIN_EMAIL = "admin@example.com"
 config.XUI_INBOUND_IDS = [1, 2]
 config.XUI_SUBSCRIPTION_BASE_URL = "https://aurora.example.com/sub"
@@ -83,16 +81,23 @@ app_settings._stored["SETUP_DONE"] = {setup_done!r}
 # Two tariffs rather than the one a first run seeds: the page is about the
 # difference between them, and a single row says nothing about that.
 tariffs._state = {{"tariffs": [], "codes": []}}
-def _demo_tariff(name, limit, days, inbounds, word=None, uses=None, note=""):
+def _demo_tariff(name, limit, days, inbounds, word=None, uses=None, note="",
+                 devices=0, renew=None):
     made = tariffs.save_tariff({{"name": name, "limit_gb": limit,
-                               "expire_days": days, "inbound_ids": inbounds}})
+                               "expire_days": days, "inbound_ids": inbounds,
+                               "limit_hwid": devices, "renew": renew}})
     if word:
         tariffs.save_code({{"word": word, "tariff_id": made["id"],
                            "uses_left": uses, "note": note, "enabled": True}})
     return made
-_standard = _demo_tariff("Standard", 100, 90, [1, 2], "AURORA")
-_family = _demo_tariff("Family", 500, 365, [1], "AURORA-FAMILY")
-_trial = _demo_tariff("Trial", 10, 7, [1])
+# With the device limits and the renewals the demo clients of each group carry
+# in the stand's panel, so the tariffs page and the client cards agree.
+_standard = _demo_tariff("Standard", 100, 90, [1, 2], "AURORA",
+                         renew=stand_panel.RENEWALS["Standard"])
+_family = _demo_tariff("Family", 500, 365, [1], "AURORA-FAMILY",
+                       devices=stand_panel.DEVICE_LIMITS["Family"],
+                       renew=stand_panel.RENEWALS["Family"])
+_trial = _demo_tariff("Trial", 10, 7, [1], devices=1)
 # A personal code on the trial tariff, so the page shows both shapes at once.
 tariffs.save_code({{"word": "K78QYYDNSZ", "tariff_id": _trial["id"],
                    "uses_left": 1, "note": "For Lena", "enabled": True}})
@@ -213,7 +218,8 @@ def letter_html(copy_dir):
         "import email_texts; email_texts.load()\n"
         "import templates\n"
         "mail = templates.get_welcome_email('https://aurora.example.com/sub/8f2c41d9', 90, 100,\n"
-        "                                   tariff='Standard')\n"
+        "                                   tariff='Standard', limit_hwid=3,\n"
+        "                                   renew={'mode': 'days', 'value': 90, 'max': 0})\n"
         "html = mail.html\n"
         "for cid, data in (mail.images or {}).items():\n"
         "    html = html.replace('cid:' + cid, 'data:image/png;base64,' + base64.b64encode(data).decode())\n"
@@ -258,7 +264,13 @@ def main():
             page.wait_for_timeout(300)
             shoot(page, "clients")
 
-            first = page.get_attribute("tbody tr[data-remark] a.row-link", "href")
+            # One client by name rather than whoever heads the list: on the
+            # Family tariff, connected, with devices registered against a
+            # limit and a renewal part of the way through its cap — so the
+            # card shows everything a card can, on somebody whose
+            # subscription is in good order.
+            first = (page.locator("tbody tr[data-remark]", has_text="w.hume@example.com").first
+                     .locator("a.row-link").get_attribute("href"))
             page.goto(base + first, wait_until="networkidle")
             page.wait_for_timeout(300)
             shoot(page, "client")
@@ -277,6 +289,11 @@ def main():
             page.goto(f"{base}/broadcast", wait_until="networkidle")
             page.wait_for_timeout(300)
             shoot(page, "broadcast")
+
+            # The bot's own mailbox, as the panel shows it.
+            page.goto(f"{base}/mail/bot", wait_until="networkidle")
+            page.wait_for_timeout(300)
+            shoot(page, "mail")
 
             page.goto(f"{base}/logs", wait_until="networkidle")
             page.wait_for_timeout(300)
