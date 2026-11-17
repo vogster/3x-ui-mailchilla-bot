@@ -8,6 +8,20 @@ The `mailchilla update` command reads the section belonging to a version out of
 this file and shows it before asking for confirmation, so each entry should
 read as something a person wants to know before updating.
 
+## [Unreleased]
+
+### Fixed
+
+- **On a mail server that sends folder names without quotes — Dovecot, and so
+  most servers of one's own — the Sent and Trash folders were not found.**
+  The name was read from the wrong end of the server's answer, which gives the
+  right thing on Gmail and Yandex, who quote every name, and the folder
+  separator, `/`, where a plain name comes bare. On such a server no copy of a
+  sent letter was kept (the log said `The server refused a copy of a sent
+  letter: NO`), the Sent and Trash tabs of the Mail page had nothing to open,
+  and the mailbox was not cleared out. The two warnings now name the folder
+  and carry the server's own words.
+
 ## [0.2.0] - 2026-11-17
 
 **This version needs Python 3.10 or newer; 0.1.x ran on 3.9.** Check before
