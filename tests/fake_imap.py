@@ -89,7 +89,12 @@ class FakeConnection:
     def list(self):
         lines = []
         for name, (attributes, _) in self.box.folders.items():
-            lines.append(f'({attributes}) "/" "{name}"'.encode())
+            # Gmail and Yandex quote every name. Dovecot — a server of one's
+            # own, most likely — sends a plain one bare, and a reader that
+            # worked on the first kind alone took the "/" for the name.
+            bare = getattr(self.box, "bare_names", False) and " " not in name
+            shown = name if bare else f'"{name}"'
+            lines.append(f'({attributes}) "/" {shown}'.encode())
         return "OK", lines
 
     def select(self, mailbox="INBOX", readonly=False):

@@ -747,15 +747,69 @@ def quote_astring(value: str) -> str:
     return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _folder_name(line) -> str:
-    """The mailbox name out of one LIST line, quotes and all removed."""
+def _list_line(line):
+    """
+    One entry of a LIST response as (the line itself, the name sent apart).
+
+    imaplib hands over a plain line for most folders and a pair for one whose
+    name the server sent as a literal: the line up to its "{n}", and then the
+    name. The second half is None for a plain line.
+    """
+    literal = None
+    if isinstance(line, tuple):
+        literal = line[1] if len(line) > 1 else None
+        line = line[0] if line else b""
     text = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else str(line)
-    # ( attributes ) "delimiter" "name" — the name is the tail, and it is the
-    # only part that may hold spaces, so splitting from the right is enough.
-    parts = text.rsplit('"', 2)
-    if len(parts) == 3 and parts[1]:
-        return parts[1]
-    return text.split()[-1].strip('"')
+    if isinstance(literal, bytes):
+        literal = literal.decode("utf-8", errors="ignore")
+    return text, literal
+
+
+def _closing_quote(text: str) -> int:
+    """Where the quoted string that opens `text` closes, or -1. A backslash escapes."""
+    i = 1
+    while i < len(text):
+        if text[i] == "\\":
+            i += 2
+            continue
+        if text[i] == '"':
+            return i
+        i += 1
+    return -1
+
+
+def _folder_name(line) -> str:
+    """
+    The mailbox name out of one LIST line, quotes and all removed.
+
+    The line is `(attributes) delimiter name`, read from the left in that
+    order. The delimiter is a quoted character or NIL; the name is quoted only
+    when it has to be. It used to be cut out from the right, as whatever stood
+    between the last two quotes — which is the name on Gmail and Yandex, who
+    quote every name, and the *delimiter* on a server that sends a plain name
+    bare, as Dovecot does: `(\\Sent) "/" Sent` read as a folder called "/".
+    On such a server no copy of a sent letter was kept, the Sent and Trash
+    tabs of the Mail page had nothing to open, and the mailbox was never
+    cleared out — each of them refused by the server with a bare NO.
+    """
+    text, literal = _list_line(line)
+    if literal is not None:
+        return literal
+    rest = text[text.find(")") + 1:].lstrip() if ")" in text else text.lstrip()
+    # Past the delimiter, whatever shape it has.
+    if rest.startswith('"'):
+        end = _closing_quote(rest)
+        rest = rest[end + 1:] if end != -1 else ""
+    else:
+        rest = rest.split(" ", 1)[1] if " " in rest else ""
+    name = rest.strip()
+    if name.startswith('"'):
+        end = _closing_quote(name)
+        inner = name[1:end] if end != -1 else name[1:]
+        # As the server escaped it; quote_astring escapes it again on the way
+        # back, so what is kept here has to be the name itself.
+        return re.sub(r"\\(.)", r"\1", inner)
+    return name
 
 
 def decode_folder_name(name: str) -> str:
@@ -815,8 +869,10 @@ def special_folder(mail, attribute: str, names) -> str:
     for line in lines or []:
         if line is None:
             continue
-        text = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else str(line)
+        text, _ = _list_line(line)
         name = _folder_name(line)
+        if not name:
+            continue
         flags = text[text.find("(") + 1:text.find(")")].lower().split() if "(" in text else []
         if wanted in flags:
             return name

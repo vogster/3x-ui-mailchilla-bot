@@ -1123,6 +1123,25 @@ def _work():
                                f"Sent folder: {e}")
 
 
+def _said(status, data) -> str:
+    """
+    A refusal in the server's own words, for the log.
+
+    The status alone is "NO", which names neither the folder nor the reason:
+    two warnings reading just that were all there was to go on when the Sent
+    folder had been taken to be called "/".
+    """
+    words = ""
+    for part in data or []:
+        if isinstance(part, bytes):
+            words = part.decode("utf-8", errors="replace").strip()
+        elif part is not None:
+            words = str(part).strip()
+        if words:
+            break
+    return f"{status} {words}".strip()
+
+
 def append_copies(account: Account, batch, mail=None) -> int:
     """
     Puts the letters into the account's Sent folder. Returns how many were
@@ -1143,15 +1162,15 @@ def append_copies(account: Account, batch, mail=None) -> int:
             graceful = True
             return 0
         quoted = _quote(folder)
-        status, _ = mail.select(quoted, readonly=True)
+        status, said = mail.select(quoted, readonly=True)
         can_search = status == "OK"
         if not can_search:
             # Not fatal — the letters still get appended below — but silently
             # skipping the duplicate check would let a transient failure here
             # double every letter of the batch into the Sent folder with
             # nothing in the log to explain why.
-            logger.warning(f"Could not open {folder} to check for duplicates ({status}); "
-                           f"appending without checking.")
+            logger.warning(f"Could not open the Sent folder {folder!r} to check for duplicates "
+                           f"({_said(status, said)}); appending without checking.")
 
         appended = 0
         for message_id, raw in batch:
@@ -1166,12 +1185,13 @@ def append_copies(account: Account, batch, mail=None) -> int:
                     # than append and say why the check was skipped.
                     logger.warning(f"Could not search {folder} for a duplicate of {message_id!r} "
                                    f"({status}); appending without checking.")
-            status, _ = mail.append(quoted, "\\Seen",
-                                    imaplib.Time2Internaldate(time.time()), raw)
+            status, said = mail.append(quoted, "\\Seen",
+                                       imaplib.Time2Internaldate(time.time()), raw)
             if status == "OK":
                 appended += 1
             else:
-                logger.warning(f"The server refused a copy of a sent letter: {status}")
+                logger.warning(f"The server refused a copy of a sent letter in the Sent "
+                               f"folder {folder!r}: {_said(status, said)}")
         if appended:
             logger.debug(f"Copied {appended} sent letter(s) to {folder}.")
         graceful = True

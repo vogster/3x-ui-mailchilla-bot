@@ -207,6 +207,59 @@ class FolderNames(unittest.TestCase):
                               b'(\\HasNoChildren \\Sent) "/" "Outbox of mine"']
         self.assertEqual(inbox.sent_folder(Server()), "Outbox of mine")
 
+    def test_a_name_the_server_did_not_quote_is_still_the_name(self):
+        # Gmail and Yandex quote every folder name; Dovecot sends a plain one
+        # bare. Cut out from the right, between the last two quotes, such a
+        # line gave the delimiter: the Sent folder was "/", and the server
+        # answered NO to every copy of a sent letter put into it.
+        class Server:
+            def list(self):
+                return "OK", [b'(\\HasNoChildren) "/" INBOX',
+                              b'(\\HasNoChildren \\Sent) "/" Sent',
+                              b'(\\HasNoChildren \\Trash) "/" Trash']
+        self.assertEqual(inbox.sent_folder(Server()), "Sent")
+        self.assertEqual(inbox.trash_folder(Server()), "Trash")
+
+    def test_every_shape_a_list_line_comes_in(self):
+        for line, name in (
+                (b'(\\HasNoChildren) "/" "INBOX"', "INBOX"),
+                (b'(\\HasNoChildren) "/" INBOX', "INBOX"),
+                # A dot for a delimiter, as on Courier and older Dovecot.
+                (b'(\\HasNoChildren \\Trash) "." INBOX.Trash', "INBOX.Trash"),
+                (b'(\\HasNoChildren) "." "INBOX.Sent Items"', "INBOX.Sent Items"),
+                # No hierarchy at all.
+                (b'(\\Noinferiors) NIL INBOX', "INBOX"),
+                (b'(\\Noinferiors) NIL "Sent Mail"', "Sent Mail"),
+                # A backslash for a delimiter, which arrives escaped.
+                (b'(\\HasNoChildren) "\\\\" Sent', "Sent"),
+                (b'(\\HasNoChildren) "\\\\" "Sent Items"', "Sent Items"),
+                # A quote inside a name, escaped by the server.
+                (b'(\\HasNoChildren) "/" "the \\"old\\" box"', 'the "old" box'),
+                # A name sent as a literal: imaplib hands over a pair.
+                ((b'(\\HasNoChildren \\Sent) "/" {4}', b'Sent'), "Sent"),
+                # And nothing usable is nothing, never the delimiter.
+                (b'(\\HasNoChildren) "/"', ""),
+                (b'(\\HasNoChildren) NIL', "")):
+            with self.subTest(line=line):
+                self.assertEqual(inbox._folder_name(line), name)
+
+    def test_a_literal_name_is_found_by_its_attribute(self):
+        class Server:
+            def list(self):
+                return "OK", [b'(\\HasNoChildren) "/" INBOX',
+                              (b'(\\HasNoChildren \\Sent) "/" {12}', b'Sent "items"')]
+        self.assertEqual(inbox.sent_folder(Server()), 'Sent "items"')
+
+    def test_by_name_when_the_server_marks_nothing(self):
+        # No special-use attributes and no quotes: an older server of one's own.
+        class Server:
+            def list(self):
+                return "OK", [b'(\\HasNoChildren) "." INBOX',
+                              b'(\\HasNoChildren) "." INBOX.Sent',
+                              b'(\\HasNoChildren) "." INBOX.Trash']
+        self.assertEqual(inbox.sent_folder(Server()), "INBOX.Sent")
+        self.assertEqual(inbox.trash_folder(Server()), "INBOX.Trash")
+
     def test_the_attribute_is_not_looked_for_in_the_name(self):
         class Server:
             def list(self):
@@ -395,6 +448,30 @@ class SentCopies(WithMailbox):
         stored = self.box.folders["Sent"][1]
         self.assertEqual(len(stored), 1)
         self.assertIn("\\Seen", stored[0].flags)
+
+    def test_on_a_server_that_sends_folder_names_bare(self):
+        # The whole way through, as it failed: the Sent folder read as "/",
+        # which the server refused to open and refused to append to.
+        self.box.bare_names = True
+        raw = letter(BOT, "welcome", to="ann@example.com", message_id="<one@example.com>")
+        self.assertEqual(mailfolders.append_copies(mailfolders.BOT, [("<one@example.com>", raw)]), 1)
+        self.assertEqual(len(self.box.folders["Sent"][1]), 1)
+        # And the panel's own Sent and Trash tabs open what the server has.
+        self.box.add("Trash", letter("ben@example.com", "old"))
+        self.assertEqual(len(mailfolders.list_letters(mailfolders.BOT, "sent")["rows"]), 1)
+        self.assertEqual(len(mailfolders.list_letters(mailfolders.BOT, "trash")["rows"]), 1)
+
+    def test_a_refusal_is_logged_with_the_folder_and_the_servers_words(self):
+        # "NO" by itself names neither, and was all there was to go on.
+        self.assertEqual(mailfolders._said("NO", [b"[TRYCREATE] Mailbox doesn't exist: /"]),
+                         "NO [TRYCREATE] Mailbox doesn't exist: /")
+        self.assertEqual(mailfolders._said("NO", [None]), "NO")
+        self.assertEqual(mailfolders._said("NO", None), "NO")
+        self.box.fail_select.add("Sent")
+        raw = letter(BOT, "welcome", to="ann@example.com", message_id="<z@example.com>")
+        with self.assertLogs("mailfolders", level="WARNING") as logs:
+            mailfolders.append_copies(mailfolders.BOT, [("<z@example.com>", raw)])
+        self.assertTrue(any("'Sent'" in line for line in logs.output), logs.output)
 
     def test_one_the_provider_already_filed_is_not_filed_again(self):
         raw = letter(BOT, "welcome", to="ann@example.com", message_id="<one@example.com>")
